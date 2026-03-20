@@ -1,0 +1,354 @@
+@import './styles/tokens.css';
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 96%;
+    --foreground: 0 0% 7%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 7%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 7%;
+    --primary: 220 100% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 7%;
+    --muted: 0 0% 92%;
+    --muted-foreground: 0 0% 42%;
+    --accent: 220 100% 59%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 220 100% 59%;
+    --radius: var(--r-sm);
+    
+    /* Canonical design tokens are defined in src/styles/tokens.css */
+
+    /* Legacy aliases used by existing components */
+    --mismo-bg: var(--mismo-surface);
+    --mismo-white: var(--color-surface-100);
+    --mismo-blue: var(--mismo-navy);
+    --mismo-blue-light: #e6edf6;
+    --mismo-text: var(--color-text-primary);
+    --mismo-text-secondary: var(--mismo-muted);
+    --mismo-green: var(--mismo-emerald);
+    --mismo-green-light: #e8f4f2;
+    --mismo-amber: var(--mismo-warn-accent);
+    --mismo-amber-light: #f7edd8;
+    --mismo-red: var(--mismo-alert);
+    --mismo-red-light: #faecee;
+    --mismo-purple: var(--color-primary-700);
+    --mismo-purple-light: #e8edf5;
+    --mismo-teal: var(--mismo-emerald);
+    --mismo-teal-light: #e8f4f2;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    font-family: var(--font-body);
+  }
+  body {
+    @apply bg-[var(--color-surface-200)] text-[var(--color-text-primary)] antialiased;
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-regular);
+  }
+}
+
+@layer components {
+  .mismo-symbol {
+    stroke-width: 1.6 !important;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    shape-rendering: geometricPrecision;
+    transform: scale(1.08);
+    opacity: 0.92;
+    transition: color var(--transition-fast), opacity var(--transition-fast), transform var(--transition-normal);
+  }
+
+  .mismo-symbol-premium {
+    color: var(--mismo-warn-accent);
+    filter: drop-shadow(0 2px 6px rgba(15, 27, 42, 0.25));
+  }
+
+  .mismo-symbol-tile {
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-large);
+    box-shadow: none;
+  }
+
+  /* Remove decorative icon backplates for cleaner enterprise style */
+  .mismo-card div:has(> .mismo-symbol):where(.rounded-full, .rounded-lg, .rounded-xl) {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Sitewide enterprise reveal motion */
+  .enterprise-reveal {
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity var(--transition-normal), transform var(--transition-normal);
+    will-change: opacity, transform;
+  }
+
+  .enterprise-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .report-icon-shift {
+    position: relative;
+    top: -6px;
+    left: -6px;
+  }
+
+  .mismo-heading {
+    font-family: var(--font-heading);
+    letter-spacing: -0.25px;
+    line-height: var(--line-height-tight);
+    font-weight: 600;
+  }
+
+  /* Risk Command Center and dashboard metrics: business-forward sans */
+  .font-command {
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: -0.02em;
+    line-height: var(--line-height-tight);
+  }
+
+  .mismo-card {
+    @apply bg-[var(--color-surface-100)] border border-[var(--color-border-200)];
+    border-radius: var(--radius-medium);
+    box-shadow: var(--shadow-1);
+    opacity: 1;
+    position: relative;
+    z-index: 1;
+  }
+
+  .rc-fade {
+    opacity: 1;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Sitewide safeguard: prevent content from appearing veiled/underlaid */
+  .dashboard-header,
+  .reports-header,
+  .filters-bar,
+  .action-card,
+  .alert-tile,
+  .metric-card,
+  .bottom-modules,
+  .reports-section,
+  .resources-section,
+  .stat-tile,
+  .report-row,
+  .rc-fade {
+    opacity: 1 !important;
+    filter: none !important;
+    z-index: 1;
+  }
+  
+  .mismo-card-hover {
+    @apply transition-all;
+    transition-duration: var(--transition-normal);
+  }
+
+  .mismo-card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-2);
+  }
+
+  .enterprise-interactive {
+    transition: transform var(--transition-normal), border-color var(--transition-normal), background-color var(--transition-fast), opacity var(--transition-fast), box-shadow var(--transition-normal);
+  }
+
+  .enterprise-interactive:hover {
+    transform: translateY(-1px);
+    border-color: var(--color-primary-700);
+  }
+
+  .enterprise-interactive:focus-visible {
+    outline: none;
+    box-shadow: var(--mismo-focus-ring);
+  }
+  
+  .badge-action-needed {
+    @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium border;
+    border-color: var(--color-alert-600);
+    color: var(--color-alert-600);
+    background: transparent;
+  }
+  
+  .badge-healthy {
+    @apply inline-flex items-center px-2.5 py-0.5 text-xs font-medium border;
+    border-color: var(--color-emerald-600);
+    color: var(--color-emerald-600);
+    background: transparent;
+  }
+  
+  .badge-warning {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[var(--mismo-amber-light)] text-[var(--mismo-amber)];
+  }
+
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-border-200);
+    border-radius: var(--radius-small);
+    background: var(--color-surface-100);
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 2px 10px;
+  }
+
+  .status-chip--neutral {
+    border-color: var(--color-border-200);
+    color: var(--color-text-secondary);
+  }
+
+  .status-chip--info {
+    border-color: rgba(31, 63, 104, 0.28);
+    color: var(--color-primary-900);
+  }
+
+  .status-chip--success {
+    border-color: rgba(44, 140, 130, 0.34);
+    color: var(--color-emerald-600);
+  }
+
+  .status-chip--warn {
+    border-color: rgba(242, 184, 75, 0.44);
+    color: #8a6510;
+  }
+
+  .status-chip--alert {
+    border-color: rgba(200, 91, 102, 0.5);
+    color: var(--color-alert-600);
+  }
+  
+  .tile-border-blue {
+    @apply border-t-[3px] border-[var(--mismo-blue)];
+  }
+  
+  .tile-border-green {
+    @apply border-t-[3px] border-[var(--mismo-green)];
+  }
+  
+  .tile-border-amber {
+    @apply border-t-[3px] border-[var(--mismo-amber)];
+  }
+  
+  .tile-border-red {
+    @apply border-t-[3px] border-[var(--mismo-red)];
+  }
+  
+  .tile-border-purple {
+    @apply border-t-[3px] border-[var(--mismo-purple)];
+  }
+  
+  .tile-border-teal {
+    @apply border-t-[3px] border-[var(--mismo-teal)];
+  }
+  
+  .pulse-badge {}
+  .micro-float {}
+
+  /* Enterprise: consistent section headers (cards, detail pages) */
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin-bottom: 0.5rem;
+  }
+
+  /* Enterprise: form controls */
+  .enterprise-input,
+  input[type="text"],
+  input[type="email"],
+  input[type="date"],
+  input[type="number"],
+  select {
+    font-size: var(--font-size-body);
+    border-radius: var(--radius-small);
+    border: 1px solid var(--color-border-200);
+    background: var(--color-surface-100);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  .enterprise-input:focus,
+  input:focus,
+  select:focus {
+    border-color: var(--color-primary-700);
+    box-shadow: 0 0 0 3px rgba(31, 63, 104, 0.12);
+    outline: none;
+  }
+
+  /* Enterprise: data tables */
+  .enterprise-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-body);
+  }
+  .enterprise-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border-200);
+    background: var(--color-surface-200);
+  }
+  .enterprise-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--color-border-200);
+  }
+  .enterprise-table tbody tr:hover {
+    background: rgba(15, 27, 42, 0.02);
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D1D5DB;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9CA3AF;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
