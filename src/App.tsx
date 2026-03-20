@@ -31,7 +31,6 @@ import { AdminInvestigationDetail } from '@/pages/admin/AdminInvestigationDetail
 import { HelpSupport } from '@/pages/HelpSupport';
 import { AdminPoliciesAndAnnouncements } from '@/pages/admin/AdminPoliciesAndAnnouncements';
 import { AdminPolicyDetail } from '@/pages/admin/AdminPolicyDetail';
-import { AdminAnnouncements } from '@/pages/admin/AdminAnnouncements';
 import { AdminAnnouncementDetail } from '@/pages/admin/AdminAnnouncementDetail';
 import { AdminPromptResponses } from '@/pages/admin/AdminPromptResponses';
 import { AdminPromptResponseDetail } from '@/pages/admin/AdminPromptResponseDetail';
