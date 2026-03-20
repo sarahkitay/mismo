@@ -58,7 +58,8 @@ export function Login({ dataStore }: LoginProps) {
             </Button>
           </form>
           <p className="text-xs text-center text-[var(--color-text-muted)] border-t border-[var(--color-border-200)] pt-4">
-            No account? Ask HR to add you via Users, or use a seed email (e.g. alex.morgan@mismo.com).
+            Demo: <span className="text-[var(--color-text-secondary)]">employee@mismo.com</span> (employee) or{' '}
+            <span className="text-[var(--color-text-secondary)]">admin@mismo.com</span> (HR / admin).
           </p>
         </CardContent>
       </Card>
