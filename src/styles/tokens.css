@@ -1,0 +1,115 @@
+:root{
+  /* Brand */
+  --mismo-navy: #1f3f68;
+  --mismo-emerald: #2c8c82;
+  --mismo-surface: #edf1f6;
+  --mismo-bg: #ffffff;
+  --mismo-text: #0f1b2a;
+  --mismo-muted: #5f6f86;
+
+  /* Status */
+  --mismo-success: #2b9b7f;
+  --mismo-alert: #c85b66;
+  --mismo-warn-accent: #f2b84b; /* small warm accent, not for critical */
+
+  /* Borders + elevation */
+  --border: rgba(31,63,104,.14);
+  --shadow-sm: 0 1px 2px rgba(15,27,42,.06);
+  --shadow-md: 0 8px 24px rgba(15,27,42,.10);
+
+  /* Radius */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+
+  /* Spacing */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 40px;
+
+  /* Type */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Inter", "SF Pro Text", Arial, sans-serif;
+  --font-serif: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --h1: 32px;
+  --h2: 22px;
+  --h3: 16px;
+  --body: 14px;
+  --small: 12px;
+
+  --w-regular: 400;
+  --w-medium: 500;
+  --w-semibold: 600;
+
+  /* Motion */
+  --ease: cubic-bezier(.2,.8,.2,1);
+  --t-fast: 150ms;
+  --t-med: 220ms;
+
+  /* Focus */
+  --focus: 0 0 0 3px rgba(44,140,130,.25);
+
+  /* Compatibility aliases for current app */
+  --color-primary-900: var(--mismo-navy);
+  --color-primary-700: #2a507f;
+  --color-primary-500: #3a6a9f;
+  --color-emerald-600: var(--mismo-emerald);
+  --color-emerald-500: var(--mismo-success);
+  --color-emerald-300: #5ec2b5;
+  --color-alert-600: var(--mismo-alert);
+  --color-alert-400: #d97a82;
+  --color-accent-gold: var(--mismo-warn-accent);
+  --color-surface-100: var(--mismo-bg);
+  --color-surface-200: var(--mismo-surface);
+  --color-border-200: #e3e8ef;
+  --color-text-primary: var(--mismo-text);
+  --color-text-secondary: var(--mismo-muted);
+  --color-text-muted: #6e7b8d;
+
+  --font-heading: var(--font-display);
+  --font-body: var(--font-sans);
+  --font-size-h1: var(--h1);
+  --font-size-h2: var(--h2);
+  --font-size-h3: var(--h3);
+  --font-size-body: var(--body);
+  --font-size-caption: var(--small);
+  --line-height-tight: 1.2;
+  --line-height-regular: 1.5;
+
+  --radius-small: var(--r-sm);
+  --radius-medium: var(--r-md);
+  --radius-large: var(--r-lg);
+  --shadow-1: var(--shadow-sm);
+  --shadow-2: var(--shadow-md);
+  --transition-fast: var(--t-fast) var(--ease);
+  --transition-normal: var(--t-med) var(--ease);
+  --transition-slow: var(--t-med) var(--ease);
+  --mismo-focus-ring: var(--focus);
+
+  --mismo-white: var(--mismo-bg);
+  --mismo-blue: var(--mismo-navy);
+  --mismo-blue-light: #e6edf6;
+  --mismo-text-secondary: var(--mismo-muted);
+  --mismo-green: var(--mismo-emerald);
+  --mismo-green-light: #e8f4f2;
+  --mismo-amber: var(--mismo-warn-accent);
+  --mismo-amber-light: #f7edd8;
+  --mismo-red: var(--mismo-alert);
+  --mismo-red-light: #faecee;
+  --mismo-purple: #2a507f;
+  --mismo-purple-light: #e8edf5;
+  --mismo-teal: var(--mismo-emerald);
+  --mismo-teal-light: #e8f4f2;
+
+  /* Enterprise UI */
+  --color-input-bg: #ffffff;
+  --color-input-border: #e3e8ef;
+  --color-input-focus: var(--mismo-navy);
+  --shadow-card: 0 1px 3px rgba(15, 27, 42, 0.06);
+  --shadow-card-hover: 0 4px 12px rgba(15, 27, 42, 0.08);
+}
