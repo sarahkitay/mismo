@@ -42,8 +42,12 @@ interface AuthenticatedAppProps {
   dataStore: DataStore;
 }
 
+function isStaffRole(role: DataStore['currentRole']) {
+  return role === 'HR' || role === 'MANAGER' || role === 'ADMIN' || role === 'SUPER_ADMIN';
+}
+
 export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
-  const { currentRole, switchRole, previewUserId, setPreviewUserId } = dataStore;
+  const { currentRole, switchRole, session, previewUserId, setPreviewUserId } = dataStore;
 
   const getPathForPage = (page: string, role: typeof currentRole) => {
     const employeeMap: Record<string, string> = {
@@ -160,10 +164,40 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
   const [pageParams, setPageParams] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    const sessionRole = session?.role;
+    if (!sessionRole) return;
+
+    const pathname = window.location.pathname.split('?')[0];
+
+    // Stale URL from a previous session (e.g. /employee/* after logging in as HR/admin)
+    if (isStaffRole(sessionRole) && pathname.startsWith('/employee')) {
+      window.history.replaceState({}, '', '/admin/dashboard');
+      switchRole(sessionRole);
+      setActivePage('dashboard');
+      setPageParams({});
+      return;
+    }
+
+    if (sessionRole === 'EMPLOYEE' && !pathname.startsWith('/employee')) {
+      window.history.replaceState({}, '', '/employee/dashboard');
+      switchRole(sessionRole);
+      setActivePage('home');
+      setPageParams({});
+      return;
+    }
+
+    if (sessionRole === 'CLIENT' && pathname !== '/admin/client-dashboard' && !pathname.startsWith('/admin/client-dashboard/')) {
+      window.history.replaceState({}, '', '/admin/client-dashboard');
+      switchRole(sessionRole);
+      setActivePage('client-dashboard');
+      setPageParams({});
+      return;
+    }
+
     const parsed = parsePath(window.location.pathname);
     setPageParams(parsed.params);
-    if (parsed.role !== currentRole) {
-      switchRole(parsed.role);
+    if (parsed.role !== sessionRole) {
+      switchRole(sessionRole);
     }
     setActivePage(parsed.page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -221,6 +255,24 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
 
   useEffect(() => {
     const onPop = () => {
+      const sessionRole = session?.role;
+      const pathname = window.location.pathname.split('?')[0];
+
+      if (sessionRole && isStaffRole(sessionRole) && pathname.startsWith('/employee')) {
+        window.history.replaceState({}, '', '/admin/dashboard');
+        switchRole(sessionRole);
+        setActivePage('dashboard');
+        setPageParams({});
+        return;
+      }
+      if (sessionRole === 'EMPLOYEE' && !pathname.startsWith('/employee')) {
+        window.history.replaceState({}, '', '/employee/dashboard');
+        switchRole(sessionRole);
+        setActivePage('home');
+        setPageParams({});
+        return;
+      }
+
       const parsed = parsePath(window.location.pathname);
       const params = { ...parsed.params };
       if ((parsed.page === 'reports' || parsed.page === 'investigations') && window.location.search) {
@@ -231,13 +283,13 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       }
       setPageParams(params);
       setActivePage(parsed.page);
-      if (parsed.role !== currentRole) {
-        switchRole(parsed.role);
+      if (sessionRole && parsed.role !== sessionRole) {
+        switchRole(sessionRole);
       }
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [currentRole, switchRole]);
+  }, [currentRole, switchRole, session?.role]);
 
   useEffect(() => {
     const root = document.querySelector('main');

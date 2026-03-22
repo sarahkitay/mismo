@@ -84,7 +84,13 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
             </>
           )}
           <Badge className="hidden md:inline-flex bg-[var(--color-emerald-600)] text-white border-0">
-            {currentRole === 'SUPER_ADMIN' ? 'Super Admin' : currentRole === 'HR' || currentRole === 'MANAGER' ? 'Human Resources' : currentRole === 'CLIENT' ? 'Client' : currentRole}
+            {currentRole === 'SUPER_ADMIN'
+              ? 'Super Admin'
+              : currentRole === 'HR' || currentRole === 'MANAGER' || currentRole === 'ADMIN'
+                ? 'Human Resources'
+                : currentRole === 'CLIENT'
+                  ? 'Client'
+                  : currentRole}
           </Badge>
           {/* Role Switcher: only for HR/Client (employees cannot switch to HR or Client) */}
           {!isEmployee && (
@@ -93,7 +99,7 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
                 <Button variant="outline" size="sm" className="hidden sm:flex items-center gap-2 bg-white text-[var(--color-text-primary)]">
                   <span className="text-xs text-[var(--color-text-secondary)]">View as:</span>
                   <span className="font-medium">
-                    {currentRole === 'HR' || currentRole === 'MANAGER'
+                    {currentRole === 'HR' || currentRole === 'MANAGER' || currentRole === 'ADMIN'
                       ? 'Human Resources'
                       : currentRole === 'CLIENT'
                         ? 'Client'
@@ -140,7 +146,7 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
               <p className="text-xs text-white/70">
                 {currentRole === 'EMPLOYEE'
                   ? 'Employee'
-                  : currentRole === 'HR' || currentRole === 'MANAGER'
+                  : currentRole === 'HR' || currentRole === 'MANAGER' || currentRole === 'ADMIN'
                     ? 'Human Resources'
                     : currentRole === 'CLIENT'
                       ? 'Client Viewer'

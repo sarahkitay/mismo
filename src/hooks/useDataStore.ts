@@ -163,6 +163,16 @@ export function useDataStore() {
     );
     if (!found) return false;
     setSession({ userId: found.id, orgId: found.orgId, role: found.role });
+    setCurrentRole(found.role);
+    if (typeof window !== 'undefined') {
+      const path =
+        found.role === 'EMPLOYEE'
+          ? '/employee/dashboard'
+          : found.role === 'CLIENT'
+            ? '/admin/client-dashboard'
+            : '/admin/dashboard';
+      window.history.replaceState({}, '', path);
+    }
     return true;
   }, [users, setSession]);
 
