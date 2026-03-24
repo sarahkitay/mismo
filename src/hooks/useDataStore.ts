@@ -36,13 +36,25 @@ import {
 } from '@/data/mockData';
 import { INDUSTRY_CHECKLIST_SECTIONS } from '@/data/industryChecklist';
 
+function normalizeUserRoles(list: User[]): User[] {
+  return list.map((user) => (user.role === 'MANAGER' ? { ...user, role: 'HR' as UserRole } : user));
+}
+
+/** Canonical seed users (login + fresh installs); persisted lists can lag behind mock email changes */
+const SEED_USERS = normalizeUserRoles(mockUsers);
+
 // Current user (for demo, we can switch between employee and admin)
 const CURRENT_USER_ID = 'user-emp-1'; // Default to employee (demo fallback)
 const CURRENT_HR_ID = 'user-manager-1';
 const CURRENT_ADMIN_ID = 'user-admin-1'; // Admin user
 const CURRENT_CLIENT_ID = 'user-client-1';
-const STORAGE_KEY = 'mismo_app_v1';
+const STORAGE_KEY = 'mismo_app_v2';
 const SESSION_KEY = 'mismo_session';
+
+/** Legacy / alternate demo addresses → canonical seed email (lowercase) */
+const LOGIN_EMAIL_ALIASES: Record<string, string> = {
+  'admin@mismo.com': 'hr@mismo.com',
+};
 
 export interface Session {
   userId: string;
@@ -125,9 +137,7 @@ export function useDataStore() {
 
   // State
   const [users, setUsers] = useState<User[]>(
-    (persisted?.users ?? mockUsers).map((user: User) =>
-      user.role === 'MANAGER' ? { ...user, role: 'HR' } : user
-    )
+    persisted?.users ? normalizeUserRoles(persisted.users as User[]) : SEED_USERS
   );
   const [reports, setReports] = useState<Report[]>(persisted?.reports ?? mockReports);
   const [prompts, setPrompts] = useState<Prompt[]>(persisted?.prompts ?? mockPrompts);
@@ -157,10 +167,19 @@ export function useDataStore() {
   }, []);
 
   const login = useCallback((email: string, orgId?: string): boolean => {
-    const normalized = email.trim().toLowerCase();
-    const found = users.find(
-      (u) => u.email.toLowerCase() === normalized && (orgId == null || u.orgId === orgId)
-    );
+    const raw = email.trim().toLowerCase();
+    const normalized = LOGIN_EMAIL_ALIASES[raw] ?? raw;
+
+    const findByEmail = (list: User[]) =>
+      list.find((u) => u.email.toLowerCase() === normalized && (orgId == null || u.orgId === orgId));
+
+    let found = findByEmail(users);
+    if (!found) {
+      found = findByEmail(SEED_USERS);
+      if (found && !users.some((u) => u.id === found!.id)) {
+        setUsers((prev) => [...prev, found!]);
+      }
+    }
     if (!found) return false;
     setSession({ userId: found.id, orgId: found.orgId, role: found.role });
     setCurrentRole(found.role);
@@ -174,7 +193,7 @@ export function useDataStore() {
       window.history.replaceState({}, '', path);
     }
     return true;
-  }, [users, setSession]);
+  }, [users, setSession, setUsers]);
 
   const logout = useCallback(() => {
     setSession(null);

@@ -59,7 +59,7 @@ export function Login({ dataStore }: LoginProps) {
           </form>
           <p className="text-xs text-center text-[var(--color-text-muted)] border-t border-[var(--color-border-200)] pt-4">
             Demo: <span className="text-[var(--color-text-secondary)]">employee@mismo.com</span> (employee) or{' '}
-            <span className="text-[var(--color-text-secondary)]">admin@mismo.com</span> (HR / admin).
+            <span className="text-[var(--color-text-secondary)]">hr@mismo.com</span> (HR).
           </p>
         </CardContent>
       </Card>
