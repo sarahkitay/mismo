@@ -59,7 +59,7 @@ export const mockUsers: User[] = [
     role: 'HR',
     firstName: 'Sarah',
     lastName: 'Kitay',
-    email: 'admin@mismo.com',
+    email: 'hr@mismo.com',
     departmentId: 'dept-4',
     status: 'active',
     createdAt: new Date(),
