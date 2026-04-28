@@ -6,6 +6,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Employee app: list/detail title — prefer what they wrote in description; summary is HR-facing. */
+export function employeeIncidentReportHeadline(report: Pick<Report, 'summary' | 'description'>): string {
+  const d = report.description?.trim();
+  if (d) return d.length > 96 ? `${d.slice(0, 93)}…` : d;
+  const s = report.summary?.trim();
+  if (s) return s.length > 96 ? `${s.slice(0, 93)}…` : s;
+  return 'Incident report';
+}
+
 // Format date to relative time
 export function formatRelativeTime(date: Date): string {
   const now = new Date();

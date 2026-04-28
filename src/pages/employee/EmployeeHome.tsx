@@ -3,7 +3,7 @@ import type { DataStore } from '@/hooks/useDataStore';
 import { Icons } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatDate, formatRelativeTime, getStatusColor, isIncidentIntakeComplete } from '@/lib/utils';
+import { employeeIncidentReportHeadline, formatDate, formatRelativeTime, getStatusColor, isIncidentIntakeComplete } from '@/lib/utils';
 import { toast } from 'sonner';
 
 /** EQC-style mandatory incident query copy (shown for prompts with type INCIDENT). */
@@ -103,16 +103,19 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
               <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
                 {pendingIntakes.length === 1
                   ? 'Complete your incident questionnaire from the link in your receipt email, or open it here.'
-                  : `You have ${pendingIntakes.length} case files waiting on your incident questionnaire.`}
+                  : `You have ${pendingIntakes.length} incident reports waiting on your incident questionnaire.`}
               </p>
             </div>
             <div className="flex flex-wrap gap-2 shrink-0">
-              {pendingIntakes.slice(0, 2).map((r) => (
+              {pendingIntakes.slice(0, 2).map((r) => {
+                const label = employeeIncidentReportHeadline(r);
+                const short = label.length > 28 ? `${label.slice(0, 28)}…` : label;
+                return (
                 <Button key={r.id} variant="default" className="bg-[var(--mismo-blue)] hover:bg-blue-600" onClick={() => onNavigate(`incident-intake/${r.id}`)}>
-                  Open form — {r.summary.slice(0, 28)}
-                  {r.summary.length > 28 ? '…' : ''}
+                  Open form — {short}
                 </Button>
-              ))}
+                );
+              })}
               {pendingIntakes.length > 2 && (
                 <Button variant="outline" onClick={() => onNavigate('reports')}>
                   View all
@@ -318,7 +321,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                       <div className="w-10 h-10 rounded-lg bg-[var(--mismo-blue-light)] flex items-center justify-center mb-3">
                         <Icons.reports className="h-5 w-5 text-[var(--mismo-blue)]" />
                       </div>
-                      <h3 className="font-semibold text-[var(--mismo-text)]">My reports</h3>
+                      <h3 className="font-semibold text-[var(--mismo-text)]">My incident reports</h3>
                       <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">Track what you&apos;ve submitted</p>
                     </CardContent>
                   </Card>
@@ -339,7 +342,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
 
               <div className="reports-section">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-[var(--mismo-text)]">Recent reports</h2>
+                  <h2 className="text-lg font-semibold text-[var(--mismo-text)]">Recent incident reports</h2>
                   {employeeReports.length > 0 && (
                     <button type="button" onClick={() => onNavigate('reports')} className="text-sm text-[var(--mismo-blue)] hover:underline">
                       View all
@@ -364,19 +367,9 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                             role="button"
                             tabIndex={0}
                           >
-                            <div
-                              className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                                report.severity === 'CRITICAL'
-                                  ? 'bg-red-500'
-                                  : report.severity === 'HIGH'
-                                    ? 'bg-orange-500'
-                                    : report.severity === 'MEDIUM'
-                                      ? 'bg-blue-500'
-                                      : 'bg-gray-400'
-                              }`}
-                            />
+                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-[var(--mismo-blue)]" />
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium text-[var(--mismo-text)] truncate">{report.summary}</p>
+                              <p className="font-medium text-[var(--mismo-text)] truncate">{employeeIncidentReportHeadline(report)}</p>
                               <p className="text-sm text-[var(--mismo-text-secondary)]">Submitted {formatRelativeTime(report.createdAt)}</p>
                             </div>
                             <span className={`text-xs font-medium ${getStatusColor(report.status)}`}>{report.status}</span>
@@ -387,7 +380,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                     ) : (
                       <div className="p-8 text-center">
                         <Icons.inbox className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                        <p className="text-[var(--mismo-text-secondary)]">You haven&apos;t submitted any reports yet.</p>
+                        <p className="text-[var(--mismo-text-secondary)]">You haven&apos;t submitted any incident reports yet.</p>
                         <p className="text-sm text-[var(--mismo-text-secondary)] mt-2">
                           If something happens, use <span className="font-medium text-[var(--mismo-text)]">Report an incident</span> above—
                           your team is notified right away.
@@ -456,7 +449,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                 <Card className="stat-tile mismo-card tile-border-amber border border-[var(--color-border-200)]">
                   <CardContent className="p-5">
                     <div>
-                      <p className="text-sm text-[var(--mismo-text-secondary)]">Open reports</p>
+                      <p className="text-sm text-[var(--mismo-text-secondary)]">Open incident reports</p>
                       <p className="text-3xl font-bold text-[var(--mismo-text)] mt-1">{openReportsCount}</p>
                     </div>
                     <button type="button" onClick={() => onNavigate('reports')} className="text-sm text-[var(--mismo-blue)] mt-3 hover:underline">
@@ -479,9 +472,9 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
 
               <div className="reports-section">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-[var(--mismo-text)]">My reports</h2>
+                  <h2 className="text-lg font-semibold text-[var(--mismo-text)]">My incident reports</h2>
                   <button type="button" onClick={() => onNavigate('reports')} className="text-sm text-[var(--mismo-blue)] hover:underline">
-                    View all reports
+                    View all incident reports
                   </button>
                 </div>
                 <Card className="mismo-card border border-[var(--color-border-200)]">
@@ -494,19 +487,9 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                             className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors cursor-pointer"
                             onClick={() => onNavigate(`report-detail/${report.id}`)}
                           >
-                            <div
-                              className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                                report.severity === 'CRITICAL'
-                                  ? 'bg-red-500'
-                                  : report.severity === 'HIGH'
-                                    ? 'bg-orange-500'
-                                    : report.severity === 'MEDIUM'
-                                      ? 'bg-blue-500'
-                                      : 'bg-gray-400'
-                              }`}
-                            />
+                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-[var(--mismo-blue)]" />
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium text-[var(--mismo-text)] truncate">{report.summary}</p>
+                              <p className="font-medium text-[var(--mismo-text)] truncate">{employeeIncidentReportHeadline(report)}</p>
                               <p className="text-sm text-[var(--mismo-text-secondary)]">Submitted {formatRelativeTime(report.createdAt)}</p>
                             </div>
                             <span className={`text-xs font-medium ${getStatusColor(report.status)}`}>{report.status}</span>
@@ -517,7 +500,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                     ) : (
                       <div className="p-8 text-center">
                         <Icons.inbox className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                        <p className="text-[var(--mismo-text-secondary)]">No reports submitted yet</p>
+                        <p className="text-[var(--mismo-text-secondary)]">No incident reports submitted yet</p>
                       </div>
                     )}
                   </CardContent>

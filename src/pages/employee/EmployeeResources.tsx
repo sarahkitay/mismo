@@ -1,7 +1,8 @@
 import { Card, CardContent } from '@/components/ui/card';
+import { MemoSignatureAcknowledgement } from '@/components/MemoSignatureAcknowledgement';
 import type { DataStore } from '@/hooks/useDataStore';
-import { Button } from '@/components/ui/button';
 import { formatDate, getMemoCategoryDisplay } from '@/lib/utils';
+import { toast } from 'sonner';
 
 const resources = [
   {
@@ -107,12 +108,11 @@ interface EmployeeResourcesProps {
 }
 
 export function EmployeeResources({ dataStore }: EmployeeResourcesProps) {
-  const employeePolicies = dataStore.policies.filter((p) => p.status === 'PUBLISHED');
-  const acknowledgedIds = new Set(
-    dataStore.policyAcknowledgements
-      .filter((ack) => ack.userId === dataStore.currentUser.id)
-      .map((ack) => ack.policyId)
-  );
+  const { policies, policyAcknowledgements, currentUser, acknowledgePolicy } = dataStore;
+  const employeePolicies = policies.filter((p) => p.status === 'PUBLISHED');
+  const myAcks = policyAcknowledgements.filter((ack) => ack.userId === currentUser.id);
+  const acknowledgedIds = new Set(myAcks.map((ack) => ack.policyId));
+  const ackByPolicyId = new Map(myAcks.map((a) => [a.policyId, a]));
   
   return (
     <div className="space-y-6">
@@ -132,24 +132,54 @@ export function EmployeeResources({ dataStore }: EmployeeResourcesProps) {
             <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
               Memos published by HR that you have read or still need to acknowledge.
             </p>
-            <ul className="mt-3 space-y-2">
+            <ul className="mt-3 space-y-4">
               {employeePolicies.map((policy) => {
                 const read = acknowledgedIds.has(policy.id);
+                const ack = ackByPolicyId.get(policy.id);
+                const needsSignOff = policy.acknowledgmentRequired && !read;
+                const statusLabel = read
+                  ? ack?.signatureDataUrl
+                    ? 'Signed & acknowledged'
+                    : 'Acknowledged'
+                  : policy.acknowledgmentRequired
+                    ? 'Signature required'
+                    : 'Reference — no sign-off';
                 return (
-                  <li
-                    key={policy.id}
-                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 py-2 border-b border-[var(--color-border-200)] last:border-0"
-                  >
-                    <div>
-                      <span className="font-medium text-[var(--mismo-text)]">{policy.title}</span>
-                      <p className="text-xs text-[var(--mismo-text-secondary)] mt-0.5">
-                        {getMemoCategoryDisplay(policy)}
-                        {policy.completionDueDate && ` · Complete by ${formatDate(policy.completionDueDate)}`}
-                      </p>
+                  <li key={policy.id} className="border-b border-[var(--color-border-200)] last:border-0 pb-4 last:pb-0">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                      <div>
+                        <span className="font-medium text-[var(--mismo-text)]">{policy.title}</span>
+                        <p className="text-xs text-[var(--mismo-text-secondary)] mt-0.5">
+                          {getMemoCategoryDisplay(policy)}
+                          {policy.completionDueDate && ` · Complete by ${formatDate(policy.completionDueDate)}`}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded w-fit shrink-0 ${
+                          read
+                            ? 'bg-[var(--mismo-green-light)] text-[var(--mismo-green)]'
+                            : policy.acknowledgmentRequired
+                              ? 'bg-[var(--mismo-amber)]/20 text-[var(--mismo-amber)]'
+                              : 'bg-[var(--color-surface-200)] text-[var(--mismo-text-secondary)]'
+                        }`}
+                      >
+                        {statusLabel}
+                      </span>
                     </div>
-                    <span className={`text-xs px-2 py-0.5 rounded w-fit ${read ? 'bg-[var(--mismo-green-light)] text-[var(--mismo-green)]' : 'bg-[var(--mismo-amber)]/20 text-[var(--mismo-amber)]'}`}>
-                      {read ? 'I\'ve read and understood' : 'Needs acknowledgement'}
-                    </span>
+                    {needsSignOff && (
+                      <MemoSignatureAcknowledgement
+                        policyId={policy.id}
+                        policyTitle={policy.title}
+                        className="mt-4"
+                        onSubmit={(signatureDataUrl) => {
+                          acknowledgePolicy(policy.id, currentUser.id, {
+                            outcome: 'READ_UNDERSTOOD',
+                            signatureDataUrl,
+                          });
+                          toast.success('Memo acknowledgement saved with your signature.');
+                        }}
+                      />
+                    )}
                   </li>
                 );
               })}
@@ -223,28 +253,6 @@ export function EmployeeResources({ dataStore }: EmployeeResourcesProps) {
         </CardContent>
       </Card>
 
-      <Card className="mismo-card">
-        <CardContent className="p-6">
-          <h3 className="font-semibold text-lg">Memo acknowledgements</h3>
-          <div className="mt-4 space-y-3">
-            {employeePolicies.map((policy) => (
-              <div key={policy.id} className="flex items-center justify-between border p-3">
-                <div>
-                  <p className="font-medium">{policy.title}</p>
-                  <p className="text-sm text-[var(--mismo-text-secondary)]">{getMemoCategoryDisplay(policy)}</p>
-                </div>
-                {acknowledgedIds.has(policy.id) ? (
-                  <span className="status-chip status-chip--success">Acknowledged</span>
-                ) : (
-                  <Button size="sm" onClick={() => dataStore.acknowledgePolicy(policy.id, dataStore.currentUser.id)}>
-                    Acknowledge
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

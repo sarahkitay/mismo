@@ -23,7 +23,7 @@ export function Login({ dataStore }: LoginProps) {
     if (ok) {
       toast.success('Signed in.');
     } else {
-      toast.error('No account found for this email. Use an existing user email or add users via HR → Users → Bulk Import.');
+      toast.error('No account found for this email. Use an existing user email or add people via HR → Employees → Bulk Import.');
     }
   };
 
