@@ -30,7 +30,7 @@ export function AdminPoliciesAndAnnouncements({
               : 'bg-transparent text-[var(--mismo-text-secondary)] hover:bg-black/5'
           )}
         >
-          Policies
+          Company memos
         </button>
         <button
           type="button"

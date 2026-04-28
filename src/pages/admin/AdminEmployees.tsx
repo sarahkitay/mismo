@@ -43,7 +43,16 @@ type MappingTemplate = { name: string; map: Record<string, string> };
 const IMPORT_TEMPLATE_STORAGE = 'mismo_csv_mapping_templates';
 
 export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminEmployeesProps) {
-  const { users, atRiskEmployees, sendNudge, orgSettings, getEmployeeEngagement, createUsers, updateUser } = dataStore;
+  const { users, responses, atRiskEmployees, sendNudge, orgSettings, getEmployeeEngagement, createUsers, updateUser } = dataStore;
+
+  /** Prompt "I have an issue" / HAS_ISSUE — show corner badge; not for no-response / low-engagement alone */
+  const userIdsWithReportedIssue = useMemo(() => {
+    const ids = new Set<string>();
+    for (const r of responses) {
+      if (r.answer === 'HAS_ISSUE') ids.add(r.userId);
+    }
+    return ids;
+  }, [responses]);
   const directoryUsers = users.filter((u) => u.status === 'active');
 
   const [activeTab, setActiveTab] = useState<ImportTab>(initialFilters?.import === 'csv' ? 'BULK_IMPORT' : 'DIRECTORY');
@@ -342,11 +351,14 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredEmployees.map((employee) => {
               const engagement = getEmployeeEngagement(employee.id);
-              const isAtRisk = engagement?.isAtRisk || false;
+              const reportedIssueViaPrompt = userIdsWithReportedIssue.has(employee.id);
               return (
-                <Card key={employee.id} className={`employee-card mismo-card relative ${isAtRisk ? 'border-[var(--color-alert-600)]' : ''}`}>
+                <Card
+                  key={employee.id}
+                  className={`employee-card mismo-card relative ${reportedIssueViaPrompt ? 'border-[var(--color-alert-600)]' : ''}`}
+                >
                   <CardContent className="p-5">
-                    {isAtRisk && (
+                    {reportedIssueViaPrompt && (
                       <div className="absolute top-3 right-3">
                         <Badge className="status-chip status-chip--alert">At Risk</Badge>
                       </div>

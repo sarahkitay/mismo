@@ -25,7 +25,7 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
 
   return (
     <div className="space-y-4">
-      <Button variant="ghost" onClick={() => onNavigate('prompt-responses')}>Back to Employee Prompt Responses</Button>
+      <Button variant="ghost" onClick={() => onNavigate('prompt-responses')}>Back to case register & check-ins</Button>
       <Card className="mismo-card">
         <CardContent className="p-5 space-y-2">
           <h1 className="text-xl font-semibold">{prompt?.title ?? 'Prompt'}</h1>

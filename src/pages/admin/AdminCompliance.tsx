@@ -17,7 +17,7 @@ export function AdminCompliance({ dataStore }: AdminComplianceProps) {
   const overduePrompts = dataStore.deliveries.filter((delivery) => delivery.status === 'PENDING' && delivery.dueAt && delivery.dueAt.getTime() < Date.now()).length;
 
   const actionItems = [
-    { id: 'a1', title: 'Unacknowledged policy updates', priority: 'HIGH' as const },
+    { id: 'a1', title: 'Unacknowledged memo updates', priority: 'HIGH' as const },
     { id: 'a2', title: 'Open urgent report requires assignment', priority: 'URGENT' as const },
     { id: 'a3', title: 'Overdue prompt reminders pending', priority: 'MEDIUM' as const },
   ].filter((item) => priority === 'ALL' || item.priority === priority);
@@ -39,7 +39,7 @@ export function AdminCompliance({ dataStore }: AdminComplianceProps) {
       {tab === 'DASHBOARD' ? (
       <>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="mismo-card"><CardContent className="p-4"><p className="text-sm text-[var(--mismo-text-secondary)]">Policy Acknowledgement Rate</p><p className="text-3xl font-bold">{formatPercent(policyAckRate)}</p></CardContent></Card>
+        <Card className="mismo-card"><CardContent className="p-4"><p className="text-sm text-[var(--mismo-text-secondary)]">Memo acknowledgement rate</p><p className="text-3xl font-bold">{formatPercent(policyAckRate)}</p></CardContent></Card>
         <Card className="mismo-card"><CardContent className="p-4"><p className="text-sm text-[var(--mismo-text-secondary)]">Open Findings</p><p className="text-3xl font-bold">{openFindings}</p></CardContent></Card>
         <Card className="mismo-card"><CardContent className="p-4"><p className="text-sm text-[var(--mismo-text-secondary)]">Overdue Prompt Responses</p><p className="text-3xl font-bold">{overduePrompts}</p></CardContent></Card>
       </div>

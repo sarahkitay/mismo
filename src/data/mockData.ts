@@ -243,8 +243,9 @@ export const mockPrompts: Prompt[] = [
     id: 'prompt-1',
     orgId: ORG_ID,
     type: 'INCIDENT',
-    title: 'Incident Prompt',
-    description: 'Compliance Check-In Required. Confirm no issue is present or open a case file for procedural review.',
+    title: 'Incident Query',
+    description:
+      'Mandatory employment-rights incident screen at logon (EQC-style). Yes/No only; Yes uses a confirmation step before the response is stored.',
     schedule: {
       cadence: 'ONCE',
       startAt: new Date('2024-02-20'),
@@ -529,6 +530,39 @@ export const mockReports: Report[] = [
     createdAt: new Date('2024-02-20'),
     updatedAt: new Date(),
   },
+  {
+    id: 'report-intake-pending',
+    orgId: ORG_ID,
+    createdByUserId: 'user-emp-1',
+    isAnonymous: false,
+    category: 'OTHER',
+    severity: 'MEDIUM',
+    summary: 'Incident notice — full intake requested',
+    description:
+      'You indicated you have something to report. HR has logged this notice; complete the linked incident questionnaire so the case file can move forward.',
+    status: 'NEW',
+    preferredContactMethod: 'IN_APP',
+    needsExtendedIncidentIntake: true,
+    createdAt: new Date('2024-02-23'),
+    updatedAt: new Date('2024-02-23'),
+  },
+  {
+    id: 'report-outcome-test',
+    orgId: ORG_ID,
+    createdByUserId: 'user-emp-1',
+    isAnonymous: false,
+    category: 'OTHER',
+    severity: 'LOW',
+    summary: 'Demo: outcome letter awaiting your confirmation',
+    description: 'Sample case for reviewing the investigation closure flow.',
+    status: 'IN_REVIEW',
+    assignedTo: 'user-admin-1',
+    investigationId: 'inv-outcome-demo',
+    incidentIntakeCompletedAt: new Date('2024-02-22'),
+    preferredContactMethod: 'IN_APP',
+    createdAt: new Date('2024-02-22'),
+    updatedAt: new Date(),
+  },
 ];
 
 // Investigations
@@ -543,6 +577,19 @@ export const mockInvestigations: Investigation[] = [
     lastUpdateAt: new Date('2024-02-21'),
     createdAt: new Date(),
     updatedAt: new Date(),
+    workflowPhase: 'IN_PROGRESS',
+    pickedUpAt: new Date('2024-02-21'),
+    employeePreferredContact: 'IN_APP_MESSAGE',
+    subjectUserIds: ['user-emp-2'],
+    notes: [
+      {
+        id: 'inv-note-seed-1',
+        visibility: 'INTERNAL',
+        body: 'Initial intake call scheduled with reporter.',
+        createdAt: new Date('2024-02-21'),
+        createdByUserId: 'user-admin-2',
+      },
+    ],
   },
   {
     id: 'inv-2',
@@ -554,6 +601,9 @@ export const mockInvestigations: Investigation[] = [
     lastUpdateAt: new Date('2024-02-20'),
     createdAt: new Date(),
     updatedAt: new Date(),
+    workflowPhase: 'QUEUED',
+    subjectUserIds: [],
+    notes: [],
   },
   {
     id: 'inv-3',
@@ -566,6 +616,27 @@ export const mockInvestigations: Investigation[] = [
     lastUpdateAt: new Date('2024-02-15'),
     createdAt: new Date(),
     updatedAt: new Date(),
+  },
+  {
+    id: 'inv-outcome-demo',
+    orgId: ORG_ID,
+    status: 'OPEN',
+    ownerId: 'user-admin-1',
+    linkedReportIds: ['report-outcome-test'],
+    openedAt: new Date('2024-02-22'),
+    lastUpdateAt: new Date('2024-02-22'),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    workflowPhase: 'AWAITING_OUTCOME_ACK',
+    pickedUpAt: new Date('2024-02-22'),
+    employeePreferredContact: 'IN_APP_MESSAGE',
+    subjectUserIds: [],
+    notes: [],
+    outcomeSummary:
+      'Following review, we will schedule retraining for the team lead and document expectations in writing. If you have additional concerns, reply through this portal.',
+    outcomeRequiresSignature: true,
+    outcomeSentAt: new Date('2024-02-23'),
+    outcomeEmployeeAgreed: null,
   },
 ];
 
@@ -719,7 +790,7 @@ export const mockPolicies: Policy[] = [
   {
     id: 'policy-1',
     orgId: ORG_ID,
-    title: 'Workplace Conduct Policy',
+    title: 'Workplace Conduct Memo — 2024',
     type: 'CONDUCT',
     content: 'All employees must maintain professional conduct and respect.',
     effectiveDate: new Date('2024-01-15'),
@@ -729,11 +800,14 @@ export const mockPolicies: Policy[] = [
     status: 'PUBLISHED',
     createdAt: new Date('2024-01-08'),
     updatedAt: new Date('2024-01-10'),
+    memoCategory: 'Conduct & ethics',
+    completionDueDate: new Date('2024-12-31'),
+    bodySource: 'EDITOR',
   },
   {
     id: 'policy-2',
     orgId: ORG_ID,
-    title: 'Safety Incident Reporting Policy',
+    title: 'Safety incident reporting — warehouse',
     type: 'SAFETY',
     content: 'Incidents must be reported within 24 hours.',
     effectiveDate: new Date('2024-02-01'),
@@ -743,6 +817,9 @@ export const mockPolicies: Policy[] = [
     status: 'PUBLISHED',
     createdAt: new Date('2024-01-20'),
     updatedAt: new Date('2024-01-25'),
+    memoCategory: 'Safety',
+    completionDueDate: new Date('2024-06-30'),
+    bodySource: 'EDITOR',
   },
 ];
 
@@ -985,7 +1062,7 @@ export function getSeverityLabel(severity: string): string {
 // Get prompt type label
 export function getPromptTypeLabel(type: string): string {
   const labels: Record<string, string> = {
-    INCIDENT: 'Incident Prompt',
+    INCIDENT: 'Incident Query',
     TEAM_DYNAMIC: 'Team Dynamic Check-In',
     MONTHLY_CHECKIN: 'Monthly Health Check',
     CUSTOM: 'Custom',
