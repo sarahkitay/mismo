@@ -5,12 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import {
+  employeeIncidentReportHeadline,
   formatDate,
   formatRelativeTime,
   getStatusColor,
-  getSeverityColor,
-  getCategoryColor,
-  getCategoryLabel,
   isIncidentIntakeComplete,
   getEffectiveInvestigationPhase,
   investigationWorkflowLabel,
@@ -31,15 +29,15 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
     return (
       <div className="text-center py-12">
         <Icons.searchX className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-        <h2 className="text-xl font-semibold text-[var(--mismo-text)]">Report not found</h2>
+        <h2 className="text-xl font-semibold text-[var(--mismo-text)]">Incident report not found</h2>
         <p className="text-[var(--mismo-text-secondary)] mt-2">
-          The report you're looking for doesn't exist or you don't have access to it.
+          The incident report you&apos;re looking for doesn&apos;t exist or you don&apos;t have access to it.
         </p>
         <button 
           onClick={() => onNavigate('reports')}
           className="text-[var(--mismo-blue)] mt-4 hover:underline"
         >
-          Back to My Reports
+          Back to my incident reports
         </button>
       </div>
     );
@@ -64,8 +62,8 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
   }> = [
     {
       id: 'event-1',
-      title: 'Report Submitted',
-      description: 'Your report has been received and is being reviewed.',
+      title: 'Incident report submitted',
+      description: 'Your incident report has been received and is being reviewed.',
       timestamp: report.createdAt,
       icon: 'send',
       color: 'blue',
@@ -94,22 +92,15 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
           className="flex items-center gap-2 text-sm text-[var(--mismo-text-secondary)] hover:text-[var(--mismo-text)] mb-4"
         >
           <Icons.arrowLeft className="h-4 w-4" />
-          Back to My Reports
+          Back to my incident reports
         </button>
         
         <div className="flex flex-wrap items-center gap-2 mb-2">
-          <Badge className={getCategoryColor(report.category)}>
-            {getCategoryLabel(report.category)}
-          </Badge>
-          <Badge className={getSeverityColor(report.severity)}>
-            {report.severity}
-          </Badge>
-          <Badge className={getStatusColor(report.status)}>
-            {report.status}
-          </Badge>
+          <Badge className={getStatusColor(report.status)}>{report.status}</Badge>
         </div>
-        
-        <h1 className="text-2xl font-bold text-[var(--mismo-text)]">{report.summary}</h1>
+
+        <h1 className="text-2xl font-bold text-[var(--mismo-text)]">{employeeIncidentReportHeadline(report)}</h1>
+        <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">Reference #{report.id.replace(/^report-/, '').toUpperCase()}</p>
       </div>
 
       {!isIncidentIntakeComplete(report) && (
@@ -118,7 +109,7 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
             <div>
               <p className="font-semibold text-[var(--mismo-text)]">Incident documentation required</p>
               <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
-                HR sent a receipt with a link to this portal. Complete the questionnaire so your case file can move
+                HR sent a receipt with a link to this portal. Complete the questionnaire so your incident report can move
                 forward.
               </p>
             </div>
@@ -167,7 +158,8 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
           <CardContent className="p-6 space-y-4">
             <h3 className="text-lg font-semibold text-[var(--mismo-text)]">Outcome of your case</h3>
             <p className="text-sm text-[var(--mismo-text-secondary)]">
-              Please read the summary below. {investigation.outcomeRequiresSignature ? 'Confirm whether you agree with this resolution.' : ''}
+              Please read the information below.{' '}
+              {investigation.outcomeRequiresSignature ? 'Confirm whether you agree with this resolution.' : ''}
             </p>
             <div className="rounded-md bg-[var(--color-surface-200)] p-4 text-sm whitespace-pre-wrap text-[var(--mismo-text)]">
               {investigation.outcomeSummary}
@@ -246,9 +238,11 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
               <h3 className="text-sm font-medium text-[var(--mismo-text-secondary)] uppercase tracking-wider mb-2">
                 Description
               </h3>
-              <p className="text-[var(--mismo-text)] leading-relaxed">
-                {report.description}
-              </p>
+              {report.description?.trim() ? (
+                <p className="text-[var(--mismo-text)] leading-relaxed whitespace-pre-wrap">{report.description}</p>
+              ) : (
+                <p className="text-sm text-[var(--mismo-text-secondary)] italic">No description on file. HR may reach out if they need more detail.</p>
+              )}
             </div>
             
             {/* Details Grid */}

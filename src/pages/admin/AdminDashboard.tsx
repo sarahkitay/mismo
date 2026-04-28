@@ -98,13 +98,13 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
       return !lastResponse || responseRate30d < dataStore.orgSettings.thresholds.atRiskMinResponseRate;
     });
 
-    // Risk Posture: weighted composite 0–100 (displayed as e.g. 29.6)
+    // Analytics index: weighted composite 0–1 → displayed 0–100 (e.g. 29.6)
     // 28% policy acknowledgment rate, 26% prompt completion rate, 30% investigation closure rate, 16% inverse of exposure (open memos + open investigations, capped)
     const policyRate = totalRequiredAcks > 0 ? 1 - pendingAcks / totalRequiredAcks : 1;
     const promptRate = deliveries.length > 0 ? responses.length / deliveries.length : 1;
     const investigationRate = investigations.length > 0 ? investigations.filter((i) => i.status === 'CLOSED').length / investigations.length : 1;
     const riskExposurePenalty = Math.min(1, (memoResponses.length + openInvestigations.length) / 24);
-    const riskPosture = policyRate * 0.28 + promptRate * 0.26 + investigationRate * 0.3 + (1 - riskExposurePenalty) * 0.16;
+    const analyticsIndex = policyRate * 0.28 + promptRate * 0.26 + investigationRate * 0.3 + (1 - riskExposurePenalty) * 0.16;
 
     const actionRequiredCount = openInvestigations.length + memoResponses.length + scheduledItems.length + pendingAcks;
     const openCases = reports
@@ -143,7 +143,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
       memoResponses,
       scheduledItems,
       atRiskEmployees,
-      riskPosture,
+      analyticsIndex,
       actionRequiredCount,
       openCases,
       recentActivity,
@@ -156,7 +156,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
   const atRiskEmails = computed.atRiskEmployees.map((user) => user.email).filter(Boolean);
 
   const countAction = useCountUp(computed.actionRequiredCount, 1000, 0);
-  const countPosture = useCountUp(computed.riskPosture * 100, 1000, 1);
+  const countAnalyticsIndex = useCountUp(computed.analyticsIndex * 100, 1000, 1);
   const countInvestigations = useCountUp(computed.openInvestigations.length, 900, 0);
   const countMemos = useCountUp(computed.memoResponses.length, 900, 0);
   const countScheduled = useCountUp(computed.scheduledItems.length, 900, 0);
@@ -233,17 +233,17 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
 
         <Card className="mismo-card">
           <CardContent className="p-6 space-y-3">
-            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Risk Posture</p>
-            <p className="font-command text-4xl font-medium text-[var(--color-primary-900)] tabular-nums">{countPosture.toFixed(1)}</p>
+            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Analytics</p>
+            <p className="font-command text-4xl font-medium text-[var(--color-primary-900)] tabular-nums">{countAnalyticsIndex.toFixed(1)}</p>
             <p className="text-sm font-command text-[var(--color-text-secondary)]">Change from prior window: <span className="text-[var(--color-accent-gold)]">+1.6</span></p>
             <p className="text-xs font-command text-[var(--color-text-muted)]">Last updated: {formatUtcTimestamp(nowRef.current)}</p>
             <Button
-              aria-label="Open analytics page"
+              aria-label="View Analytics"
               variant="outline"
-              className="border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command"
+              className="w-full sm:w-auto border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command"
               onClick={() => onNavigate('analytics')}
             >
-              View Analytics
+              View Analytics →
             </Button>
           </CardContent>
         </Card>
@@ -282,7 +282,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
             <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">At-Risk Employees</p>
             <p className="font-command text-4xl font-medium tabular-nums">{countAtRisk}</p>
             <Button variant="outline" className="border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command" onClick={() => onNavigate('users', { atRisk: 'true' })}>
-              View Users
+              View Employees
             </Button>
             <div className="flex gap-2 justify-center flex-wrap">
               <Button variant="outline" size="sm" className="enterprise-interactive" onClick={exportAtRiskEmails}>

@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { isIncidentIntakeComplete } from '@/lib/utils';
+import { employeeIncidentReportHeadline, isIncidentIntakeComplete } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface EmployeeIncidentIntakeProps {
@@ -26,7 +26,7 @@ export function EmployeeIncidentIntake({ dataStore, reportId, onNavigate }: Empl
   if (!report) {
     return (
       <div className="text-center py-12">
-        <p className="text-[var(--mismo-text-secondary)]">This case was not found on your account.</p>
+        <p className="text-[var(--mismo-text-secondary)]">This incident report was not found on your account.</p>
         <Button variant="link" className="mt-2" onClick={() => onNavigate('reports')}>
           Back to My Reports
         </Button>
@@ -89,9 +89,10 @@ export function EmployeeIncidentIntake({ dataStore, reportId, onNavigate }: Empl
 
       <Card className="mismo-card border border-[var(--color-border-200)]">
         <CardContent className="p-6">
-          <p className="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Case reference</p>
-          <p className="font-semibold text-[var(--mismo-text)] mt-1">{report.summary}</p>
-          <p className="text-xs text-[var(--mismo-text-secondary)] mt-2">Reported {report.createdAt.toLocaleString()}</p>
+          <p className="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Incident report reference</p>
+          <p className="font-semibold text-[var(--mismo-text)] mt-1">{employeeIncidentReportHeadline(report)}</p>
+          <p className="text-xs text-[var(--mismo-text-secondary)] mt-1 font-mono">#{report.id.replace(/^report-/, '').toUpperCase()}</p>
+          <p className="text-xs text-[var(--mismo-text-secondary)] mt-2">Submitted {report.createdAt.toLocaleString()}</p>
         </CardContent>
       </Card>
 

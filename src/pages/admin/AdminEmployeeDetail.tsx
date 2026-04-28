@@ -34,6 +34,10 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
   const [editingOrgInfo, setEditingOrgInfo] = useState(false);
   const [editManagerId, setEditManagerId] = useState(employee.managerId ?? '');
   const [editHiredDate, setEditHiredDate] = useState(toDateInputValue(employee.hiredDate));
+  const [editEmployeeId, setEditEmployeeId] = useState(employee.employeeId ?? '');
+  const [editLocation, setEditLocation] = useState(employee.location ?? '');
+  const [editArchiveStart, setEditArchiveStart] = useState(toDateInputValue(employee.archiveStartDate));
+  const [editArchiveEnd, setEditArchiveEnd] = useState(toDateInputValue(employee.archiveEndDate));
 
   const manager = employee.managerId ? dataStore.users.find((u) => u.id === employee.managerId) : null;
   const potentialManagers = dataStore.users.filter(
@@ -43,6 +47,10 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
   useEffect(() => {
     setEditManagerId(employee.managerId ?? '');
     setEditHiredDate(toDateInputValue(employee.hiredDate));
+    setEditEmployeeId(employee.employeeId ?? '');
+    setEditLocation(employee.location ?? '');
+    setEditArchiveStart(toDateInputValue(employee.archiveStartDate));
+    setEditArchiveEnd(toDateInputValue(employee.archiveEndDate));
     setEditingOrgInfo(false);
   }, [employeeId]);
 
@@ -64,6 +72,10 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
     dataStore.updateUser(employee.id, {
       managerId: editManagerId || undefined,
       hiredDate: editHiredDate ? new Date(editHiredDate) : undefined,
+      employeeId: editEmployeeId.trim() || undefined,
+      location: editLocation.trim() || undefined,
+      archiveStartDate: editArchiveStart ? new Date(editArchiveStart) : undefined,
+      archiveEndDate: editArchiveEnd ? new Date(editArchiveEnd) : undefined,
     });
     setEditingOrgInfo(false);
     toast.success('Employee details updated.');
@@ -72,6 +84,10 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
   const handleCancelEdit = () => {
     setEditManagerId(employee.managerId ?? '');
     setEditHiredDate(toDateInputValue(employee.hiredDate));
+    setEditEmployeeId(employee.employeeId ?? '');
+    setEditLocation(employee.location ?? '');
+    setEditArchiveStart(toDateInputValue(employee.archiveStartDate));
+    setEditArchiveEnd(toDateInputValue(employee.archiveEndDate));
     setEditingOrgInfo(false);
   };
 
@@ -80,7 +96,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" onClick={() => onNavigate('users')}>
           <Icons.arrowLeft className="h-4 w-4 mr-2" />
-          Back to Users
+          Back to Employees
         </Button>
         <Button variant="default" onClick={handleViewAsEmployee} className="ml-auto">
           View as this employee
@@ -89,7 +105,14 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
           variant="outline"
           className="border-[var(--color-alert-600)] text-[var(--color-alert-600)] hover:bg-[var(--color-alert-50)]"
           onClick={() => {
-            dataStore.updateUser(employee.id, { status: 'inactive' });
+            const now = new Date();
+            const end = new Date(now);
+            end.setFullYear(end.getFullYear() + 7);
+            dataStore.updateUser(employee.id, {
+              status: 'inactive',
+              archiveStartDate: employee.archiveStartDate ?? now,
+              archiveEndDate: employee.archiveEndDate ?? end,
+            });
             onNavigate('users');
           }}
         >
@@ -111,21 +134,97 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
               </h1>
               <p className="text-[var(--color-text-secondary)]">{employee.email}</p>
               {employee.phone && <p className="text-sm text-[var(--color-text-muted)]">{employee.phone}</p>}
-              <p className="text-sm mt-1">Role: {employee.role} · ID: {employee.id}</p>
+              <p className="text-sm mt-1">
+                Role: {employee.role} · Status:{' '}
+                <span className={employee.status === 'active' ? 'text-emerald-700' : 'text-slate-600'}>{employee.status}</span>
+              </p>
+              <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
+                Employee ID: <span className="font-medium text-[var(--color-text-primary)]">{employee.employeeId?.trim() || '—'}</span>
+                {' · '}
+                System: <code className="text-xs bg-[var(--color-surface-200)] px-1 rounded">{employee.id}</code>
+              </p>
+              <p className="text-sm text-[var(--color-text-muted)]">
+                Location: <span className="text-[var(--color-text-primary)]">{employee.location?.trim() || '—'}</span>
+              </p>
+              {(employee.archiveStartDate || employee.archiveEndDate) && (
+                <p className="text-sm text-[var(--color-text-muted)]">
+                  Archive window:{' '}
+                  {employee.archiveStartDate ? formatDate(employee.archiveStartDate) : '—'} →{' '}
+                  {employee.archiveEndDate ? formatDate(employee.archiveEndDate) : '—'}
+                </p>
+              )}
               {employee.state && <p className="text-sm text-[var(--color-text-muted)]">State: {employee.state}</p>}
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-3 border-t border-[var(--color-border-200)]">
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--color-border-200)]">
+            {!editingOrgInfo ? (
+              <Button variant="ghost" size="sm" className="h-7 text-xs text-[var(--color-primary-700)]" onClick={() => setEditingOrgInfo(true)}>
+                <Icons.edit className="h-3.5 w-3.5 mr-1" />
+                Edit employee record
+              </Button>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
             <div className="sm:col-span-2 flex flex-col gap-1">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Direct manager</p>
-                {!editingOrgInfo ? (
-                  <Button variant="ghost" size="sm" className="h-7 text-xs text-[var(--color-primary-700)]" onClick={() => setEditingOrgInfo(true)}>
-                    <Icons.edit className="h-3.5 w-3.5 mr-1" />
-                    Edit
-                  </Button>
-                ) : null}
-              </div>
+              <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Employee ID</p>
+              {editingOrgInfo ? (
+                <input
+                  type="text"
+                  value={editEmployeeId}
+                  onChange={(e) => setEditEmployeeId(e.target.value)}
+                  className="mt-0.5 h-9 w-full max-w-xs rounded-md border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-3 text-sm"
+                  placeholder="Company / badge number"
+                />
+              ) : (
+                <p className="font-medium text-[var(--color-text-primary)]">{employee.employeeId?.trim() || '—'}</p>
+              )}
+            </div>
+            <div className="sm:col-span-2 flex flex-col gap-1">
+              <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Location</p>
+              {editingOrgInfo ? (
+                <input
+                  type="text"
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                  className="mt-0.5 h-9 w-full max-w-xs rounded-md border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-3 text-sm"
+                  placeholder="Office, site, or region"
+                />
+              ) : (
+                <p className="font-medium text-[var(--color-text-primary)]">{employee.location?.trim() || '—'}</p>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Archive start</p>
+              {editingOrgInfo ? (
+                <input
+                  type="date"
+                  value={editArchiveStart}
+                  onChange={(e) => setEditArchiveStart(e.target.value)}
+                  className="mt-0.5 h-9 w-full max-w-[180px] rounded-md border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-3 text-sm"
+                />
+              ) : (
+                <p className="font-medium text-[var(--color-text-primary)]">
+                  {employee.archiveStartDate ? formatDate(employee.archiveStartDate) : '—'}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Archive end</p>
+              {editingOrgInfo ? (
+                <input
+                  type="date"
+                  value={editArchiveEnd}
+                  onChange={(e) => setEditArchiveEnd(e.target.value)}
+                  className="mt-0.5 h-9 w-full max-w-[180px] rounded-md border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-3 text-sm"
+                />
+              ) : (
+                <p className="font-medium text-[var(--color-text-primary)]">
+                  {employee.archiveEndDate ? formatDate(employee.archiveEndDate) : '—'}
+                </p>
+              )}
+            </div>
+            <div className="sm:col-span-2 flex flex-col gap-1">
+              <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Direct manager</p>
               {editingOrgInfo ? (
                 <select
                   value={editManagerId}

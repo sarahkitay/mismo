@@ -7,11 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
 import { defaultDateRange, inDateRange, type DateRangeState } from '@/lib/dateFilters';
 import {
+  employeeIncidentReportHeadline,
   formatRelativeTime,
   getStatusColor,
-  getSeverityColor,
-  getCategoryColor,
-  getCategoryLabel,
   truncateText,
   isIncidentIntakeComplete,
 } from '@/lib/utils';
@@ -22,7 +20,7 @@ interface EmployeeReportsProps {
 }
 
 const statusFilters: { value: ReportStatus | 'ALL'; label: string }[] = [
-  { value: 'ALL', label: 'All Reports' },
+  { value: 'ALL', label: 'All incident reports' },
   { value: 'NEW', label: 'New' },
   { value: 'TRIAGED', label: 'Triaged' },
   { value: 'ASSIGNED', label: 'Assigned' },
@@ -47,11 +45,11 @@ export function EmployeeReports({ dataStore, onNavigate }: EmployeeReportsProps)
   // Filter reports
   const filteredReports = employeeReports.filter(report => {
     const matchesStatus = filter === 'ALL' || report.status === filter;
-    const matchesSearch = 
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
       searchQuery === '' ||
-      report.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      report.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      getCategoryLabel(report.category).toLowerCase().includes(searchQuery.toLowerCase());
+      report.summary.toLowerCase().includes(q) ||
+      report.description.toLowerCase().includes(q);
     const matchesDate = inDateRange(report.createdAt, dateRange);
     
     return matchesStatus && matchesSearch && matchesDate;
@@ -61,10 +59,8 @@ export function EmployeeReports({ dataStore, onNavigate }: EmployeeReportsProps)
     <div className="space-y-6">
       {/* Header */}
       <div className="reports-header">
-        <h1 className="text-2xl font-bold text-[var(--mismo-text)]">My Reports</h1>
-        <p className="text-[var(--mismo-text-secondary)] mt-1">
-          View and track all your submitted reports
-        </p>
+        <h1 className="text-2xl font-bold text-[var(--mismo-text)]">My incident reports</h1>
+        <p className="text-[var(--mismo-text-secondary)] mt-1">View and track your incident reports. Category and severity are assigned by HR.</p>
       </div>
       
       {/* Filters */}
@@ -74,7 +70,7 @@ export function EmployeeReports({ dataStore, onNavigate }: EmployeeReportsProps)
           <Icons.search className="report-icon-shift absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Search reports..."
+            placeholder="Search incident reports…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-[var(--mismo-blue)] focus:ring-2 focus:ring-[var(--mismo-blue-light)] outline-none transition-all"
@@ -115,23 +111,10 @@ export function EmployeeReports({ dataStore, onNavigate }: EmployeeReportsProps)
             >
               <CardContent className="p-5">
                 <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                  {/* Severity Indicator */}
-                  <div className={`w-1 h-full min-h-[60px] rounded-full flex-shrink-0 self-start -ml-2 -mt-1 ${
-                    report.severity === 'CRITICAL' ? 'bg-red-500' :
-                    report.severity === 'HIGH' ? 'bg-orange-500' :
-                    report.severity === 'MEDIUM' ? 'bg-blue-500' :
-                    'bg-gray-400'
-                  }`} />
-                  
-                  {/* Content */}
+                  <div className="w-1 h-full min-h-[60px] rounded-full flex-shrink-0 self-start -ml-2 -mt-1 bg-[var(--mismo-blue)]" />
+
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <Badge className={getCategoryColor(report.category)}>
-                        {getCategoryLabel(report.category)}
-                      </Badge>
-                      <Badge className={getSeverityColor(report.severity)}>
-                        {report.severity}
-                      </Badge>
                       <Badge className={getStatusColor(report.status)}>
                         {report.status}
                       </Badge>
@@ -154,12 +137,12 @@ export function EmployeeReports({ dataStore, onNavigate }: EmployeeReportsProps)
                       )}
                     </div>
                     
-                    <h3 className="font-semibold text-[var(--mismo-text)] text-lg">
-                      {report.summary}
-                    </h3>
-                    <p className="text-[var(--mismo-text-secondary)] mt-1">
-                      {truncateText(report.description, 150)}
-                    </p>
+                    <h3 className="font-semibold text-[var(--mismo-text)] text-lg">{employeeIncidentReportHeadline(report)}</h3>
+                    {report.description?.trim() ? (
+                      <p className="text-[var(--mismo-text-secondary)] mt-1">{truncateText(report.description, 150)}</p>
+                    ) : (
+                      <p className="text-sm text-[var(--mismo-text-secondary)] mt-1 italic">No description on file yet.</p>
+                    )}
                     
                     <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-[var(--mismo-text-secondary)]">
                       <span className="flex items-center gap-1.5">
@@ -190,12 +173,12 @@ export function EmployeeReports({ dataStore, onNavigate }: EmployeeReportsProps)
             <CardContent className="p-12 text-center">
               <Icons.searchX className="report-icon-shift h-16 w-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-[var(--mismo-text)] mb-2">
-                No reports found
+                No incident reports found
               </h3>
               <p className="text-[var(--mismo-text-secondary)] max-w-md mx-auto">
-                {searchQuery 
-                  ? "No reports match your search criteria. Try adjusting your filters."
-                  : "You haven't submitted any reports yet. Use the prompts to report any issues."}
+                {searchQuery
+                  ? 'Nothing matches your search. Try different keywords or filters.'
+                  : "You haven't submitted any incident reports yet. Use Report an incident when you need to."}
               </p>
             </CardContent>
           </Card>

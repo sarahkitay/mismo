@@ -887,12 +887,28 @@ users,
     setPolicies((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates, updatedAt: new Date() } : p)));
   }, []);
 
-  const acknowledgePolicy = useCallback((policyId: string, userId: string, outcome?: 'READ_UNDERSTOOD' | 'REQUEST_CLARIFICATION') => {
-    setPolicyAcknowledgements((prev) => {
-      if (prev.some((ack) => ack.policyId === policyId && ack.userId === userId)) return prev;
-      return [...prev, { policyId, userId, acknowledgedAt: new Date(), outcome }];
-    });
-  }, []);
+  const acknowledgePolicy = useCallback(
+    (
+      policyId: string,
+      userId: string,
+      opts?: { outcome?: 'READ_UNDERSTOOD' | 'REQUEST_CLARIFICATION'; signatureDataUrl?: string }
+    ) => {
+      setPolicyAcknowledgements((prev) => {
+        if (prev.some((ack) => ack.policyId === policyId && ack.userId === userId)) return prev;
+        return [
+          ...prev,
+          {
+            policyId,
+            userId,
+            acknowledgedAt: new Date(),
+            outcome: opts?.outcome ?? 'READ_UNDERSTOOD',
+            signatureDataUrl: opts?.signatureDataUrl,
+          },
+        ];
+      });
+    },
+    []
+  );
 
   const createAnnouncement = useCallback((payload: Omit<Announcement, 'id' | 'orgId' | 'createdAt' | 'updatedAt'>) => {
     const now = new Date();

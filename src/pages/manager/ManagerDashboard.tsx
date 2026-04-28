@@ -78,7 +78,7 @@ export function ManagerDashboard({ dataStore, onNavigate }: ManagerDashboardProp
             <p className="text-sm text-[var(--color-text-secondary)]">At-Risk Employees</p>
             <p className="text-3xl font-bold">{dashboardCounts.atRiskEmployees}</p>
             <Button className="mt-2" variant="outline" onClick={() => onNavigate('users', { atRisk: 'true' })}>
-              View Users
+              View Employees
             </Button>
           </CardContent>
         </Card>

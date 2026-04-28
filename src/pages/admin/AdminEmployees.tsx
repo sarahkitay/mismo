@@ -25,7 +25,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { formatRelativeTime, formatPercent, getInitials } from '@/lib/utils';
+import { formatRelativeTime, formatPercent, formatDate, getInitials } from '@/lib/utils';
+import type { User } from '@/types';
 import { mockDepartments } from '@/data/mockData';
 import { toast } from 'sonner';
 
@@ -36,11 +37,26 @@ interface AdminEmployeesProps {
 }
 
 type DirectoryFilter = 'ALL' | 'AT_RISK' | 'NEVER_RESPONDED' | 'LOW_ENGAGEMENT';
+type RecordStatusFilter = 'ACTIVE' | 'ARCHIVED' | 'ALL';
 type ImportTab = 'DIRECTORY' | 'BULK_IMPORT';
 type ConflictMode = 'SKIP' | 'UPDATE' | 'CREATE_NEW';
 type MappingTemplate = { name: string; map: Record<string, string> };
 
 const IMPORT_TEMPLATE_STORAGE = 'mismo_csv_mapping_templates';
+
+function formatArchiveWindow(user: User): string {
+  if (user.archiveStartDate || user.archiveEndDate) {
+    const a = user.archiveStartDate ? formatDate(user.archiveStartDate) : '—';
+    const b = user.archiveEndDate ? formatDate(user.archiveEndDate) : '—';
+    return `${a} → ${b}`;
+  }
+  if (user.status === 'inactive') return 'Inactive (no archive dates)';
+  return '—';
+}
+
+function displayEmployeeId(user: User): string {
+  return user.employeeId?.trim() || '—';
+}
 
 export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminEmployeesProps) {
   const { users, responses, atRiskEmployees, sendNudge, orgSettings, getEmployeeEngagement, createUsers, updateUser } = dataStore;
@@ -53,7 +69,12 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
     }
     return ids;
   }, [responses]);
-  const directoryUsers = users.filter((u) => u.status === 'active');
+  const [recordStatusFilter, setRecordStatusFilter] = useState<RecordStatusFilter>('ACTIVE');
+  const directoryUsers = users.filter((u) => {
+    if (recordStatusFilter === 'ALL') return true;
+    if (recordStatusFilter === 'ACTIVE') return u.status === 'active';
+    return u.status === 'inactive';
+  });
 
   const [activeTab, setActiveTab] = useState<ImportTab>(initialFilters?.import === 'csv' ? 'BULK_IMPORT' : 'DIRECTORY');
   const [filter, setFilter] = useState<DirectoryFilter>(initialFilters?.atRisk === 'true' ? 'AT_RISK' : 'ALL');
@@ -66,6 +87,10 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
   const [editRole, setEditRole] = useState<'EMPLOYEE' | 'ADMIN' | 'SUPER_ADMIN'>('EMPLOYEE');
   const [editDepartment, setEditDepartment] = useState('UNASSIGNED');
   const [editPhone, setEditPhone] = useState('');
+  const [editEmployeeId, setEditEmployeeId] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [editArchiveStart, setEditArchiveStart] = useState('');
+  const [editArchiveEnd, setEditArchiveEnd] = useState('');
 
   const [importHeaders, setImportHeaders] = useState<string[]>([]);
   const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
@@ -76,6 +101,9 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
     phone: '',
     department: '',
     employeeId: '',
+    location: '',
+    archiveStart: '',
+    archiveEnd: '',
   });
   const [conflictMode, setConflictMode] = useState<ConflictMode>('SKIP');
   const [mappingTemplateName, setMappingTemplateName] = useState('');
@@ -100,11 +128,15 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
       (filter === 'AT_RISK' && engagement?.isAtRisk) ||
       (filter === 'NEVER_RESPONDED' && !engagement?.lastResponseAt) ||
       (filter === 'LOW_ENGAGEMENT' && engagement && engagement.responseRate30d < orgSettings.thresholds.atRiskMinResponseRate);
+    const q = searchQuery.toLowerCase();
     const matchesSearch =
       !searchQuery ||
-      emp.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.lastName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      emp.email.toLowerCase().includes(searchQuery.toLowerCase());
+      emp.firstName.toLowerCase().includes(q) ||
+      emp.lastName.toLowerCase().includes(q) ||
+      emp.email.toLowerCase().includes(q) ||
+      (emp.employeeId?.toLowerCase().includes(q) ?? false) ||
+      (emp.location?.toLowerCase().includes(q) ?? false) ||
+      emp.id.toLowerCase().includes(q);
     const matchesDepartment = departmentFilter === 'ALL' || emp.departmentId === departmentFilter;
     const matchesRole = roleFilter === 'ALL' || emp.role === roleFilter;
     return matchesFilter && matchesSearch && matchesDepartment && matchesRole;
@@ -122,6 +154,12 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
     toast.success(`${channel} reminder logged.`);
   };
 
+  const toDateInput = (d: Date | undefined) => {
+    if (!d) return '';
+    const date = d instanceof Date ? d : new Date(d);
+    return date.toISOString().slice(0, 10);
+  };
+
   const openEditUser = (userId: string) => {
     const user = directoryUsers.find((item) => item.id === userId);
     if (!user) return;
@@ -129,6 +167,10 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
     setEditRole((user.role as 'EMPLOYEE' | 'ADMIN' | 'SUPER_ADMIN') ?? 'EMPLOYEE');
     setEditDepartment(user.departmentId ?? 'UNASSIGNED');
     setEditPhone(user.phone ?? '');
+    setEditEmployeeId(user.employeeId ?? '');
+    setEditLocation(user.location ?? '');
+    setEditArchiveStart(toDateInput(user.archiveStartDate));
+    setEditArchiveEnd(toDateInput(user.archiveEndDate));
   };
 
   const saveUserEdits = () => {
@@ -137,8 +179,12 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
       role: editRole,
       departmentId: editDepartment === 'UNASSIGNED' ? undefined : editDepartment,
       phone: editPhone || undefined,
+      employeeId: editEmployeeId.trim() || undefined,
+      location: editLocation.trim() || undefined,
+      archiveStartDate: editArchiveStart ? new Date(editArchiveStart) : undefined,
+      archiveEndDate: editArchiveEnd ? new Date(editArchiveEnd) : undefined,
     });
-    toast.success('User record updated.');
+    toast.success('Employee record updated.');
     setEditingUserId(null);
   };
 
@@ -168,7 +214,10 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
       email: headers.find((h) => /email/i.test(h)) ?? '',
       phone: headers.find((h) => /phone|mobile/i.test(h)) ?? '',
       department: headers.find((h) => /department|dept/i.test(h)) ?? '',
-      employeeId: headers.find((h) => /employee.?id|^id$/i.test(h)) ?? '',
+      employeeId: headers.find((h) => /employee.?id|badge|payroll.?id/i.test(h)) ?? '',
+      location: headers.find((h) => /location|site|office/i.test(h)) ?? '',
+      archiveStart: headers.find((h) => /archive.?start|retention.?start/i.test(h)) ?? '',
+      archiveEnd: headers.find((h) => /archive.?end|retention.?end/i.test(h)) ?? '',
     });
   };
 
@@ -217,8 +266,17 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
       phone?: string;
       departmentId?: string;
       status: 'active';
-      id?: string;
+      employeeId?: string;
+      location?: string;
+      archiveStartDate?: Date;
+      archiveEndDate?: Date;
     }> = [];
+
+    const parseOptionalDate = (raw: string | undefined): Date | undefined => {
+      if (!raw?.trim()) return undefined;
+      const d = new Date(raw.trim());
+      return Number.isNaN(d.getTime()) ? undefined : d;
+    };
 
     importRows.forEach((row, index) => {
       const firstName = row[fieldMap.firstName] || '';
@@ -232,7 +290,11 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
         return;
       }
 
-      const employeeId = fieldMap.employeeId ? (row[fieldMap.employeeId] || '').trim() : undefined;
+      const employeeIdVal = fieldMap.employeeId ? (row[fieldMap.employeeId] || '').trim() : undefined;
+      const locationVal = fieldMap.location ? (row[fieldMap.location] || '').trim() : undefined;
+      const archiveStartVal = fieldMap.archiveStart ? parseOptionalDate(row[fieldMap.archiveStart]) : undefined;
+      const archiveEndVal = fieldMap.archiveEnd ? parseOptionalDate(row[fieldMap.archiveEnd]) : undefined;
+
       const existing = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
       if (!existing) {
         batchToCreate.push({
@@ -243,7 +305,10 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
           phone,
           departmentId,
           status: 'active',
-          ...(employeeId ? { id: employeeId } : {}),
+          ...(employeeIdVal ? { employeeId: employeeIdVal } : {}),
+          ...(locationVal ? { location: locationVal } : {}),
+          ...(archiveStartVal ? { archiveStartDate: archiveStartVal } : {}),
+          ...(archiveEndVal ? { archiveEndDate: archiveEndVal } : {}),
         });
         created += 1;
         return;
@@ -251,7 +316,16 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
 
       if (conflictMode === 'SKIP') return;
       if (conflictMode === 'UPDATE') {
-        updateUser(existing.id, { firstName, lastName, phone, departmentId });
+        updateUser(existing.id, {
+          firstName,
+          lastName,
+          phone,
+          departmentId,
+          ...(employeeIdVal ? { employeeId: employeeIdVal } : {}),
+          ...(locationVal ? { location: locationVal } : {}),
+          ...(archiveStartVal ? { archiveStartDate: archiveStartVal } : {}),
+          ...(archiveEndVal ? { archiveEndDate: archiveEndVal } : {}),
+        });
         updated += 1;
         return;
       }
@@ -264,7 +338,8 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
         phone,
         departmentId,
         status: 'active',
-        ...(employeeId ? { id: `${employeeId}-dup-${Date.now()}` } : {}),
+        ...(employeeIdVal ? { employeeId: `${employeeIdVal}-dup` } : {}),
+        ...(locationVal ? { location: locationVal } : {}),
       });
       created += 1;
     });
@@ -279,11 +354,11 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
     <div className="space-y-6">
       <div className="employees-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Users</h1>
-          <p className="text-[var(--mismo-text-secondary)] mt-1">Employee directory and secure bulk onboarding</p>
+          <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Employees</h1>
+          <p className="text-[var(--mismo-text-secondary)] mt-1">Directory, locations, archive dates, and secure bulk onboarding</p>
         </div>
         <span className="text-sm text-[var(--mismo-text-secondary)]">
-          {filteredEmployees.length} users {importedCount > 0 ? `(+${importedCount} imported)` : ''}
+          {filteredEmployees.length} shown {importedCount > 0 ? `(+${importedCount} imported)` : ''}
         </span>
       </div>
 
@@ -298,7 +373,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
 
       {activeTab === 'DIRECTORY' && (
         <>
-          {atRiskEmployees.length > 0 && (
+          {recordStatusFilter === 'ACTIVE' && atRiskEmployees.length > 0 && (
             <Card className="mismo-card border-l-4 border-l-[var(--color-alert-600)]">
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
@@ -313,13 +388,21 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
           <div className="flex flex-col lg:flex-row gap-4">
             <div className="relative flex-1">
               <Icons.search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input placeholder="Search users..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+              <Input placeholder="Search by name, email, employee ID, location…" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
             </div>
             <div className="flex flex-wrap gap-2">
+              <Select value={recordStatusFilter} onValueChange={(v) => setRecordStatusFilter(v as RecordStatusFilter)}>
+                <SelectTrigger className="w-[160px]"><SelectValue placeholder="Record" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ACTIVE">Active roster</SelectItem>
+                  <SelectItem value="ARCHIVED">Archived / inactive</SelectItem>
+                  <SelectItem value="ALL">Everyone</SelectItem>
+                </SelectContent>
+              </Select>
               <Select value={filter} onValueChange={(v) => setFilter(v as DirectoryFilter)}>
                 <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ALL">All Employees</SelectItem>
+                  <SelectItem value="ALL">All (engagement)</SelectItem>
                   <SelectItem value="AT_RISK">At-Risk Only</SelectItem>
                   <SelectItem value="NEVER_RESPONDED">Never Responded</SelectItem>
                   <SelectItem value="LOW_ENGAGEMENT">Low Engagement</SelectItem>
@@ -373,8 +456,26 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
                         </div>
                         <p className="text-sm text-[var(--mismo-text-secondary)] truncate">{employee.email}</p>
                         <p className="text-sm text-[var(--mismo-text-secondary)]">{getDepartmentName(employee.departmentId)}</p>
-                        <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">Role: {employee.role}</p>
+                        <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">
+                          Role: {employee.role}
+                          <span className={`ml-2 px-1.5 py-0.5 rounded ${employee.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>
+                            {employee.status === 'active' ? 'Active' : 'Inactive'}
+                          </span>
+                        </p>
                       </div>
+                    </div>
+
+                    <div className="mt-3 space-y-1 text-xs text-[var(--mismo-text-secondary)]">
+                      <p>
+                        <span className="font-medium text-[var(--mismo-text)]">Employee ID:</span> {displayEmployeeId(employee)}
+                      </p>
+                      <p>
+                        <span className="font-medium text-[var(--mismo-text)]">Location:</span> {employee.location?.trim() || '—'}
+                      </p>
+                      <p>
+                        <span className="font-medium text-[var(--mismo-text)]">Archive:</span> {formatArchiveWindow(employee)}
+                      </p>
+                      <p className="text-[10px] text-[var(--mismo-text-secondary)] opacity-80">System record: {employee.id}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
@@ -437,9 +538,35 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
                 <div className="space-y-3">
                   <Label>Step 2: Field Mapping</Label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {(['firstName', 'lastName', 'email', 'phone', 'department', 'employeeId'] as const).map((key) => (
+                    {(
+                      [
+                        'firstName',
+                        'lastName',
+                        'email',
+                        'phone',
+                        'department',
+                        'employeeId',
+                        'location',
+                        'archiveStart',
+                        'archiveEnd',
+                      ] as const
+                    ).map((key) => (
                       <div key={key} className="space-y-1.5">
-                        <Label>{key === 'employeeId' ? 'Employee ID (optional)' : key === 'firstName' ? 'First name' : key === 'lastName' ? 'Last name' : key}</Label>
+                        <Label>
+                          {key === 'employeeId'
+                            ? 'Employee ID (optional)'
+                            : key === 'firstName'
+                              ? 'First name'
+                              : key === 'lastName'
+                                ? 'Last name'
+                                : key === 'location'
+                                  ? 'Location (optional)'
+                                  : key === 'archiveStart'
+                                    ? 'Archive start (optional)'
+                                    : key === 'archiveEnd'
+                                      ? 'Archive end (optional)'
+                                      : key}
+                        </Label>
                         <Select value={fieldMap[key] ?? ''} onValueChange={(v) => setFieldMap((prev) => ({ ...prev, [key]: v }))}>
                           <SelectTrigger><SelectValue placeholder="Select CSV column" /></SelectTrigger>
                           <SelectContent>
@@ -494,6 +621,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
                           <th className="px-3 py-2 text-left">Email</th>
                           <th className="px-3 py-2 text-left">Department</th>
                           <th className="px-3 py-2 text-left">Employee ID</th>
+                          <th className="px-3 py-2 text-left">Location</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -504,6 +632,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
                             <td className="px-3 py-2">{row[fieldMap.email] ?? ''}</td>
                             <td className="px-3 py-2">{row[fieldMap.department] ?? ''}</td>
                             <td className="px-3 py-2">{fieldMap.employeeId ? (row[fieldMap.employeeId] ?? '') : '—'}</td>
+                            <td className="px-3 py-2">{fieldMap.location ? (row[fieldMap.location] ?? '') : '—'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -537,9 +666,27 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
       <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUserId(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
+            <DialogTitle>Edit employee</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Employee ID</Label>
+              <Input value={editEmployeeId} onChange={(e) => setEditEmployeeId(e.target.value)} placeholder="Company / badge number" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Location</Label>
+              <Input value={editLocation} onChange={(e) => setEditLocation(e.target.value)} placeholder="Office, site, or region" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Archive start</Label>
+                <Input type="date" value={editArchiveStart} onChange={(e) => setEditArchiveStart(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Archive end</Label>
+                <Input type="date" value={editArchiveEnd} onChange={(e) => setEditArchiveEnd(e.target.value)} />
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label>Role</Label>
               <Select value={editRole} onValueChange={(v) => setEditRole(v as typeof editRole)}>

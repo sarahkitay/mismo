@@ -21,7 +21,7 @@ const employeeNavItems: NavItem[] = [
 const adminNavItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { id: 'policies', label: 'Memos & announcements', icon: 'bookOpen' },
-  { id: 'users', label: 'Users', icon: 'employees' },
+  { id: 'users', label: 'Employees', icon: 'employees' },
   { id: 'investigations', label: 'Investigations', icon: 'investigations' },
   { id: 'prompts', label: 'Prompts', icon: 'prompts' },
   { id: 'prompt-responses', label: 'Case register & check-ins', icon: 'reports' },

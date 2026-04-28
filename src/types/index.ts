@@ -135,6 +135,14 @@ export interface User {
   lastName: string;
   email: string;
   phone?: string;
+  /** Company-visible employee / badge number (distinct from system `id`) */
+  employeeId?: string;
+  /** Primary work location label (site, office, region) */
+  location?: string;
+  /** Archive / retention window start (e.g. when moved off active roster) */
+  archiveStartDate?: Date;
+  /** Archive / retention window end */
+  archiveEndDate?: Date;
   departmentId?: string;
   managerId?: string;
   hiredDate?: Date;
@@ -424,6 +432,8 @@ export interface PolicyAcknowledgement {
   userId: string;
   acknowledgedAt: Date;
   outcome?: PolicyAcknowledgementOutcome;
+  /** PNG data URL captured when the employee signs in the portal */
+  signatureDataUrl?: string;
 }
 
 export interface Announcement {
