@@ -184,7 +184,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
       <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-6 py-5 rounded-[var(--radius-medium)]">
         <h1 className="font-command text-[28px] sm:text-[32px] font-medium text-[var(--color-primary-900)]">Risk Command Center</h1>
         <p className="mt-1 text-base font-command text-[var(--color-text-secondary)]">
-          We provide structured oversight across investigations, policy adherence, and workforce exposure.
+          We provide structured oversight across investigations, company memo adherence, and workforce exposure.
         </p>
         <p className="mt-2 text-sm font-command text-[var(--color-text-muted)]">Compliance made human. Everything you enter matters.</p>
       </div>

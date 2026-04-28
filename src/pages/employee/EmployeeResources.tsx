@@ -1,12 +1,13 @@
 import { Card, CardContent } from '@/components/ui/card';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Button } from '@/components/ui/button';
+import { formatDate, getMemoCategoryDisplay } from '@/lib/utils';
 
 const resources = [
   {
     id: 'handbook',
     title: 'Employee Handbook',
-    description: 'Complete guide to company policies, procedures, and expectations.',
+    description: 'Complete guide to company standards, procedures, and expectations.',
     icon: 'resources' as const,
     color: 'blue',
     items: [
@@ -119,26 +120,34 @@ export function EmployeeResources({ dataStore }: EmployeeResourcesProps) {
       <div className="resources-header">
         <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Resources</h1>
         <p className="text-[var(--mismo-text-secondary)] mt-1">
-          Policy references, support channels, and compliance guidance.
+          Company memos, support channels, and compliance guidance.
         </p>
       </div>
 
-      {/* Policies — read and unread */}
+      {/* Company memos — read and unread */}
       {employeePolicies.length > 0 && (
         <Card className="mismo-card border border-[var(--color-border-200)]">
           <CardContent className="p-5">
-            <h2 className="text-lg font-semibold text-[var(--mismo-text)]">Policies</h2>
-            <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">Company policies you have read or need to acknowledge.</p>
+            <h2 className="text-lg font-semibold text-[var(--mismo-text)]">Company memos</h2>
+            <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
+              Memos published by HR that you have read or still need to acknowledge.
+            </p>
             <ul className="mt-3 space-y-2">
               {employeePolicies.map((policy) => {
                 const read = acknowledgedIds.has(policy.id);
                 return (
                   <li
                     key={policy.id}
-                    className="flex items-center justify-between py-2 border-b border-[var(--color-border-200)] last:border-0"
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 py-2 border-b border-[var(--color-border-200)] last:border-0"
                   >
-                    <span className="font-medium">{policy.title}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded ${read ? 'bg-[var(--mismo-green-light)] text-[var(--mismo-green)]' : 'bg-[var(--mismo-amber)]/20 text-[var(--mismo-amber)]'}`}>
+                    <div>
+                      <span className="font-medium text-[var(--mismo-text)]">{policy.title}</span>
+                      <p className="text-xs text-[var(--mismo-text-secondary)] mt-0.5">
+                        {getMemoCategoryDisplay(policy)}
+                        {policy.completionDueDate && ` · Complete by ${formatDate(policy.completionDueDate)}`}
+                      </p>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded w-fit ${read ? 'bg-[var(--mismo-green-light)] text-[var(--mismo-green)]' : 'bg-[var(--mismo-amber)]/20 text-[var(--mismo-amber)]'}`}>
                       {read ? 'I\'ve read and understood' : 'Needs acknowledgement'}
                     </span>
                   </li>
@@ -216,13 +225,13 @@ export function EmployeeResources({ dataStore }: EmployeeResourcesProps) {
 
       <Card className="mismo-card">
         <CardContent className="p-6">
-          <h3 className="font-semibold text-lg">Policy Acknowledgements</h3>
+          <h3 className="font-semibold text-lg">Memo acknowledgements</h3>
           <div className="mt-4 space-y-3">
             {employeePolicies.map((policy) => (
               <div key={policy.id} className="flex items-center justify-between border p-3">
                 <div>
                   <p className="font-medium">{policy.title}</p>
-                  <p className="text-sm text-[var(--mismo-text-secondary)]">{policy.type}</p>
+                  <p className="text-sm text-[var(--mismo-text-secondary)]">{getMemoCategoryDisplay(policy)}</p>
                 </div>
                 {acknowledgedIds.has(policy.id) ? (
                   <span className="status-chip status-chip--success">Acknowledged</span>

@@ -34,8 +34,8 @@ const faqs = [
     a: 'Go to Settings in the sidebar to update your name, phone, and notification preferences.',
   },
   {
-    q: 'Where can I find policies and resources?',
-    a: 'Use the "Resources" section in the sidebar for policies, wellness, safety, and support links.',
+    q: 'Where can I find company memos and resources?',
+    a: 'Use the "Resources" section in the sidebar for published memos, wellness, safety, and support links.',
   },
 ];
 

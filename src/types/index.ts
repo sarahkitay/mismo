@@ -48,6 +48,35 @@ export type ReportStatus =
 // Investigation Status
 export type InvestigationStatus = 'OPEN' | 'CLOSED';
 
+/** Admin workflow after a case is linked to an investigation record */
+export type InvestigationWorkflowPhase = 'QUEUED' | 'IN_PROGRESS' | 'AWAITING_OUTCOME_ACK';
+
+/** How the employee asked HR to follow up once an investigator picks up the case */
+export type InvestigationEmployeeContactPreference = 'IN_APP_MESSAGE' | 'PHONE_CALL';
+
+export interface InvestigationAttachment {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  /** Demo/local persistence only */
+  dataUrl: string;
+}
+
+/** Internal vs employee-visible journal entries on an investigation */
+export interface InvestigationNote {
+  id: string;
+  visibility: 'INTERNAL' | 'EMPLOYEE';
+  body: string;
+  createdAt: Date;
+  createdByUserId: string;
+  attachments?: InvestigationAttachment[];
+  /** When visibility is EMPLOYEE: optional e-sign style confirmation */
+  requiresEmployeeSignature?: boolean;
+  employeeSignedAt?: Date;
+  /** true = agrees information is correct / resolution; false = does not agree */
+  employeeAgreed?: boolean;
+}
+
 // Nudge Channel
 export type NudgeChannel = 'EMAIL' | 'SMS' | 'MANUAL';
 
@@ -208,6 +237,10 @@ export interface Report {
   responsePlan?: string;
   responseActionTaken?: string;
   employeeResponseOutcome?: string;
+  /** When true, employee must finish the portal intake before the case is treated as fully documented */
+  needsExtendedIncidentIntake?: boolean;
+  /** Set when extended intake (or full initial portal form) is complete */
+  incidentIntakeCompletedAt?: Date;
   handlingLedger?: ReportHandlingEntry[];
   responseChecklist?: ReportChecklistItem[];
   ginaBuildNotes?: string;
@@ -266,6 +299,20 @@ export interface Investigation {
   lastUpdateAt: Date;
   createdAt: Date;
   updatedAt: Date;
+  workflowPhase?: InvestigationWorkflowPhase;
+  pickedUpAt?: Date;
+  employeePreferredContact?: InvestigationEmployeeContactPreference;
+  /** Named individuals for this case — each should link to an employee profile in admin UI */
+  subjectUserIds?: string[];
+  notes?: InvestigationNote[];
+  /** Final outcome text shared with the employee (plain text; line breaks preserved in UI) */
+  outcomeSummary?: string;
+  outcomeAttachment?: InvestigationAttachment;
+  outcomeRequiresSignature?: boolean;
+  outcomeSentAt?: Date;
+  outcomeEmployeeSignedAt?: Date;
+  /** Employee agrees with resolution, or does not */
+  outcomeEmployeeAgreed?: boolean | null;
 }
 
 // Report Status Event
@@ -341,12 +388,16 @@ export interface MetricsSnapshot {
   createdAt: Date;
 }
 
+export type PolicyBodySource = 'EDITOR' | 'UPLOAD' | 'LINK';
+
 export interface Policy {
   id: string;
   orgId: string;
   title: string;
+  /** Legacy classification; new memos may set GENERAL and rely on memoCategory */
   type: 'GENERAL' | 'SAFETY' | 'CONDUCT' | 'LEGAL';
   content: string;
+  /** Publish / go-live date for the memo */
   effectiveDate: Date;
   publishedAt?: Date;
   acknowledgmentRequired: boolean;
@@ -355,6 +406,15 @@ export interface Policy {
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   createdAt: Date;
   updatedAt: Date;
+  /** Primary memo category for search and grouping (e.g. Safety, HR, Operations) */
+  memoCategory?: string;
+  /** When employees must complete acknowledgement or action by */
+  completionDueDate?: Date;
+  bodySource?: PolicyBodySource;
+  bodyAttachmentFileName?: string;
+  bodyAttachmentDataUrl?: string;
+  /** Reference URL when body was sourced from a link */
+  bodySourceUrl?: string;
 }
 
 export type PolicyAcknowledgementOutcome = 'READ_UNDERSTOOD' | 'REQUEST_CLARIFICATION';

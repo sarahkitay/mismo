@@ -9,6 +9,9 @@ import type {
   PromptResponse,
   PromptAnswer,
   Investigation,
+  InvestigationNote,
+  InvestigationEmployeeContactPreference,
+  InvestigationAttachment,
   Nudge,
   ActivityEvent,
   ReportStatusEvent,
@@ -207,9 +210,9 @@ export function useDataStore() {
         prompt.id === 'prompt-1'
           ? {
               ...prompt,
-              title: 'Incident Prompt',
+              title: 'Incident Query',
               description:
-                'Compliance Check-In Required. Confirm no issue is present or open a case file for procedural review.',
+                'Mandatory employment-rights incident screen shown at logon (EQC-style). Employee may answer Yes or No only; Yes requires confirmation before logging.',
             }
           : prompt
       )
@@ -378,11 +381,14 @@ users,
   const createReport = useCallback((reportData: Omit<Report, 'id' | 'orgId' | 'createdAt' | 'updatedAt' | 'status'>) => {
     const now = new Date();
     
+    const needsExtended = Boolean(reportData.needsExtendedIncidentIntake);
     const newReport: Report = {
       ...reportData,
       id: `report-${Date.now()}`,
       orgId: effectiveOrgId,
       status: 'NEW',
+      needsExtendedIncidentIntake: needsExtended,
+      incidentIntakeCompletedAt: needsExtended ? undefined : now,
       messages: reportData.messages ?? [],
       responseChecklist: reportData.responseChecklist ?? createIndustryChecklistForReport(),
       handlingLedger: reportData.handlingLedger ?? [
@@ -521,6 +527,9 @@ users,
       lastUpdateAt: now,
       createdAt: now,
       updatedAt: now,
+      workflowPhase: 'QUEUED',
+      subjectUserIds: [],
+      notes: [],
     };
     
     setInvestigations(prev => [...prev, newInvestigation]);
@@ -547,6 +556,206 @@ users,
     
     return newInvestigation;
   }, [reports, currentUser.id]);
+
+  const pickUpInvestigation = useCallback(
+    (investigationId: string, preferred: InvestigationEmployeeContactPreference) => {
+      const now = new Date();
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId
+            ? {
+                ...inv,
+                workflowPhase: 'IN_PROGRESS',
+                pickedUpAt: now,
+                employeePreferredContact: preferred,
+                ownerId: currentUser.id,
+                lastUpdateAt: now,
+                updatedAt: now,
+              }
+            : inv
+        )
+      );
+      const newActivity: ActivityEvent = {
+        id: `activity-${Date.now()}`,
+        orgId: mockOrg.id,
+        type: 'INVESTIGATION_UPDATED',
+        actorUserId: currentUser.id,
+        metadata: { investigationId, action: 'PICKED_UP' },
+        createdAt: now,
+      };
+      setActivities((prev) => [newActivity, ...prev]);
+    },
+    [currentUser.id]
+  );
+
+  const setInvestigationSubjectUsers = useCallback((investigationId: string, subjectUserIds: string[]) => {
+    const now = new Date();
+    setInvestigations((prev) =>
+      prev.map((inv) =>
+        inv.id === investigationId ? { ...inv, subjectUserIds, lastUpdateAt: now, updatedAt: now } : inv
+      )
+    );
+  }, []);
+
+  const addInvestigationNote = useCallback(
+    (
+      investigationId: string,
+      payload: {
+        visibility: InvestigationNote['visibility'];
+        body: string;
+        attachments?: InvestigationAttachment[];
+        requiresEmployeeSignature?: boolean;
+      }
+    ) => {
+      const now = new Date();
+      const note: InvestigationNote = {
+        id: `inv-note-${Date.now()}`,
+        visibility: payload.visibility,
+        body: payload.body,
+        createdAt: now,
+        createdByUserId: currentUser.id,
+        attachments: payload.attachments,
+        requiresEmployeeSignature: payload.requiresEmployeeSignature,
+      };
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId
+            ? { ...inv, notes: [...(inv.notes ?? []), note], lastUpdateAt: now, updatedAt: now }
+            : inv
+        )
+      );
+      const newActivity: ActivityEvent = {
+        id: `activity-${Date.now()}`,
+        orgId: mockOrg.id,
+        type: 'INVESTIGATION_UPDATED',
+        actorUserId: currentUser.id,
+        metadata: { investigationId, noteId: note.id },
+        createdAt: now,
+      };
+      setActivities((prev) => [newActivity, ...prev]);
+    },
+    [currentUser.id]
+  );
+
+  const sendInvestigationOutcomeToEmployee = useCallback(
+    (
+      investigationId: string,
+      payload: {
+        summary: string;
+        requiresSignature: boolean;
+        attachment?: InvestigationAttachment;
+      }
+    ) => {
+      const now = new Date();
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId
+            ? {
+                ...inv,
+                outcomeSummary: payload.summary,
+                outcomeRequiresSignature: payload.requiresSignature,
+                outcomeAttachment: payload.attachment,
+                outcomeSentAt: now,
+                outcomeEmployeeAgreed: null,
+                outcomeEmployeeSignedAt: undefined,
+                workflowPhase: 'AWAITING_OUTCOME_ACK',
+                lastUpdateAt: now,
+                updatedAt: now,
+              }
+            : inv
+        )
+      );
+      const newActivity: ActivityEvent = {
+        id: `activity-${Date.now()}`,
+        orgId: mockOrg.id,
+        type: 'INVESTIGATION_UPDATED',
+        actorUserId: currentUser.id,
+        metadata: { investigationId, action: 'OUTCOME_SENT' },
+        createdAt: now,
+      };
+      setActivities((prev) => [newActivity, ...prev]);
+    },
+    [currentUser.id]
+  );
+
+  const employeeAcknowledgeInvestigationOutcome = useCallback(
+    (investigationId: string, agreed: boolean) => {
+      const inv = investigations.find((i) => i.id === investigationId);
+      if (!inv) return;
+      const primaryReport = reports.find((r) => inv.linkedReportIds.includes(r.id));
+      if (!primaryReport || primaryReport.createdByUserId !== currentUser.id) return;
+      const now = new Date();
+      setInvestigations((prev) =>
+        prev.map((i) =>
+          i.id === investigationId
+            ? {
+                ...i,
+                outcomeEmployeeSignedAt: now,
+                outcomeEmployeeAgreed: agreed,
+                lastUpdateAt: now,
+                updatedAt: now,
+              }
+            : i
+        )
+      );
+    },
+    [investigations, reports, currentUser.id]
+  );
+
+  const closeInvestigation = useCallback((investigationId: string) => {
+    const now = new Date();
+    setInvestigations((prev) =>
+      prev.map((inv) =>
+        inv.id === investigationId
+          ? { ...inv, status: 'CLOSED', closedAt: now, lastUpdateAt: now, updatedAt: now }
+          : inv
+      )
+    );
+    const newActivity: ActivityEvent = {
+      id: `activity-${Date.now()}`,
+      orgId: mockOrg.id,
+      type: 'INVESTIGATION_UPDATED',
+      actorUserId: currentUser.id,
+      metadata: { investigationId, action: 'CLOSED' },
+      createdAt: now,
+    };
+    setActivities((prev) => [newActivity, ...prev]);
+  }, [currentUser.id]);
+
+  const completeIncidentIntake = useCallback(
+    (
+      reportId: string,
+      payload: { description: string; peopleInvolved?: string; location?: string }
+    ) => {
+      const report = reports.find((r) => r.id === reportId);
+      if (!report || report.createdByUserId !== currentUser.id) return;
+      const now = new Date();
+      setReports((prev) =>
+        prev.map((r) =>
+          r.id === reportId
+            ? {
+                ...r,
+                description: payload.description,
+                peopleInvolved: payload.peopleInvolved ?? r.peopleInvolved,
+                location: payload.location ?? r.location,
+                incidentIntakeCompletedAt: now,
+                updatedAt: now,
+              }
+            : r
+        )
+      );
+      const newActivity: ActivityEvent = {
+        id: `activity-${Date.now()}`,
+        orgId: mockOrg.id,
+        type: 'REPORT_STATUS_CHANGED',
+        actorUserId: currentUser.id,
+        metadata: { reportId, action: 'INCIDENT_INTAKE_COMPLETED' },
+        createdAt: now,
+      };
+      setActivities((prev) => [newActivity, ...prev]);
+    },
+    [reports, currentUser.id]
+  );
   
   // Send nudge
   const sendNudge = useCallback((
@@ -1135,6 +1344,7 @@ users,
     currentUser,
     currentRole: effectiveCurrentRole,
     orgSettings,
+    organizationName: mockOrg.name,
     session,
     previewUserId,
     login,
@@ -1158,6 +1368,13 @@ users,
     updateReportStatus,
     assignReport,
     createInvestigation,
+    pickUpInvestigation,
+    setInvestigationSubjectUsers,
+    addInvestigationNote,
+    sendInvestigationOutcomeToEmployee,
+    employeeAcknowledgeInvestigationOutcome,
+    closeInvestigation,
+    completeIncidentIntake,
     sendNudge,
     createPrompt,
     updatePrompt,

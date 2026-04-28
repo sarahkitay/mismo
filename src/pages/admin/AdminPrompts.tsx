@@ -38,7 +38,7 @@ interface AdminPromptsProps {
 }
 
 const promptTypes: { value: PromptType; label: string }[] = [
-  { value: 'INCIDENT', label: 'Incident Prompt' },
+  { value: 'INCIDENT', label: 'Incident Query' },
   { value: 'TEAM_DYNAMIC', label: 'Team Dynamic Check-In' },
   { value: 'MONTHLY_CHECKIN', label: 'Monthly Health Check' },
   { value: 'CUSTOM', label: 'Custom' },

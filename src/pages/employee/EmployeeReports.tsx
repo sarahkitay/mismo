@@ -6,13 +6,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
 import { defaultDateRange, inDateRange, type DateRangeState } from '@/lib/dateFilters';
-import { 
-  formatRelativeTime, 
-  getStatusColor, 
-  getSeverityColor, 
+import {
+  formatRelativeTime,
+  getStatusColor,
+  getSeverityColor,
   getCategoryColor,
   getCategoryLabel,
-  truncateText 
+  truncateText,
+  isIncidentIntakeComplete,
 } from '@/lib/utils';
 
 interface EmployeeReportsProps {
@@ -107,8 +108,8 @@ export function EmployeeReports({ dataStore, onNavigate }: EmployeeReportsProps)
           </Card>
         ) : filteredReports.length > 0 ? (
           filteredReports.map((report) => (
-            <Card 
-              key={report.id} 
+            <Card
+              key={report.id}
               className="report-card mismo-card mismo-card-hover cursor-pointer"
               onClick={() => onNavigate(`report-detail/${report.id}`)}
             >
@@ -138,6 +139,17 @@ export function EmployeeReports({ dataStore, onNavigate }: EmployeeReportsProps)
                         <Badge variant="outline" className="text-gray-500">
                           <Icons.lock className="report-icon-shift h-3 w-3 mr-1" />
                           Anonymous
+                        </Badge>
+                      )}
+                      {!isIncidentIntakeComplete(report) && (
+                        <Badge
+                          className="bg-amber-100 text-amber-900 border-amber-300 cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onNavigate(`incident-intake/${report.id}`);
+                          }}
+                        >
+                          Incident form needed
                         </Badge>
                       )}
                     </div>

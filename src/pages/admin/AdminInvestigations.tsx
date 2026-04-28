@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { formatDate, formatRelativeTime } from '@/lib/utils';
+import { formatDate, formatRelativeTime, getEffectiveInvestigationPhase, investigationWorkflowLabel } from '@/lib/utils';
 
 const INV_SLA_DAYS = 14;
 
@@ -252,6 +252,9 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
                             : 'status-chip status-chip--success'
                         }>
                           {investigation.status}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs border-[var(--color-border-200)]">
+                          {investigationWorkflowLabel(getEffectiveInvestigationPhase(investigation))}
                         </Badge>
                         <span className="text-sm text-[var(--mismo-text-secondary)]">
                           {investigation.linkedReportIds.length} linked report{investigation.linkedReportIds.length !== 1 ? 's' : ''}

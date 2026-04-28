@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import type { Investigation, InvestigationWorkflowPhase, Policy, Report } from '@/types';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -183,10 +184,75 @@ export function getCategoryLabel(category: string): string {
 // Get prompt type label
 export function getPromptTypeLabel(type: string): string {
   const labels: Record<string, string> = {
-    INCIDENT: 'Incident Prompt',
+    INCIDENT: 'Incident Query',
     TEAM_DYNAMIC: 'Team Dynamic Check-In',
     MONTHLY_CHECKIN: 'Monthly Health Check',
     CUSTOM: 'Custom',
   };
   return labels[type] || type;
+}
+
+/** Extended portal intake is required and not yet submitted */
+export function isIncidentIntakeComplete(report: Report): boolean {
+  if (report.needsExtendedIncidentIntake === true) {
+    return Boolean(report.incidentIntakeCompletedAt);
+  }
+  return true;
+}
+
+export type EffectiveInvestigationPhase = InvestigationWorkflowPhase | 'CLOSED';
+
+export function getEffectiveInvestigationPhase(inv: Investigation): EffectiveInvestigationPhase {
+  if (inv.status === 'CLOSED') return 'CLOSED';
+  return inv.workflowPhase ?? 'IN_PROGRESS';
+}
+
+export function investigationWorkflowLabel(phase: EffectiveInvestigationPhase): string {
+  const labels: Record<EffectiveInvestigationPhase, string> = {
+    QUEUED: 'Queued',
+    IN_PROGRESS: 'In progress',
+    AWAITING_OUTCOME_ACK: 'Awaiting employee response',
+    CLOSED: 'Closed',
+  };
+  return labels[phase];
+}
+
+const POLICY_TYPE_LABELS: Record<Policy['type'], string> = {
+  GENERAL: 'General',
+  SAFETY: 'Safety',
+  CONDUCT: 'Conduct',
+  LEGAL: 'Legal',
+};
+
+export function getMemoCategoryDisplay(policy: Policy): string {
+  return policy.memoCategory?.trim() || POLICY_TYPE_LABELS[policy.type] || policy.type;
+}
+
+/** Suggest other memos that may be superseded (same vein): shared tokens in title or same display category */
+export function findRelatedMemos(
+  candidateTitle: string,
+  candidateCategory: string,
+  policies: Policy[],
+  excludeId?: string
+): Policy[] {
+  const t = candidateTitle.trim().toLowerCase();
+  const cat = candidateCategory.trim().toLowerCase();
+  const tokens = t.split(/\W+/).filter((w) => w.length > 2);
+  const scored = policies
+    .filter((p) => p.id !== excludeId && p.status !== 'ARCHIVED')
+    .map((p) => {
+      const pt = p.title.toLowerCase();
+      const pc = getMemoCategoryDisplay(p).toLowerCase();
+      let score = 0;
+      if (cat && pc === cat) score += 4;
+      for (const w of tokens) {
+        if (w.length > 2 && pt.includes(w)) score += 2;
+      }
+      if (t.length > 3 && pt.includes(t.slice(0, Math.min(12, t.length)))) score += 2;
+      return { p, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (!cat && tokens.length === 0 && t.length < 3) return [];
+  return scored.slice(0, 8).map((x) => x.p);
 }

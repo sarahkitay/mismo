@@ -20,12 +20,11 @@ const employeeNavItems: NavItem[] = [
 
 const adminNavItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-  { id: 'reports', label: 'Reports', icon: 'reports' },
-  { id: 'policies', label: 'Policies & Announcements', icon: 'bookOpen' },
+  { id: 'policies', label: 'Memos & announcements', icon: 'bookOpen' },
   { id: 'users', label: 'Users', icon: 'employees' },
   { id: 'investigations', label: 'Investigations', icon: 'investigations' },
   { id: 'prompts', label: 'Prompts', icon: 'prompts' },
-  { id: 'prompt-responses', label: 'Employee Prompt Responses', icon: 'activity' },
+  { id: 'prompt-responses', label: 'Case register & check-ins', icon: 'reports' },
   { id: 'campaigns', label: 'Campaigns', icon: 'campaigns' },
   { id: 'analytics', label: 'Analytics', icon: 'analytics' },
   { id: 'compliance', label: 'Compliance', icon: 'shield' },
@@ -73,7 +72,7 @@ function SidebarContent({
     }
     
     switch (itemId) {
-      case 'reports':
+      case 'prompt-responses':
         return dashboardCounts.criticalReports > 0 ? dashboardCounts.criticalReports : undefined;
       case 'investigations':
         return dashboardCounts.activeInvestigations > 0 ? dashboardCounts.activeInvestigations : undefined;
@@ -105,7 +104,10 @@ function SidebarContent({
         {navItems.map((item) => {
           const Icon = Icons[item.icon];
           const badgeCount = getBadgeCount(item.id);
-          const isActive = activePage === item.id || (item.id === 'policies' && activePage === 'announcements');
+          const isActive =
+            activePage === item.id ||
+            (item.id === 'policies' && activePage === 'announcements') ||
+            (item.id === 'prompt-responses' && activePage === 'reports');
           
           return (
             <button

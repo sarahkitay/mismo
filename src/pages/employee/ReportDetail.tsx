@@ -2,13 +2,18 @@ import type { DataStore } from '@/hooks/useDataStore';
 import { Icons } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { 
-  formatDate, 
-  formatRelativeTime, 
-  getStatusColor, 
-  getSeverityColor, 
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import {
+  formatDate,
+  formatRelativeTime,
+  getStatusColor,
+  getSeverityColor,
   getCategoryColor,
-  getCategoryLabel 
+  getCategoryLabel,
+  isIncidentIntakeComplete,
+  getEffectiveInvestigationPhase,
+  investigationWorkflowLabel,
 } from '@/lib/utils';
 
 interface ReportDetailProps {
@@ -18,7 +23,7 @@ interface ReportDetailProps {
 }
 
 export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailProps) {
-  const { employeeReports, users, reportStatusEvents } = dataStore;
+  const { employeeReports, users, reportStatusEvents, investigations, employeeAcknowledgeInvestigationOutcome } = dataStore;
   
   const report = employeeReports.find(r => r.id === reportId);
   
@@ -41,6 +46,13 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
   }
   
   const assignedAdmin = report.assignedTo ? users.find(u => u.id === report.assignedTo) : null;
+  const investigation = report.investigationId ? investigations.find((i) => i.id === report.investigationId) : undefined;
+  const invPhase = investigation ? getEffectiveInvestigationPhase(investigation) : null;
+  const awaitingOutcome =
+    investigation &&
+    investigation.workflowPhase === 'AWAITING_OUTCOME_ACK' &&
+    investigation.outcomeSummary &&
+    investigation.outcomeEmployeeSignedAt == null;
   
   const timelineEvents: Array<{
     id: string;
@@ -99,6 +111,131 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
         
         <h1 className="text-2xl font-bold text-[var(--mismo-text)]">{report.summary}</h1>
       </div>
+
+      {!isIncidentIntakeComplete(report) && (
+        <Card className="mismo-card border-2 border-amber-400/60 bg-amber-50/80">
+          <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <p className="font-semibold text-[var(--mismo-text)]">Incident documentation required</p>
+              <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
+                HR sent a receipt with a link to this portal. Complete the questionnaire so your case file can move
+                forward.
+              </p>
+            </div>
+            <Button className="shrink-0 bg-[var(--mismo-blue)] hover:bg-blue-600" onClick={() => onNavigate(`incident-intake/${report.id}`)}>
+              Open incident form
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {investigation && invPhase && invPhase !== 'CLOSED' && (
+        <Card className="mismo-card border border-[var(--color-border-200)]">
+          <CardContent className="p-5">
+            <p className="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Investigation</p>
+            <p className="font-medium text-[var(--mismo-text)] mt-1">
+              {investigationWorkflowLabel(invPhase)}
+              {investigation.employeePreferredContact === 'PHONE_CALL' && ' · HR may call you'}
+              {investigation.employeePreferredContact === 'IN_APP_MESSAGE' && ' · HR may message you in Mismo'}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {investigation &&
+        (investigation.notes ?? []).filter((n) => n.visibility === 'EMPLOYEE').length > 0 && (
+          <Card className="mismo-card border border-[var(--color-border-200)]">
+            <CardContent className="p-6 space-y-4">
+              <h3 className="text-lg font-semibold text-[var(--mismo-text)]">Updates from your investigator</h3>
+              {(investigation.notes ?? [])
+                .filter((n) => n.visibility === 'EMPLOYEE')
+                .map((n) => (
+                  <div key={n.id} className="border border-[var(--color-border-200)] rounded-md p-4 text-sm">
+                    <p className="text-xs text-[var(--mismo-text-secondary)]">{formatRelativeTime(n.createdAt)}</p>
+                    <p className="mt-2 whitespace-pre-wrap text-[var(--mismo-text)]">{n.body}</p>
+                    {n.requiresEmployeeSignature && !n.employeeSignedAt && (
+                      <p className="text-xs text-amber-700 mt-2">Signature requested — confirm with HR in your next touchpoint.</p>
+                    )}
+                  </div>
+                ))}
+            </CardContent>
+          </Card>
+        )}
+
+      {awaitingOutcome && (
+        <Card className="mismo-card border-2 border-[var(--color-primary-700)]/35">
+          <CardContent className="p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-[var(--mismo-text)]">Outcome of your case</h3>
+            <p className="text-sm text-[var(--mismo-text-secondary)]">
+              Please read the summary below. {investigation.outcomeRequiresSignature ? 'Confirm whether you agree with this resolution.' : ''}
+            </p>
+            <div className="rounded-md bg-[var(--color-surface-200)] p-4 text-sm whitespace-pre-wrap text-[var(--mismo-text)]">
+              {investigation.outcomeSummary}
+            </div>
+            {investigation.outcomeAttachment && (
+              <a
+                href={investigation.outcomeAttachment.dataUrl}
+                download={investigation.outcomeAttachment.fileName}
+                className="text-sm text-[var(--mismo-blue)] hover:underline"
+              >
+                Download attachment: {investigation.outcomeAttachment.fileName}
+              </a>
+            )}
+            {investigation.outcomeRequiresSignature ? (
+              <div className="flex flex-wrap gap-3 pt-2">
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => {
+                    employeeAcknowledgeInvestigationOutcome(investigation.id, true);
+                    toast.success('Thank you — your confirmation is recorded.');
+                  }}
+                >
+                  I agree with this resolution
+                </Button>
+                <Button
+                  variant="outline"
+                  className="border-[var(--color-alert-600)] text-[var(--color-alert-700)]"
+                  onClick={() => {
+                    employeeAcknowledgeInvestigationOutcome(investigation.id, false);
+                    toast.success('Your response has been recorded. HR may follow up with you.');
+                  }}
+                >
+                  I do not agree
+                </Button>
+              </div>
+            ) : (
+              <div className="pt-2">
+                <p className="text-xs text-[var(--mismo-text-secondary)] mb-2">No signature is required for this letter.</p>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    employeeAcknowledgeInvestigationOutcome(investigation.id, true);
+                    toast.success('Acknowledged. Your review is on file.');
+                  }}
+                >
+                  I&apos;ve read the outcome
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {investigation?.outcomeEmployeeSignedAt != null && (
+        <Card className="mismo-card border border-[var(--color-border-200)]">
+          <CardContent className="p-5 text-sm">
+            <p className="font-medium text-[var(--mismo-text)]">Your response to the outcome</p>
+            <p className="text-[var(--mismo-text-secondary)] mt-1">
+              Signed {formatDate(investigation.outcomeEmployeeSignedAt)} —{' '}
+              {investigation.outcomeEmployeeAgreed === true
+                ? 'You agreed with the resolution.'
+                : investigation.outcomeEmployeeAgreed === false
+                  ? 'You indicated you do not agree. HR will follow up as needed.'
+                  : ''}
+            </p>
+          </CardContent>
+        </Card>
+      )}
       
       {/* Report Details */}
       <Card className="detail-card mismo-card">

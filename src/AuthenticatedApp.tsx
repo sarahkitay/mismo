@@ -11,6 +11,7 @@ import { EmployeeHome } from '@/pages/employee/EmployeeHome';
 import { EmployeeReports } from '@/pages/employee/EmployeeReports';
 import { NewReport } from '@/pages/employee/NewReport';
 import { ReportDetail as EmployeeReportDetail } from '@/pages/employee/ReportDetail';
+import { EmployeeIncidentIntake } from '@/pages/employee/EmployeeIncidentIntake';
 import { EmployeeResources } from '@/pages/employee/EmployeeResources';
 import { EmployeeSettings } from '@/pages/employee/EmployeeSettings';
 
@@ -47,7 +48,7 @@ function isStaffRole(role: DataStore['currentRole']) {
 }
 
 export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
-  const { currentRole, switchRole, session, previewUserId, setPreviewUserId } = dataStore;
+  const { currentRole, switchRole, session, previewUserId, setPreviewUserId, pendingPromptsForEmployee } = dataStore;
 
   const getPathForPage = (page: string, role: typeof currentRole) => {
     const employeeMap: Record<string, string> = {
@@ -79,6 +80,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       'client-dashboard': '/admin/client-dashboard',
       'scheduled-memos': '/admin/prompts/scheduled',
     };
+    if (page.startsWith('incident-intake/')) return `/employee/my-reports/${page.split('incident-intake/')[1]}/intake`;
     if (page.startsWith('report-detail/')) return `/employee/my-reports/${page.split('report-detail/')[1]}`;
     if (page === 'report-detail') return `/admin/all-reports/${pageParams.id ?? ''}`;
     if (page === 'employee-detail') return `/admin/users/${pageParams.id ?? ''}`;
@@ -100,6 +102,10 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
     if (cleanPath === '/employee/settings') return { role: 'EMPLOYEE', page: 'settings', params };
     if (cleanPath === '/employee/report/new') return { role: 'EMPLOYEE', page: 'report-new', params };
     if (cleanPath === '/employee/help') return { role: 'EMPLOYEE', page: 'help', params };
+    const intakeMatch = cleanPath.match(/^\/employee\/my-reports\/([^/]+)\/intake$/);
+    if (intakeMatch) {
+      return { role: 'EMPLOYEE', page: `incident-intake/${intakeMatch[1]}`, params };
+    }
     if (cleanPath.startsWith('/employee/my-reports/')) {
       return { role: 'EMPLOYEE', page: `report-detail/${cleanPath.split('/employee/my-reports/')[1]}`, params };
     }
@@ -220,6 +226,14 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
   }, [currentRole]);
 
   const handleNavigate = (page: string, params?: Record<string, string>) => {
+    if (currentRole === 'EMPLOYEE' && pendingPromptsForEmployee.length > 0 && page !== 'home') {
+      setSidebarOpen(false);
+      setActivePage('home');
+      setPageParams({});
+      window.history.replaceState({}, '', '/employee/dashboard');
+      window.scrollTo(0, 0);
+      return;
+    }
     setActivePage(page);
     if (params) {
       setPageParams(params);
@@ -231,7 +245,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       window.history.pushState({}, '', '/employee/dashboard');
     } else {
       let nextPath = getPathForPage(page, currentRole);
-      if ((page === 'reports' || page === 'investigations') && params && Object.keys(params).length > 0) {
+      if ((page === 'reports' || page === 'investigations' || page === 'prompt-responses') && params && Object.keys(params).length > 0) {
         const q = new URLSearchParams(params).toString();
         if (q) nextPath += `?${q}`;
       }
@@ -275,7 +289,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
 
       const parsed = parsePath(window.location.pathname);
       const params = { ...parsed.params };
-      if ((parsed.page === 'reports' || parsed.page === 'investigations') && window.location.search) {
+      if ((parsed.page === 'reports' || parsed.page === 'investigations' || parsed.page === 'prompt-responses') && window.location.search) {
         const searchParams = new URLSearchParams(window.location.search);
         searchParams.forEach((value, key) => {
           params[key] = value;
@@ -290,6 +304,18 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [currentRole, switchRole, session?.role]);
+
+  /** EQC-style: mandatory check-ins due today must be completed on Home before other employee routes. */
+  useEffect(() => {
+    if (currentRole !== 'EMPLOYEE') return;
+    if (pendingPromptsForEmployee.length === 0) return;
+    if (activePage === 'home') return;
+    setActivePage('home');
+    setPageParams({});
+    if (window.location.pathname !== '/employee/dashboard') {
+      window.history.replaceState({}, '', '/employee/dashboard');
+    }
+  }, [currentRole, pendingPromptsForEmployee.length, activePage]);
 
   useEffect(() => {
     const root = document.querySelector('main');
@@ -326,6 +352,10 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       case 'settings':
         return <EmployeeSettings dataStore={dataStore} />;
       default:
+        if (activePage.startsWith('incident-intake/')) {
+          const intakeReportId = activePage.split('incident-intake/')[1];
+          return <EmployeeIncidentIntake dataStore={dataStore} reportId={intakeReportId} onNavigate={handleNavigate} />;
+        }
         if (activePage.startsWith('report-detail/')) {
           const reportId = activePage.split('report-detail/')[1];
           return <EmployeeReportDetail dataStore={dataStore} reportId={reportId} onNavigate={handleNavigate} />;

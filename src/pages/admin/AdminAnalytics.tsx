@@ -262,11 +262,12 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
               type="button"
               className="text-center p-4 border border-[var(--color-border-200)] bg-transparent shadow-[var(--shadow-1)] enterprise-interactive"
               onClick={() => onNavigate('policies')}
+              title="Company memos"
             >
               <p className="text-4xl font-bold text-[var(--color-primary-900)] [text-shadow:0_1px_1px_rgba(15,27,42,0.16)]">
                 {displayMetrics.trainingCompliancePct}%
               </p>
-              <p className="text-sm font-medium text-[var(--color-text-primary)] mt-1 [text-shadow:0_1px_1px_rgba(15,27,42,0.1)]">Training Compliance</p>
+              <p className="text-sm font-medium text-[var(--color-text-primary)] mt-1 [text-shadow:0_1px_1px_rgba(15,27,42,0.1)]">Memo acknowledgement</p>
               <p className="text-xs text-[var(--color-emerald-600)] mt-1">+2% from last month</p>
             </button>
             <button
