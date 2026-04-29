@@ -261,12 +261,9 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <Card className="mismo-card">
-          <CardContent className="p-5 space-y-2 text-center flex flex-col items-center">
+          <CardContent className="p-5 space-y-3 text-center flex flex-col items-center">
             <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Yes responses</p>
             <p className="font-command text-4xl font-medium tabular-nums text-[var(--color-alert-600)]">{countYesResponses}</p>
-            <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[220px]">
-              Check-in answers where staff chose Yes; review first (newest first in the register).
-            </p>
             <Button
               variant="outline"
               className="border-[var(--color-alert-600)] text-[var(--color-alert-600)] enterprise-interactive font-command"
@@ -274,28 +271,25 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
             >
               Review Yes responses →
             </Button>
+            <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[220px] pt-1">
+              Check-in answers where staff chose Yes; review first (newest first in the register).
+            </p>
           </CardContent>
         </Card>
         <Card className="mismo-card">
-          <CardContent className="p-5 space-y-2 text-center flex flex-col items-center">
+          <CardContent className="p-5 space-y-3 text-center flex flex-col items-center">
             <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Open investigations</p>
             <p className="font-command text-4xl font-medium tabular-nums">{countInvestigations}</p>
-            <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[220px]">In progress on the investigations register.</p>
             <Button variant="outline" className="border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command" onClick={() => onNavigate('investigations')}>
               View investigations →
             </Button>
+            <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[220px] pt-1">In progress on the investigations register.</p>
           </CardContent>
         </Card>
         <Card className="mismo-card">
-          <CardContent className="p-5 space-y-2 text-center flex flex-col items-center">
+          <CardContent className="p-5 space-y-3 text-center flex flex-col items-center">
             <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Memo responses</p>
             <p className="font-command text-4xl font-medium tabular-nums">{countActivePublishedMemos}</p>
-            <p className="text-sm font-command text-[var(--color-text-secondary)] tabular-nums">
-              <span className="text-[var(--color-alert-600)] font-semibold">{countAcks}</span> pending tasks
-            </p>
-            <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[240px]">
-              Published memos live today; second figure is open memo tasks (sign-offs).
-            </p>
             <div className="flex flex-col gap-2 w-full max-w-[260px]">
               <Button
                 variant="outline"
@@ -308,6 +302,12 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
                 Manage memos
               </Button>
             </div>
+            <p className="text-sm font-command text-[var(--color-text-secondary)] tabular-nums pt-1">
+              <span className="text-[var(--color-alert-600)] font-semibold">{countAcks}</span> pending tasks
+            </p>
+            <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[240px]">
+              Published memos live today; second figure is open memo tasks (sign-offs).
+            </p>
           </CardContent>
         </Card>
         <Card className="mismo-card">
