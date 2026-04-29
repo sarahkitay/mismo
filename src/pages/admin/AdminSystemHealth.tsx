@@ -58,7 +58,7 @@ export function AdminSystemHealth({ dataStore }: AdminSystemHealthProps) {
     {
       name: 'Scheduled Tasks',
       status: 'healthy',
-      description: `${dashboardCounts.activeCampaigns} active campaigns running`,
+      description: `${dashboardCounts.activeCampaigns} active prompts running`,
       lastChecked: '5 min ago',
       icon: 'clock',
     },

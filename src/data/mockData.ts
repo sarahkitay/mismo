@@ -1073,7 +1073,7 @@ export function getPromptTypeLabel(type: string): string {
     INCIDENT: 'Incident Query',
     TEAM_DYNAMIC: 'Team Dynamic Check-In',
     MONTHLY_CHECKIN: 'Monthly Health Check',
-    CUSTOM: 'Custom',
+    CUSTOM: 'Company-made',
   };
   return labels[type] || type;
 }

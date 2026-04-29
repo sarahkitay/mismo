@@ -273,7 +273,7 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
             <button
               type="button"
               className="text-center p-4 border border-[var(--color-border-200)] bg-transparent shadow-[var(--shadow-1)] enterprise-interactive"
-              onClick={() => onNavigate('reports')}
+              onClick={() => onNavigate('prompt-responses', { register: '1' })}
             >
               <p className="text-4xl font-bold text-[var(--color-primary-900)] [text-shadow:0_1px_1px_rgba(15,27,42,0.16)]">
                 {displayMetrics.reportsThisMonth}

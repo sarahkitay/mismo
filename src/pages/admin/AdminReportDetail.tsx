@@ -93,7 +93,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate }: AdminRepo
 
   return (
     <div className="space-y-5">
-      <Button variant="ghost" onClick={() => onNavigate('reports')}>
+      <Button variant="ghost" onClick={() => onNavigate('prompt-responses', { register: '1' })}>
         <Icons.arrowLeft className="h-4 w-4 mr-2" />
         Back to Reports
       </Button>

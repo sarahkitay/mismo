@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatDate, formatRelativeTime, truncateText } from '@/lib/utils';
+import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { Icons } from '@/lib/icons';
 
 function useCountUp(target: number, durationMs = 1000, decimals = 0) {
@@ -49,24 +49,9 @@ function formatUtcTimestamp(date: Date): string {
   return `${datePart} | ${timePart} UTC`;
 }
 
-function severityBadgeClass(severity: string): string {
-  if (severity === 'CRITICAL') return 'border-[var(--color-alert-600)] text-[var(--color-alert-600)]';
-  if (severity === 'HIGH') return 'border-[var(--color-accent-gold)] text-[var(--color-primary-900)]';
-  if (severity === 'MEDIUM') return 'border-[var(--color-emerald-600)] text-[var(--color-emerald-600)]';
-  return 'border-[var(--color-border-200)] text-[var(--color-text-secondary)]';
-}
-
-function statusPillClass(status: string): string {
-  if (status === 'NEEDS_INFO') return 'border-[var(--color-accent-gold)] text-[var(--color-primary-900)]';
-  if (status === 'IN_REVIEW' || status === 'ASSIGNED') return 'border-[var(--color-primary-700)] text-[var(--color-primary-700)]';
-  if (status === 'RESOLVED' || status === 'CLOSED') return 'border-[var(--color-emerald-600)] text-[var(--color-emerald-600)]';
-  return 'border-[var(--color-border-200)] text-[var(--color-text-secondary)]';
-}
-
 export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
   const nowRef = useRef(new Date());
   const [activityWindow, setActivityWindow] = useState<ActivityWindow>('7D');
-  const [isLoadingOpenCases] = useState(false);
   const [isLoadingActivity] = useState(false);
 
   const { users, reports, policies, policyAcknowledgements, investigations, responses, deliveries, activities } = dataStore;
@@ -79,12 +64,27 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
 
     const openInvestigations = investigations.filter((inv) => inv.status === 'OPEN');
     const memoResponses = reports.filter((report) => report.status === 'NEEDS_INFO');
-    const scheduledItems = deliveries.filter((delivery) => {
-      if (delivery.status !== 'PENDING' || !delivery.dueAt) return false;
-      const now = nowRef.current.getTime();
-      const sevenDays = now + 7 * 24 * 60 * 60 * 1000;
-      return delivery.dueAt.getTime() <= sevenDays;
-    });
+    const yesPromptResponsesCount = responses.filter((r) => r.answer === 'HAS_ISSUE').length;
+    const activePublishedMemos = policies.filter((p) => p.status === 'PUBLISHED').length;
+
+    const startOfToday = new Date(nowRef.current.getFullYear(), nowRef.current.getMonth(), nowRef.current.getDate());
+    const upcomingMemoDeadlines = policies
+      .filter((p) => p.status === 'PUBLISHED' && p.completionDueDate)
+      .filter((p) => {
+        const d = p.completionDueDate instanceof Date ? p.completionDueDate : new Date(String(p.completionDueDate));
+        return d.getTime() >= startOfToday.getTime();
+      })
+      .sort((a, b) => {
+        const da = a.completionDueDate instanceof Date ? a.completionDueDate : new Date(String(a.completionDueDate));
+        const db = b.completionDueDate instanceof Date ? b.completionDueDate : new Date(String(b.completionDueDate));
+        return da.getTime() - db.getTime();
+      })
+      .slice(0, 6)
+      .map((p) => ({
+        id: p.id,
+        title: p.title,
+        dueAt: (p.completionDueDate instanceof Date ? p.completionDueDate : new Date(String(p.completionDueDate))) as Date,
+      }));
 
     const atRiskEmployees = activeEmployees.filter((employee) => {
       const employeeDeliveries30d = deliveries.filter(
@@ -106,29 +106,13 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
     const riskExposurePenalty = Math.min(1, (memoResponses.length + openInvestigations.length) / 24);
     const analyticsIndex = policyRate * 0.28 + promptRate * 0.26 + investigationRate * 0.3 + (1 - riskExposurePenalty) * 0.16;
 
-    const actionRequiredCount = openInvestigations.length + memoResponses.length + scheduledItems.length + pendingAcks;
-    const openCases = reports
-      .filter((report) => !['RESOLVED', 'CLOSED'].includes(report.status))
-      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
-      .slice(0, 5);
-
-    const upcomingDeadlines = deliveries
-      .filter((delivery) => delivery.status === 'PENDING' && delivery.dueAt)
-      .sort((a, b) => (a.dueAt?.getTime() ?? 0) - (b.dueAt?.getTime() ?? 0))
-      .slice(0, 4)
-      .map((delivery) => ({
-        id: delivery.id,
-        promptTitle: dataStore.prompts.find((prompt) => prompt.id === delivery.promptId)?.title ?? 'Prompt',
-        user: users.find((user) => user.id === delivery.userId),
-        dueAt: delivery.dueAt!,
-      }));
+    const actionRequiredCount = openInvestigations.length + memoResponses.length + pendingAcks + yesPromptResponsesCount;
 
     const windowMs = activityWindow === '24H' ? 24 * 60 * 60 * 1000 : activityWindow === '7D' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
     const recentActivity = activities
       .filter((activity) => nowRef.current.getTime() - activity.createdAt.getTime() <= windowMs)
       .slice(0, 6);
 
-    const startOfToday = new Date(nowRef.current.getFullYear(), nowRef.current.getMonth(), nowRef.current.getDate());
     const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
     const hasIssueResponsesToday = responses.filter(
       (r) => r.answer === 'HAS_ISSUE' && r.submittedAt >= startOfToday && r.submittedAt <= endOfToday
@@ -141,25 +125,26 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
       pendingAcks,
       openInvestigations,
       memoResponses,
-      scheduledItems,
       atRiskEmployees,
       analyticsIndex,
       actionRequiredCount,
-      openCases,
       recentActivity,
-      upcomingDeadlines,
       hasIssueResponsesToday,
       pendingPromptResponsesToday,
+      yesPromptResponsesCount,
+      activePublishedMemos,
+      upcomingMemoDeadlines,
     };
-  }, [activities, activityWindow, dataStore.orgSettings.thresholds.atRiskMinResponseRate, dataStore.prompts, deliveries, investigations, policies, policyAcknowledgements, reports, responses, users]);
+  }, [activities, activityWindow, dataStore.orgSettings.thresholds.atRiskMinResponseRate, deliveries, investigations, policies, policyAcknowledgements, reports, responses, users]);
 
   const atRiskEmails = computed.atRiskEmployees.map((user) => user.email).filter(Boolean);
 
   const countAction = useCountUp(computed.actionRequiredCount, 1000, 0);
   const countAnalyticsIndex = useCountUp(computed.analyticsIndex * 100, 1000, 1);
   const countInvestigations = useCountUp(computed.openInvestigations.length, 900, 0);
-  const countMemos = useCountUp(computed.memoResponses.length, 900, 0);
-  const countScheduled = useCountUp(computed.scheduledItems.length, 900, 0);
+  const countYesResponses = useCountUp(computed.yesPromptResponsesCount, 900, 0);
+  const countActivePublishedMemos = useCountUp(computed.activePublishedMemos, 900, 0);
+  const countMemoNeedInfo = useCountUp(computed.memoResponses.length, 900, 0);
   const countAcks = useCountUp(computed.pendingAcks, 900, 0);
   const countAtRisk = useCountUp(computed.atRiskEmployees.length, 900, 0);
 
@@ -187,6 +172,22 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
           We provide structured oversight across investigations, company memo adherence, and workforce exposure.
         </p>
         <p className="mt-2 text-sm font-command text-[var(--color-text-muted)]">Compliance made human. Everything you enter matters.</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="enterprise-interactive font-command border-[var(--color-primary-900)] text-[var(--color-primary-900)]"
+            onClick={() => onNavigate('users')}
+          >
+            Manage employees
+          </Button>
+          <Button variant="outline" size="sm" className="enterprise-interactive font-command" onClick={() => onNavigate('users', { import: 'csv' })}>
+            Bulk import employees
+          </Button>
+          <Button variant="outline" size="sm" className="enterprise-interactive font-command" onClick={() => onNavigate('policies')}>
+            Manage memos
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr] gap-4">
@@ -201,7 +202,9 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
                   {(computed.hasIssueResponsesToday > 0 || computed.pendingPromptResponsesToday > 0) && (
                     <div className="mt-3 space-y-1 text-sm font-command">
                       {computed.hasIssueResponsesToday > 0 && (
-                        <p className="text-[var(--color-alert-600)] font-medium">• {computed.hasIssueResponsesToday} staff reported an issue today — review reports</p>
+                        <p className="text-[var(--color-alert-600)] font-medium">
+                          • {computed.hasIssueResponsesToday} staff chose Yes on a check-in today — review in Case register & check-ins
+                        </p>
                       )}
                       {computed.pendingPromptResponsesToday > 0 && (
                         <p className="text-[var(--color-alert-600)] font-medium">• {computed.pendingPromptResponsesToday} daily prompt(s) not yet answered — send reminders</p>
@@ -209,16 +212,19 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
                     </div>
                   )}
                   <div className="mt-3 space-y-1 text-sm font-command text-[var(--color-text-secondary)]">
-                    <p>• {countInvestigations} Investigations needing review</p>
-                    <p>• {countMemos} Memo responses awaiting clarification</p>
-                    <p>• {countAcks} Acknowledgements pending</p>
+                    <p>
+                      • <span className="text-[var(--color-alert-600)] font-medium">{countYesResponses} Yes</span> prompt responses (review first)
+                    </p>
+                    <p>• {countInvestigations} Open investigations</p>
+                    <p>• {countMemoNeedInfo} Incident reports awaiting clarification (NEEDS_INFO)</p>
+                    <p>• {countAcks} Memo acknowledgements pending</p>
                   </div>
                 </>
               )}
               <Button
                 aria-label="Open action register"
                 className="mt-4 bg-[var(--color-emerald-600)] hover:bg-[var(--color-emerald-500)] text-white enterprise-interactive font-command"
-                onClick={() => onNavigate('reports', { status: 'NEW,TRIAGED,ASSIGNED,IN_REVIEW,NEEDS_INFO' })}
+                onClick={() => onNavigate('prompt-responses', { status: 'NEW,TRIAGED,ASSIGNED,IN_REVIEW,NEEDS_INFO' })}
               >
                 Open Action Register →
               </Button>
@@ -233,8 +239,12 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
 
         <Card className="mismo-card">
           <CardContent className="p-6 space-y-3">
-            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Analytics</p>
+            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Analytics (same as sidebar)</p>
             <p className="font-command text-4xl font-medium text-[var(--color-primary-900)] tabular-nums">{countAnalyticsIndex.toFixed(1)}</p>
+            <p className="text-sm font-command text-[var(--color-text-secondary)]">
+              Snapshot index for this screen. Open <span className="font-medium text-[var(--color-text-primary)]">Analytics</span> for full
+              reporting, exports, and risk posture views.
+            </p>
             <p className="text-sm font-command text-[var(--color-text-secondary)]">Change from prior window: <span className="text-[var(--color-accent-gold)]">+1.6</span></p>
             <p className="text-xs font-command text-[var(--color-text-muted)]">Last updated: {formatUtcTimestamp(nowRef.current)}</p>
             <Button
@@ -252,29 +262,52 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <Card className="mismo-card">
           <CardContent className="p-5 space-y-2 text-center flex flex-col items-center">
-            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Open Investigations</p>
+            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Yes responses</p>
+            <p className="font-command text-4xl font-medium tabular-nums text-[var(--color-alert-600)]">{countYesResponses}</p>
+            <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[220px]">
+              Check-in answers where staff chose Yes — review first (newest first in the register).
+            </p>
+            <Button
+              variant="outline"
+              className="border-[var(--color-alert-600)] text-[var(--color-alert-600)] enterprise-interactive font-command"
+              onClick={() => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', rangePreset: 'ALL' })}
+            >
+              Review Yes responses →
+            </Button>
+          </CardContent>
+        </Card>
+        <Card className="mismo-card">
+          <CardContent className="p-5 space-y-2 text-center flex flex-col items-center">
+            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Open investigations</p>
             <p className="font-command text-4xl font-medium tabular-nums">{countInvestigations}</p>
+            <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[220px]">In progress on the investigations register.</p>
             <Button variant="outline" className="border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command" onClick={() => onNavigate('investigations')}>
-              View Register
+              View investigations →
             </Button>
           </CardContent>
         </Card>
         <Card className="mismo-card">
           <CardContent className="p-5 space-y-2 text-center flex flex-col items-center">
-            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Memo Responses</p>
-            <p className="font-command text-4xl font-medium tabular-nums">{countMemos}</p>
-            <Button variant="outline" className="border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command" onClick={() => onNavigate('prompt-responses', { answer: 'HAS_ISSUE' })}>
-              Review
-            </Button>
-          </CardContent>
-        </Card>
-        <Card className="mismo-card">
-          <CardContent className="p-5 space-y-2 text-center flex flex-col items-center">
-            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Scheduled Items</p>
-            <p className="font-command text-4xl font-medium tabular-nums">{countScheduled}</p>
-            <Button variant="outline" className="border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command" onClick={() => onNavigate('scheduled-memos')}>
-              Open Schedule
-            </Button>
+            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Memo responses</p>
+            <p className="font-command text-4xl font-medium tabular-nums">{countActivePublishedMemos}</p>
+            <p className="text-sm font-command text-[var(--color-text-secondary)] tabular-nums">
+              <span className="text-[var(--color-alert-600)] font-semibold">{countAcks}</span> pending acks
+            </p>
+            <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[240px]">
+              Published memos live today; second figure is outstanding acknowledgement work.
+            </p>
+            <div className="flex flex-col gap-2 w-full max-w-[260px]">
+              <Button
+                variant="outline"
+                className="border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command"
+                onClick={() => onNavigate('policies')}
+              >
+                View memos & responses →
+              </Button>
+              <Button variant="ghost" size="sm" className="text-[var(--color-primary-700)] font-command" onClick={() => onNavigate('policies')}>
+                Manage memos
+              </Button>
+            </div>
           </CardContent>
         </Card>
         <Card className="mismo-card">
@@ -296,91 +329,8 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="mismo-card">
-          <CardContent className="p-0">
-            <div className="px-5 py-4 border-b border-[var(--color-border-200)] flex items-center justify-between">
-              <div>
-                <h2 className="font-command text-2xl font-bold text-[var(--color-primary-900)]">Open Cases</h2>
-                <p className="text-sm text-[var(--color-text-secondary)]">Quick glance case register for immediate procedural action.</p>
-              </div>
-              <Button variant="outline" className="enterprise-interactive" onClick={() => onNavigate('reports')}>
-                View Register
-              </Button>
-            </div>
-            {isLoadingOpenCases ? (
-              <div className="p-5 space-y-3" aria-label="Loading open case rows">
-                {[0, 1, 2, 3, 4].map((row) => (
-                  <div key={row} className="h-10 bg-[var(--color-surface-200)] animate-pulse rounded-[var(--radius-small)]" />
-                ))}
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-[var(--color-surface-200)] text-[var(--color-text-secondary)]">
-                    <tr>
-                      <th className="px-4 py-2 text-left">Case</th>
-                      <th className="px-4 py-2 text-left">Category</th>
-                      <th className="px-4 py-2 text-left">Owner</th>
-                      <th className="px-4 py-2 text-left">Due Date</th>
-                      <th className="px-4 py-2 text-left">Status</th>
-                      <th className="px-4 py-2 text-left">Severity</th>
-                      <th className="px-4 py-2 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {computed.openCases.map((report) => {
-                      const owner = report.assignedTo ? users.find((user) => user.id === report.assignedTo) : null;
-                      const dueDate = new Date(report.createdAt.getTime() + 14 * 24 * 60 * 60 * 1000);
-                      const isLate = dueDate.getTime() < nowRef.current.getTime();
-                      return (
-                        <tr key={report.id} className="border-t border-[var(--color-border-200)]">
-                          <td className="px-4 py-3">
-                            <button
-                              aria-label={`Open case ${report.id}`}
-                              className="text-left enterprise-interactive"
-                              onClick={() => onNavigate('report-detail', { id: report.id })}
-                            >
-                              <p className="font-medium text-[var(--color-text-primary)]">#{report.id.replace('report-', '').toUpperCase()}</p>
-                              <p className="text-[var(--color-text-secondary)]">{truncateText(report.summary, 56)}</p>
-                            </button>
-                          </td>
-                          <td className="px-4 py-3 text-[var(--color-text-secondary)]">{report.category}</td>
-                          <td className="px-4 py-3 text-[var(--color-text-secondary)]">{owner ? `${owner.firstName} ${owner.lastName}` : 'Unassigned'}</td>
-                          <td className="px-4 py-3">
-                            <p className="text-[var(--color-text-secondary)]">{formatDate(dueDate)}</p>
-                            {isLate && <span className="mt-1 inline-block border border-[var(--color-alert-600)] px-2 py-0.5 text-xs text-[var(--color-alert-600)]">Needs review</span>}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-block px-2 py-1 text-xs border ${statusPillClass(report.status)}`}>{report.status.replace('_', ' ')}</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-block px-2 py-1 text-xs border ${severityBadgeClass(report.severity)}`}>{report.severity}</span>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <Button variant="ghost" size="sm" className="enterprise-interactive" onClick={() => onNavigate('report-detail', { id: report.id })}>
-                              Open
-                            </Button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {computed.openCases.length === 0 && (
-                      <tr>
-                        <td className="px-4 py-6 text-sm text-[var(--color-text-secondary)]" colSpan={7}>
-                          No open cases in the current register.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="space-y-4">
-          <Card className="mismo-card">
             <CardContent className="p-0">
               <div className="px-5 py-4 border-b border-[var(--color-border-200)] flex items-center justify-between">
                 <div>
@@ -426,30 +376,30 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
             </CardContent>
           </Card>
 
-          <Card className="mismo-card">
+        <Card className="mismo-card">
             <CardContent className="p-5">
-              <h3 className="font-command text-xl font-bold text-[var(--color-primary-900)]">Upcoming Deadlines</h3>
+              <h3 className="font-command text-xl font-bold text-[var(--color-primary-900)]">Memo completion deadlines</h3>
+              <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+                Only published memos with a completion due date appear here (end of acknowledgement window).
+              </p>
               <div className="mt-3 space-y-2">
-                {computed.upcomingDeadlines.map((item) => (
+                {computed.upcomingMemoDeadlines.map((item) => (
                   <button
                     key={item.id}
                     type="button"
                     className="w-full text-left p-3 border border-[var(--color-border-200)] rounded-[var(--radius-small)] enterprise-interactive"
-                    onClick={() => onNavigate('scheduled-memos')}
+                    onClick={() => onNavigate('policy-detail', { id: item.id })}
                   >
-                    <p className="text-sm font-medium">{item.promptTitle}</p>
-                    <p className="text-xs text-[var(--color-text-secondary)]">
-                      {item.user?.firstName ?? 'Employee'} · Due {formatDate(item.dueAt)}
-                    </p>
+                    <p className="text-sm font-medium">{item.title}</p>
+                    <p className="text-xs text-[var(--color-text-secondary)]">Complete by {formatDate(item.dueAt)}</p>
                   </button>
                 ))}
-                {computed.upcomingDeadlines.length === 0 && (
-                  <p className="text-sm text-[var(--color-text-secondary)]">No upcoming deadlines in the current schedule window.</p>
+                {computed.upcomingMemoDeadlines.length === 0 && (
+                  <p className="text-sm text-[var(--color-text-secondary)]">No memo deadlines with end dates in the current window.</p>
                 )}
               </div>
             </CardContent>
           </Card>
-        </div>
       </div>
 
       <div className="border-t border-[var(--color-border-200)] pt-3 flex items-center gap-6 text-sm text-[var(--color-text-secondary)]">

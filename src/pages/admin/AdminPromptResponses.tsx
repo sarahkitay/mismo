@@ -8,5 +8,5 @@ interface AdminPromptResponsesProps {
 }
 
 export function AdminPromptResponses({ dataStore, onNavigate, initialFilters }: AdminPromptResponsesProps) {
-  return <AdminCaseRegisterHub dataStore={dataStore} onNavigate={onNavigate} initialFilters={initialFilters} entry="prompt-responses" />;
+  return <AdminCaseRegisterHub dataStore={dataStore} onNavigate={onNavigate} initialFilters={initialFilters} />;
 }
