@@ -249,7 +249,7 @@ export function AdminPolicyDetail({ dataStore, policyId, onNavigate }: AdminPoli
               ) : (
                 <Input
                   className="max-w-md"
-                  placeholder="e.g. Facilities — winter 2025"
+                  placeholder="e.g. Facilities, winter 2025"
                   value={memoCategoryCustom}
                   onChange={(e) => setMemoCategoryCustom(e.target.value)}
                 />
@@ -369,7 +369,7 @@ export function AdminPolicyDetail({ dataStore, policyId, onNavigate }: AdminPoli
               rows={12}
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder="Memo body — type here, paste imported text, or combine with an attachment."
+              placeholder="Memo body: type here, paste imported text, or combine with an attachment."
             />
           </div>
 

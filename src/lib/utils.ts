@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Employee app: list/detail title — prefer what they wrote in description; summary is HR-facing. */
+/** Employee app: list/detail title: prefer what they wrote in description; summary is HR-facing. */
 export function employeeIncidentReportHeadline(report: Pick<Report, 'summary' | 'description'>): string {
   const d = report.description?.trim();
   if (d) return d.length > 96 ? `${d.slice(0, 93)}…` : d;

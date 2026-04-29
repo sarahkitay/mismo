@@ -145,7 +145,7 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
                     <p className="text-xs text-[var(--mismo-text-secondary)]">{formatRelativeTime(n.createdAt)}</p>
                     <p className="mt-2 whitespace-pre-wrap text-[var(--mismo-text)]">{n.body}</p>
                     {n.requiresEmployeeSignature && !n.employeeSignedAt && (
-                      <p className="text-xs text-amber-700 mt-2">Signature requested — confirm with HR in your next touchpoint.</p>
+                      <p className="text-xs text-amber-700 mt-2">Signature requested; confirm with HR in your next touchpoint.</p>
                     )}
                   </div>
                 ))}
@@ -179,7 +179,7 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
                   className="bg-emerald-600 hover:bg-emerald-700"
                   onClick={() => {
                     employeeAcknowledgeInvestigationOutcome(investigation.id, true);
-                    toast.success('Thank you — your confirmation is recorded.');
+                    toast.success('Thank you. Your confirmation is recorded.');
                   }}
                 >
                   I agree with this resolution
@@ -218,7 +218,7 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
           <CardContent className="p-5 text-sm">
             <p className="font-medium text-[var(--mismo-text)]">Your response to the outcome</p>
             <p className="text-[var(--mismo-text-secondary)] mt-1">
-              Signed {formatDate(investigation.outcomeEmployeeSignedAt)} —{' '}
+              Signed {formatDate(investigation.outcomeEmployeeSignedAt)}.{' '}
               {investigation.outcomeEmployeeAgreed === true
                 ? 'You agreed with the resolution.'
                 : investigation.outcomeEmployeeAgreed === false

@@ -139,18 +139,18 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                 <span className={employee.status === 'active' ? 'text-emerald-700' : 'text-slate-600'}>{employee.status}</span>
               </p>
               <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
-                Employee ID: <span className="font-medium text-[var(--color-text-primary)]">{employee.employeeId?.trim() || '—'}</span>
+                Employee ID: <span className="font-medium text-[var(--color-text-primary)]">{employee.employeeId?.trim() || '-'}</span>
                 {' · '}
                 System: <code className="text-xs bg-[var(--color-surface-200)] px-1 rounded">{employee.id}</code>
               </p>
               <p className="text-sm text-[var(--color-text-muted)]">
-                Location: <span className="text-[var(--color-text-primary)]">{employee.location?.trim() || '—'}</span>
+                Location: <span className="text-[var(--color-text-primary)]">{employee.location?.trim() || '-'}</span>
               </p>
               {(employee.archiveStartDate || employee.archiveEndDate) && (
                 <p className="text-sm text-[var(--color-text-muted)]">
                   Archive window:{' '}
-                  {employee.archiveStartDate ? formatDate(employee.archiveStartDate) : '—'} →{' '}
-                  {employee.archiveEndDate ? formatDate(employee.archiveEndDate) : '—'}
+                  {employee.archiveStartDate ? formatDate(employee.archiveStartDate) : '-'} →{' '}
+                  {employee.archiveEndDate ? formatDate(employee.archiveEndDate) : '-'}
                 </p>
               )}
               {employee.state && <p className="text-sm text-[var(--color-text-muted)]">State: {employee.state}</p>}
@@ -176,7 +176,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                   placeholder="Company / badge number"
                 />
               ) : (
-                <p className="font-medium text-[var(--color-text-primary)]">{employee.employeeId?.trim() || '—'}</p>
+                <p className="font-medium text-[var(--color-text-primary)]">{employee.employeeId?.trim() || '-'}</p>
               )}
             </div>
             <div className="sm:col-span-2 flex flex-col gap-1">
@@ -190,7 +190,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                   placeholder="Office, site, or region"
                 />
               ) : (
-                <p className="font-medium text-[var(--color-text-primary)]">{employee.location?.trim() || '—'}</p>
+                <p className="font-medium text-[var(--color-text-primary)]">{employee.location?.trim() || '-'}</p>
               )}
             </div>
             <div className="flex flex-col gap-1">
@@ -204,7 +204,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                 />
               ) : (
                 <p className="font-medium text-[var(--color-text-primary)]">
-                  {employee.archiveStartDate ? formatDate(employee.archiveStartDate) : '—'}
+                  {employee.archiveStartDate ? formatDate(employee.archiveStartDate) : '-'}
                 </p>
               )}
             </div>
@@ -219,7 +219,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                 />
               ) : (
                 <p className="font-medium text-[var(--color-text-primary)]">
-                  {employee.archiveEndDate ? formatDate(employee.archiveEndDate) : '—'}
+                  {employee.archiveEndDate ? formatDate(employee.archiveEndDate) : '-'}
                 </p>
               )}
             </div>
@@ -231,13 +231,13 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                   onChange={(e) => setEditManagerId(e.target.value)}
                   className="mt-0.5 h-9 w-full max-w-xs rounded-md border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-3 text-sm"
                 >
-                  <option value="">— None —</option>
+                  <option value="">(None)</option>
                   {potentialManagers.map((u) => (
                     <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.role})</option>
                   ))}
                 </select>
               ) : (
-                <p className="font-medium text-[var(--color-text-primary)]">{manager ? `${manager.firstName} ${manager.lastName}` : '—'}</p>
+                <p className="font-medium text-[var(--color-text-primary)]">{manager ? `${manager.firstName} ${manager.lastName}` : '-'}</p>
               )}
             </div>
             <div className="flex flex-col gap-1">
@@ -250,7 +250,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                   className="mt-0.5 h-9 w-full max-w-[180px] rounded-md border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-3 text-sm"
                 />
               ) : (
-                <p className="font-medium text-[var(--color-text-primary)]">{employee.hiredDate ? formatDate(employee.hiredDate) : '—'}</p>
+                <p className="font-medium text-[var(--color-text-primary)]">{employee.hiredDate ? formatDate(employee.hiredDate) : '-'}</p>
               )}
             </div>
             {editingOrgInfo && (

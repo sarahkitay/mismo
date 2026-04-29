@@ -222,7 +222,7 @@ export function AdminInvestigationDetail({ dataStore, investigationId, onNavigat
                   ? 'Phone call'
                   : investigation.employeePreferredContact === 'IN_APP_MESSAGE'
                     ? 'Mismo messaging'
-                    : '—'}
+                    : '-'}
               </p>
             </div>
           </div>
@@ -241,7 +241,7 @@ export function AdminInvestigationDetail({ dataStore, investigationId, onNavigat
               <div>
                 <p className="text-xs uppercase text-[var(--color-text-secondary)]">Employee</p>
                 <p className="font-medium text-[var(--color-text-primary)]">
-                  {reporter ? `${reporter.firstName} ${reporter.lastName}` : primaryReport.isAnonymous ? 'Anonymous' : '—'}
+                  {reporter ? `${reporter.firstName} ${reporter.lastName}` : primaryReport.isAnonymous ? 'Anonymous' : '-'}
                 </p>
               </div>
               <div>
@@ -250,7 +250,7 @@ export function AdminInvestigationDetail({ dataStore, investigationId, onNavigat
                   {isIncidentIntakeComplete(primaryReport) ? (
                     <span className="text-emerald-700">Complete</span>
                   ) : (
-                    <span className="text-amber-700">Pending — link sent with receipt email (simulated)</span>
+                    <span className="text-amber-700">Pending: link sent with receipt email (simulated)</span>
                   )}
                 </p>
               </div>
@@ -339,7 +339,7 @@ export function AdminInvestigationDetail({ dataStore, investigationId, onNavigat
                     >
                       {u.firstName} {u.lastName}
                     </button>
-                    <span className="text-[var(--color-text-secondary)]"> — {u.email}</span>
+                    <span className="text-[var(--color-text-secondary)]"> ({u.email})</span>
                   </li>
                 );
               })}
@@ -483,7 +483,7 @@ export function AdminInvestigationDetail({ dataStore, investigationId, onNavigat
               )}
               {investigation.outcomeEmployeeSignedAt && (
                 <p className="text-xs">
-                  Employee signed {formatRelativeTime(investigation.outcomeEmployeeSignedAt)} —{' '}
+                  Employee signed {formatRelativeTime(investigation.outcomeEmployeeSignedAt)}.{' '}
                   {investigation.outcomeEmployeeAgreed === true
                     ? 'agreed with resolution'
                     : investigation.outcomeEmployeeAgreed === false
