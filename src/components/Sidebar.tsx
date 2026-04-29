@@ -25,7 +25,6 @@ const adminNavItems: NavItem[] = [
   { id: 'investigations', label: 'Investigations', icon: 'investigations' },
   { id: 'prompts', label: 'Prompts', icon: 'prompts' },
   { id: 'prompt-responses', label: 'Case register & check-ins', icon: 'reports' },
-  { id: 'campaigns', label: 'Campaigns', icon: 'campaigns' },
   { id: 'analytics', label: 'Analytics', icon: 'analytics' },
   { id: 'compliance', label: 'Compliance', icon: 'shield' },
   { id: 'system-health', label: 'System Health', icon: 'systemHealth' },
@@ -107,7 +106,8 @@ function SidebarContent({
           const isActive =
             activePage === item.id ||
             (item.id === 'policies' && activePage === 'announcements') ||
-            (item.id === 'prompt-responses' && activePage === 'reports');
+            (item.id === 'prompt-responses' &&
+              (activePage === 'report-detail' || activePage === 'prompt-response-detail'));
           
           return (
             <button

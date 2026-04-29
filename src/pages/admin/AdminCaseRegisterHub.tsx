@@ -54,13 +54,22 @@ export type CaseRegisterBucket =
   | 'NEW_CRITICAL'
   | 'NEEDS_RESPONSE';
 
-function deriveBucket(entry: 'reports' | 'prompt-responses', filters: Record<string, string>): CaseRegisterBucket {
+function deriveBucket(filters: Record<string, string>): CaseRegisterBucket {
   if (filters.critical === '1') return 'NEW_CRITICAL';
   if (filters.needs_info === '1') return 'NEEDS_RESPONSE';
   if (filters.answer === 'HAS_ISSUE') return 'PROMPT_YES';
   if (filters.answer === 'NO_ISSUE') return 'PROMPT_NO';
   if (filters.bucket === 'UNANSWERED') return 'PROMPT_UNANSWERED';
-  if (entry === 'reports') return 'CASE_REGISTER';
+  if (
+    filters.register === '1' ||
+    filters.status ||
+    filters.unassigned === '1' ||
+    filters.new24h === '1' ||
+    filters.new7d === '1' ||
+    filters.over_sla === '1'
+  ) {
+    return 'CASE_REGISTER';
+  }
   return 'PROMPT_ALL';
 }
 
@@ -68,18 +77,17 @@ interface AdminCaseRegisterHubProps {
   dataStore: DataStore;
   onNavigate: (page: string, params?: Record<string, string>) => void;
   initialFilters?: Record<string, string>;
-  entry: 'reports' | 'prompt-responses';
 }
 
-export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, entry }: AdminCaseRegisterHubProps) {
+export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters }: AdminCaseRegisterHubProps) {
   const filters = initialFilters ?? {};
   const { reports, users, investigations, deliveries, responses, prompts, assignReport, updateReportStatus, createInvestigation } = dataStore;
 
-  const [bucket, setBucket] = useState<CaseRegisterBucket>(() => deriveBucket(entry, filters));
+  const [bucket, setBucket] = useState<CaseRegisterBucket>(() => deriveBucket(filters));
   const filterKey = JSON.stringify(filters);
   useEffect(() => {
-    setBucket(deriveBucket(entry, filters));
-  }, [entry, filterKey]);
+    setBucket(deriveBucket(filters));
+  }, [filterKey]);
 
   const [query, setQuery] = useState('');
   const [promptQuery, setPromptQuery] = useState('');
@@ -89,6 +97,14 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, en
     startDate: filters.startDate || undefined,
     endDate: filters.endDate || undefined,
   }));
+  useEffect(() => {
+    setRange({
+      ...defaultDateRange,
+      preset: (filters.rangePreset as DateRangeState['preset'] | undefined) ?? 'ALL',
+      startDate: filters.startDate || undefined,
+      endDate: filters.endDate || undefined,
+    });
+  }, [filterKey]);
   const [statusFilter, setStatusFilter] = useState<ReportStatus | 'ALL'>('ALL');
   const [severityFilter, setSeverityFilter] = useState<ReportSeverity | 'ALL'>('ALL');
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
@@ -148,7 +164,8 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, en
             date: d.deliveredAt,
           };
         })
-        .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q));
+        .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
+        .sort((a, b) => b.date.getTime() - a.date.getTime());
     }
     const ansFilter = bucket === 'PROMPT_YES' ? 'HAS_ISSUE' : bucket === 'PROMPT_NO' ? 'NO_ISSUE' : null;
     return responses
@@ -164,7 +181,8 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, en
           date: r.submittedAt,
         };
       })
-      .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q));
+      .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
   }, [bucket, deliveries, responses, prompts, users, range, promptQuery]);
 
   const filteredRegisterReports = useMemo(() => {
@@ -217,9 +235,9 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, en
   ]);
 
   const applyTile = (params: Record<string, string>) => {
-    onNavigate('reports', params);
+    onNavigate('prompt-responses', { register: '1', ...params });
   };
-  const clearTile = () => onNavigate('reports', {});
+  const clearTile = () => onNavigate('prompt-responses', { register: '1' });
 
   const showCaseTable =
     bucket === 'CASE_REGISTER' || bucket === 'NEW_CRITICAL' || bucket === 'NEEDS_RESPONSE';
@@ -250,7 +268,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, en
       <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-5 py-4">
         <h1 className="mismo-heading text-3xl text-[var(--color-primary-900)]">Case register &amp; check-ins</h1>
         <p className="mt-1 text-[var(--color-text-secondary)]">
-          Prompt yes/no/unanswered intake and case files in one place.{' '}
+          Check-in answers (including Yes), unanswered prompts, and incident reports from Report now—filter and triage in one place.{' '}
           <strong>Open investigations</strong> stay on the{' '}
           <button type="button" className="text-[var(--mismo-blue)] hover:underline font-medium" onClick={() => onNavigate('investigations')}>
             Investigations

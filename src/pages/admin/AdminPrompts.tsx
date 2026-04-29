@@ -41,7 +41,7 @@ const promptTypes: { value: PromptType; label: string }[] = [
   { value: 'INCIDENT', label: 'Incident Query' },
   { value: 'TEAM_DYNAMIC', label: 'Team Dynamic Check-In' },
   { value: 'MONTHLY_CHECKIN', label: 'Monthly Health Check' },
-  { value: 'CUSTOM', label: 'Custom' },
+  { value: 'CUSTOM', label: 'Company-made' },
 ];
 
 const cadenceOptions: { value: PromptCadence; label: string }[] = [
@@ -388,8 +388,8 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
       <div className="space-y-4">
         <Card className="mismo-card">
           <CardContent className="p-4 flex flex-wrap gap-3">
-            <span className="text-sm px-3 py-2 border">Core Compliance Templates: {coreTemplateCount}</span>
-            <span className="text-sm px-3 py-2 border">Custom Templates: {customTemplateCount}</span>
+            <span className="text-sm px-3 py-2 border">Core (built-in) prompts: {coreTemplateCount}</span>
+            <span className="text-sm px-3 py-2 border">Company-made prompts: {customTemplateCount}</span>
           </CardContent>
         </Card>
         {filteredPrompts.map((prompt) => {
@@ -423,9 +423,14 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                           {prompt.status}
                         </Badge>
                       )}
-                      <Badge variant="outline">
-                        {getPromptTypeLabel(prompt.type)}
-                      </Badge>
+                      {prompt.type === 'CUSTOM' ? (
+                        <Badge variant="outline">Company-made</Badge>
+                      ) : (
+                        <>
+                          <Badge variant="outline">Core</Badge>
+                          <Badge variant="outline">{getPromptTypeLabel(prompt.type)}</Badge>
+                        </>
+                      )}
                     </div>
                     
                     <h3 className="font-semibold text-[var(--mismo-text)] text-lg">
@@ -532,7 +537,14 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                 </DialogHeader>
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">{getPromptTypeLabel(prompt.type)}</Badge>
+                    {prompt.type === 'CUSTOM' ? (
+                      <Badge variant="outline">Company-made</Badge>
+                    ) : (
+                      <>
+                        <Badge variant="outline">Core</Badge>
+                        <Badge variant="outline">{getPromptTypeLabel(prompt.type)}</Badge>
+                      </>
+                    )}
                     <Badge className={
                       prompt.status === 'ACTIVE' ? 'status-chip status-chip--success' :
                       prompt.status === 'SCHEDULED' ? 'status-chip status-chip--info' :

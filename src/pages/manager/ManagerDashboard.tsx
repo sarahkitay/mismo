@@ -59,7 +59,7 @@ export function ManagerDashboard({ dataStore, onNavigate }: ManagerDashboardProp
           <CardContent className="p-4">
             <p className="text-sm text-[var(--color-text-secondary)]">Open Case Intake</p>
             <p className="text-3xl font-bold">{queueData.unresolvedReports.length}</p>
-            <Button className="mt-2" variant="outline" onClick={() => onNavigate('reports', { status: 'NEW,TRIAGED,ASSIGNED,IN_REVIEW,NEEDS_INFO' })}>
+            <Button className="mt-2" variant="outline" onClick={() => onNavigate('prompt-responses', { status: 'NEW,TRIAGED,ASSIGNED,IN_REVIEW,NEEDS_INFO' })}>
               Open Register
             </Button>
           </CardContent>

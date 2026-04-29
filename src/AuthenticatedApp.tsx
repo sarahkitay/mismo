@@ -16,11 +16,9 @@ import { EmployeeResources } from '@/pages/employee/EmployeeResources';
 import { EmployeeSettings } from '@/pages/employee/EmployeeSettings';
 
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
-import { AdminReports } from '@/pages/admin/AdminReports';
 import { AdminInvestigations } from '@/pages/admin/AdminInvestigations';
 import { AdminEmployees } from '@/pages/admin/AdminEmployees';
 import { AdminPrompts } from '@/pages/admin/AdminPrompts';
-import { AdminCampaigns } from '@/pages/admin/AdminCampaigns';
 import { AdminAnalytics } from '@/pages/admin/AdminAnalytics';
 import { AdminSystemHealth } from '@/pages/admin/AdminSystemHealth';
 import { AdminSettings } from '@/pages/admin/AdminSettings';
@@ -63,7 +61,6 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       dashboard: '/admin/dashboard',
       help: '/admin/help',
       analytics: '/admin/analytics',
-      reports: '/admin/all-reports',
       policies: '/admin/policy-manager',
       announcements: '/admin/announcements',
       users: '/admin/users',
@@ -72,7 +69,6 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       'prompt-responses': '/admin/employee-prompt-responses',
       compliance: '/admin/compliance',
       investigations: '/admin/investigations',
-      campaigns: '/admin/campaigns',
       activity: '/admin/activity',
       settings: '/admin/settings',
       'system-health': '/admin/system-health',
@@ -112,7 +108,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
 
     if (cleanPath === '/admin/dashboard') return { role: 'HR', page: 'dashboard', params };
     if (cleanPath === '/admin/help') return { role: currentRole === 'CLIENT' ? 'CLIENT' : 'HR', page: 'help', params };
-    if (cleanPath === '/admin/all-reports') return { role: 'HR', page: 'reports', params };
+    if (cleanPath === '/admin/all-reports') return { role: 'HR', page: 'prompt-responses', params };
     if (cleanPath.startsWith('/admin/all-reports/')) {
       params.id = cleanPath.split('/admin/all-reports/')[1];
       return { role: 'HR', page: 'report-detail', params };
@@ -146,7 +142,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       params.id = cleanPath.split('/admin/investigations/')[1];
       return { role: 'HR', page: 'investigation-detail', params };
     }
-    if (cleanPath === '/admin/campaigns') return { role: 'HR', page: 'campaigns', params };
+    if (cleanPath === '/admin/campaigns') return { role: 'HR', page: 'prompts', params };
     if (cleanPath === '/admin/activity') return { role: 'HR', page: 'activity', params };
     if (cleanPath === '/admin/settings') return { role: 'HR', page: 'settings', params };
     if (cleanPath === '/admin/system-health') return { role: 'HR', page: 'system-health', params };
@@ -200,6 +196,12 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       return;
     }
 
+    if (isStaffRole(sessionRole) && pathname === '/admin/all-reports') {
+      window.history.replaceState({}, '', `/admin/employee-prompt-responses${window.location.search}`);
+    } else if (isStaffRole(sessionRole) && pathname === '/admin/campaigns') {
+      window.history.replaceState({}, '', `/admin/prompts${window.location.search}`);
+    }
+
     const parsed = parsePath(window.location.pathname);
     setPageParams(parsed.params);
     if (parsed.role !== sessionRole) {
@@ -245,7 +247,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       window.history.pushState({}, '', '/employee/dashboard');
     } else {
       let nextPath = getPathForPage(page, currentRole);
-      if ((page === 'reports' || page === 'investigations' || page === 'prompt-responses') && params && Object.keys(params).length > 0) {
+      if ((page === 'investigations' || page === 'prompt-responses') && params && Object.keys(params).length > 0) {
         const q = new URLSearchParams(params).toString();
         if (q) nextPath += `?${q}`;
       }
@@ -289,7 +291,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
 
       const parsed = parsePath(window.location.pathname);
       const params = { ...parsed.params };
-      if ((parsed.page === 'reports' || parsed.page === 'investigations' || parsed.page === 'prompt-responses') && window.location.search) {
+      if ((parsed.page === 'investigations' || parsed.page === 'prompt-responses') && window.location.search) {
         const searchParams = new URLSearchParams(window.location.search);
         searchParams.forEach((value, key) => {
           params[key] = value;
@@ -375,8 +377,6 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
         ) : (
           <AdminDashboard dataStore={dataStore} onNavigate={handleNavigate} />
         );
-      case 'reports':
-        return <AdminReports dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
       case 'investigations':
         return <AdminInvestigations dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
       case 'employees':
@@ -398,8 +398,6 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
         return <AdminPromptResponseDetail dataStore={dataStore} responseId={pageParams.id ?? ''} onNavigate={handleNavigate} />;
       case 'scheduled-memos':
         return <AdminPrompts dataStore={dataStore} onNavigate={handleNavigate} initialFilters={{ filter: 'SCHEDULED' }} />;
-      case 'campaigns':
-        return <AdminCampaigns dataStore={dataStore} onNavigate={handleNavigate} />;
       case 'analytics':
         return <AdminAnalytics dataStore={dataStore} onNavigate={handleNavigate} />;
       case 'compliance':
