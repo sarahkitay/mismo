@@ -112,7 +112,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                 const short = label.length > 28 ? `${label.slice(0, 28)}…` : label;
                 return (
                 <Button key={r.id} variant="default" className="bg-[var(--mismo-blue)] hover:bg-blue-600" onClick={() => onNavigate(`incident-intake/${r.id}`)}>
-                  Open form — {short}
+                  Open form: {short}
                 </Button>
                 );
               })}
@@ -278,7 +278,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                       </h1>
                       <p className="text-base text-[var(--color-text-secondary)] mt-3 leading-relaxed max-w-2xl mx-auto md:mx-0">
                         Your check-ins are complete and no company memos need your acknowledgement right now. That helps keep everyone
-                        safer—thank you for staying on top of it.
+                        safer. Thank you for staying on top of it.
                       </p>
                       <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center md:justify-start flex-wrap">
                         <Button
@@ -382,7 +382,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                         <Icons.inbox className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                         <p className="text-[var(--mismo-text-secondary)]">You haven&apos;t submitted any incident reports yet.</p>
                         <p className="text-sm text-[var(--mismo-text-secondary)] mt-2">
-                          If something happens, use <span className="font-medium text-[var(--mismo-text)]">Report an incident</span> above—
+                          If something happens, use <span className="font-medium text-[var(--mismo-text)]">Report an incident</span> above;
                           your team is notified right away.
                         </p>
                       </div>

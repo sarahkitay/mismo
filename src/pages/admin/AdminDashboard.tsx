@@ -203,11 +203,11 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
                     <div className="mt-3 space-y-1 text-sm font-command">
                       {computed.hasIssueResponsesToday > 0 && (
                         <p className="text-[var(--color-alert-600)] font-medium">
-                          • {computed.hasIssueResponsesToday} staff chose Yes on a check-in today — review in Case register & check-ins
+                          • {computed.hasIssueResponsesToday} staff chose Yes on a check-in today; review in Case register & check-ins
                         </p>
                       )}
                       {computed.pendingPromptResponsesToday > 0 && (
-                        <p className="text-[var(--color-alert-600)] font-medium">• {computed.pendingPromptResponsesToday} daily prompt(s) not yet answered — send reminders</p>
+                        <p className="text-[var(--color-alert-600)] font-medium">• {computed.pendingPromptResponsesToday} daily prompt(s) not yet answered; send reminders</p>
                       )}
                     </div>
                   )}
@@ -217,7 +217,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
                     </p>
                     <p>• {countInvestigations} Open investigations</p>
                     <p>• {countMemoNeedInfo} Incident reports awaiting clarification (NEEDS_INFO)</p>
-                    <p>• {countAcks} Memo acknowledgements pending</p>
+                    <p>• {countAcks} Memo tasks pending</p>
                   </div>
                 </>
               )}
@@ -265,7 +265,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
             <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Yes responses</p>
             <p className="font-command text-4xl font-medium tabular-nums text-[var(--color-alert-600)]">{countYesResponses}</p>
             <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[220px]">
-              Check-in answers where staff chose Yes — review first (newest first in the register).
+              Check-in answers where staff chose Yes; review first (newest first in the register).
             </p>
             <Button
               variant="outline"
@@ -291,10 +291,10 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
             <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Memo responses</p>
             <p className="font-command text-4xl font-medium tabular-nums">{countActivePublishedMemos}</p>
             <p className="text-sm font-command text-[var(--color-text-secondary)] tabular-nums">
-              <span className="text-[var(--color-alert-600)] font-semibold">{countAcks}</span> pending acks
+              <span className="text-[var(--color-alert-600)] font-semibold">{countAcks}</span> pending tasks
             </p>
             <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[240px]">
-              Published memos live today; second figure is outstanding acknowledgement work.
+              Published memos live today; second figure is open memo tasks (sign-offs).
             </p>
             <div className="flex flex-col gap-2 w-full max-w-[260px]">
               <Button
@@ -380,7 +380,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
             <CardContent className="p-5">
               <h3 className="font-command text-xl font-bold text-[var(--color-primary-900)]">Memo completion deadlines</h3>
               <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-                Only published memos with a completion due date appear here (end of acknowledgement window).
+                Only published memos with a completion due date appear here (end of sign-off window).
               </p>
               <div className="mt-3 space-y-2">
                 {computed.upcomingMemoDeadlines.map((item) => (

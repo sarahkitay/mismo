@@ -124,7 +124,7 @@ export function EmployeeResources({ dataStore }: EmployeeResourcesProps) {
         </p>
       </div>
 
-      {/* Company memos — read and unread */}
+      {/* Company memos: read and unread */}
       {employeePolicies.length > 0 && (
         <Card className="mismo-card border border-[var(--color-border-200)]">
           <CardContent className="p-5">
@@ -143,7 +143,7 @@ export function EmployeeResources({ dataStore }: EmployeeResourcesProps) {
                     : 'Acknowledged'
                   : policy.acknowledgmentRequired
                     ? 'Signature required'
-                    : 'Reference — no sign-off';
+                    : 'Reference, no sign-off';
                 return (
                   <li key={policy.id} className="border-b border-[var(--color-border-200)] last:border-0 pb-4 last:pb-0">
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">

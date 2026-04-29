@@ -268,12 +268,12 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters }: 
       <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-5 py-4">
         <h1 className="mismo-heading text-3xl text-[var(--color-primary-900)]">Case register &amp; check-ins</h1>
         <p className="mt-1 text-[var(--color-text-secondary)]">
-          Check-in answers (including Yes), unanswered prompts, and incident reports from Report now—filter and triage in one place.{' '}
+          Check-in answers (including Yes), unanswered prompts, and incident reports from Report now. Filter and triage in one place.{' '}
           <strong>Open investigations</strong> stay on the{' '}
           <button type="button" className="text-[var(--mismo-blue)] hover:underline font-medium" onClick={() => onNavigate('investigations')}>
             Investigations
           </button>{' '}
-          tab only—those cases are removed from this register until closed.
+          tab only; those cases are removed from this register until closed.
         </p>
       </div>
 
@@ -451,7 +451,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters }: 
                         </td>
                         <td className="px-3 py-2 text-[var(--color-text-secondary)] whitespace-nowrap">{formatDate(report.createdAt)}</td>
                         <td className="px-3 py-2 text-[var(--color-text-secondary)]">
-                          {report.isAnonymous ? 'Anonymous' : reporter ? `${reporter.firstName} ${reporter.lastName}` : '—'}
+                          {report.isAnonymous ? 'Anonymous' : reporter ? `${reporter.firstName} ${reporter.lastName}` : '-'}
                         </td>
                         <td className="px-3 py-2">
                           <span className={isIncidentIntakeComplete(report) ? 'text-emerald-700' : 'text-amber-700'}>
@@ -468,7 +468,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters }: 
                               {investigationWorkflowLabel(getEffectiveInvestigationPhase(inv))}
                             </button>
                           ) : (
-                            '—'
+                            '-'
                           )}
                         </td>
                         <td className="px-3 py-2">{getCategoryLabel(report.category)}</td>

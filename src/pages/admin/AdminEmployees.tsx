@@ -46,22 +46,22 @@ const IMPORT_TEMPLATE_STORAGE = 'mismo_csv_mapping_templates';
 
 function formatArchiveWindow(user: User): string {
   if (user.archiveStartDate || user.archiveEndDate) {
-    const a = user.archiveStartDate ? formatDate(user.archiveStartDate) : '—';
-    const b = user.archiveEndDate ? formatDate(user.archiveEndDate) : '—';
+    const a = user.archiveStartDate ? formatDate(user.archiveStartDate) : '-';
+    const b = user.archiveEndDate ? formatDate(user.archiveEndDate) : '-';
     return `${a} → ${b}`;
   }
   if (user.status === 'inactive') return 'Inactive (no archive dates)';
-  return '—';
+  return '-';
 }
 
 function displayEmployeeId(user: User): string {
-  return user.employeeId?.trim() || '—';
+  return user.employeeId?.trim() || '-';
 }
 
 export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminEmployeesProps) {
   const { users, responses, atRiskEmployees, sendNudge, orgSettings, getEmployeeEngagement, createUsers, updateUser } = dataStore;
 
-  /** Prompt "I have an issue" / HAS_ISSUE — show corner badge; not for no-response / low-engagement alone */
+  /** Prompt "I have an issue" / HAS_ISSUE: show corner badge; not for no-response / low-engagement alone */
   const userIdsWithReportedIssue = useMemo(() => {
     const ids = new Set<string>();
     for (const r of responses) {
@@ -470,7 +470,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
                         <span className="font-medium text-[var(--mismo-text)]">Employee ID:</span> {displayEmployeeId(employee)}
                       </p>
                       <p>
-                        <span className="font-medium text-[var(--mismo-text)]">Location:</span> {employee.location?.trim() || '—'}
+                        <span className="font-medium text-[var(--mismo-text)]">Location:</span> {employee.location?.trim() || '-'}
                       </p>
                       <p>
                         <span className="font-medium text-[var(--mismo-text)]">Archive:</span> {formatArchiveWindow(employee)}
@@ -570,7 +570,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
                         <Select value={fieldMap[key] ?? ''} onValueChange={(v) => setFieldMap((prev) => ({ ...prev, [key]: v }))}>
                           <SelectTrigger><SelectValue placeholder="Select CSV column" /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">— None —</SelectItem>
+                            <SelectItem value="">(None)</SelectItem>
                             {importHeaders.map((header) => (
                               <SelectItem key={header} value={header}>{header}</SelectItem>
                             ))}
@@ -631,8 +631,8 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
                             <td className="px-3 py-2">{row[fieldMap.lastName] ?? ''}</td>
                             <td className="px-3 py-2">{row[fieldMap.email] ?? ''}</td>
                             <td className="px-3 py-2">{row[fieldMap.department] ?? ''}</td>
-                            <td className="px-3 py-2">{fieldMap.employeeId ? (row[fieldMap.employeeId] ?? '') : '—'}</td>
-                            <td className="px-3 py-2">{fieldMap.location ? (row[fieldMap.location] ?? '') : '—'}</td>
+                            <td className="px-3 py-2">{fieldMap.employeeId ? (row[fieldMap.employeeId] ?? '') : '-'}</td>
+                            <td className="px-3 py-2">{fieldMap.location ? (row[fieldMap.location] ?? '') : '-'}</td>
                           </tr>
                         ))}
                       </tbody>

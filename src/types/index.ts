@@ -310,7 +310,7 @@ export interface Investigation {
   workflowPhase?: InvestigationWorkflowPhase;
   pickedUpAt?: Date;
   employeePreferredContact?: InvestigationEmployeeContactPreference;
-  /** Named individuals for this case — each should link to an employee profile in admin UI */
+  /** Named individuals for this case; each should link to an employee profile in admin UI */
   subjectUserIds?: string[];
   notes?: InvestigationNote[];
   /** Final outcome text shared with the employee (plain text; line breaks preserved in UI) */
