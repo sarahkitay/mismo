@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { PromptAnswer } from '@/types';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Icons } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,13 @@ const EQC_RETALIATION_NOTE =
 
 const EQC_CONFIRMATION_BODY =
   'We are prepared to fully investigate any and all acts and circumstances surrounding your response. However, if you selected "YES" by mistake, please go back to the prior screen and submit your intended response. If your intended response is "YES" please submit now.';
+
+/** Shown after the main check-in when the prompt has `includeFinancialQuestion`. */
+const FINANCIAL_SCREENING_QUESTION =
+  'Are you aware of any issue related to pay, bonuses, reimbursements, benefits, or other compensation that you believe may be incorrect, withheld without proper explanation, or inconsistent with company policy or applicable law?';
+
+const FINANCIAL_SCREENING_NOTE =
+  'This question is included because your organization turned on the optional financial screening for this check-in. Your answer is stored with your check-in response.';
 
 function formatEqcHeaderDate(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -48,15 +56,63 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
   const heroPrompt = pendingPromptsForEmployee[0];
   const showCheckInGate = Boolean(heroPrompt);
   const isIncidentGate = Boolean(heroPrompt?.prompt.type === 'INCIDENT');
+  const wantsFinancialFollowUp = Boolean(heroPrompt?.prompt.includeFinancialQuestion);
   const [incidentStep, setIncidentStep] = useState<'question' | 'yes_confirm'>('question');
+  type FinancialFollowUp = {
+    deliveryId: string;
+    answer: PromptAnswer;
+    promptIdForReport?: string;
+    incidentRestoreStep?: 'question' | 'yes_confirm';
+  };
+  const [financialFollowUp, setFinancialFollowUp] = useState<FinancialFollowUp | null>(null);
   useEffect(() => {
     setIncidentStep('question');
+    setFinancialFollowUp(null);
   }, [heroPrompt?.id]);
 
   const isFullyCaughtUp = pendingPromptsForEmployee.length === 0 && unreadPolicies.length === 0;
   const eqcHeaderDate = formatEqcHeaderDate(new Date());
 
+  const submitFinancialAndClose = (hasPayConcern: boolean) => {
+    if (!financialFollowUp) return;
+    const note = hasPayConcern
+      ? 'Financial follow-up: employee indicated a pay, compensation, or benefits-related concern.'
+      : 'Financial follow-up: no pay, compensation, or benefits-related concern indicated.';
+    const { deliveryId, answer, promptIdForReport } = financialFollowUp;
+    submitPromptResponse(deliveryId, answer, note);
+    setFinancialFollowUp(null);
+    setIncidentStep('question');
+    if (answer === 'HAS_ISSUE' && promptIdForReport) {
+      toast.info(
+        'HR is alerted on the admin dashboard and by email (simulated). You will receive a receipt with next steps and a link to your incident portal to complete documentation.',
+        { duration: 7000 }
+      );
+      onNavigate('report-new', { promptId: promptIdForReport, deliveryId });
+    } else if (answer === 'HAS_ISSUE' && isIncidentGate) {
+      toast.success('Your “Yes” response has been recorded for today. You are not required to add details for this check-in.');
+    } else if (answer === 'NO_ISSUE' && isIncidentGate) {
+      toast.success('Your “No” response has been recorded. No further action is required for this check-in.');
+    } else {
+      toast.success('Response recorded in compliance log.');
+    }
+  };
+
+  const cancelFinancialFollowUp = () => {
+    if (financialFollowUp?.incidentRestoreStep) {
+      setIncidentStep(financialFollowUp.incidentRestoreStep);
+    }
+    setFinancialFollowUp(null);
+  };
+
   const handleNoIssues = (deliveryId: string) => {
+    if (wantsFinancialFollowUp) {
+      setFinancialFollowUp({
+        deliveryId,
+        answer: 'NO_ISSUE',
+        incidentRestoreStep: isIncidentGate ? incidentStep : undefined,
+      });
+      return;
+    }
     submitPromptResponse(deliveryId, 'NO_ISSUE');
     toast.success(
       isIncidentGate
@@ -67,6 +123,10 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
 
   /** Non–incident prompts: log issue and open optional detailed report flow. */
   const handleHaveIssueWithReport = (deliveryId: string, promptId: string) => {
+    if (wantsFinancialFollowUp) {
+      setFinancialFollowUp({ deliveryId, answer: 'HAS_ISSUE', promptIdForReport: promptId });
+      return;
+    }
     submitPromptResponse(deliveryId, 'HAS_ISSUE');
     toast.info(
       'HR is alerted on the admin dashboard and by email (simulated). You will receive a receipt with next steps and a link to your incident portal to complete documentation.',
@@ -80,6 +140,10 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
   };
 
   const handleIncidentYesSubmit = (deliveryId: string) => {
+    if (wantsFinancialFollowUp) {
+      setFinancialFollowUp({ deliveryId, answer: 'HAS_ISSUE', incidentRestoreStep: 'yes_confirm' });
+      return;
+    }
     submitPromptResponse(deliveryId, 'HAS_ISSUE');
     setIncidentStep('question');
     toast.success('Your “Yes” response has been recorded for today. You are not required to add details for this check-in.');
@@ -129,6 +193,45 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
         <Card className="mismo-card border-2 border-[var(--color-primary-700)] shadow-[var(--shadow-2)]">
           <CardContent className="p-8 md:p-10">
             <div className="max-w-3xl">
+              {financialFollowUp ? (
+                <>
+                  <p className="text-xs tracking-[0.08em] uppercase text-[var(--color-text-secondary)]">
+                    {isIncidentGate ? 'Check-in required before you continue' : 'Compliance Check-In Required'}
+                  </p>
+                  <h2 className="mismo-heading text-2xl md:text-3xl mt-3 text-[var(--color-primary-900)]">Pay and compensation screening</h2>
+                  <p className="text-base md:text-lg text-[var(--color-text-primary)] mt-5 leading-relaxed">{FINANCIAL_SCREENING_QUESTION}</p>
+                  <p className="text-sm text-[var(--color-text-secondary)] mt-4 leading-relaxed border-l-2 border-[var(--color-primary-500)] pl-4">
+                    {FINANCIAL_SCREENING_NOTE}
+                  </p>
+                  {heroPrompt?.dueAt && (
+                    <p className="text-sm text-[var(--color-text-secondary)] mt-4 flex items-center gap-1.5">
+                      <Icons.clock className="h-4 w-4 shrink-0" />
+                      Due by {formatDate(heroPrompt.dueAt)}
+                    </p>
+                  )}
+                  <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Button
+                      variant="outline"
+                      className="h-14 text-base border-[var(--color-emerald-600)] text-[var(--color-emerald-600)] shadow-[var(--shadow-1)] enterprise-interactive"
+                      onClick={() => submitFinancialAndClose(false)}
+                    >
+                      No concern
+                    </Button>
+                    <Button
+                      className="h-14 text-base bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)] shadow-[var(--shadow-2)] enterprise-interactive"
+                      onClick={() => submitFinancialAndClose(true)}
+                    >
+                      Yes, I have a concern
+                    </Button>
+                  </div>
+                  <div className="mt-6">
+                    <Button type="button" variant="ghost" className="text-[var(--mismo-blue)]" onClick={cancelFinancialFollowUp}>
+                      Back to previous step
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
               <p className="text-xs tracking-[0.08em] uppercase text-[var(--color-text-secondary)]">
                 {isIncidentGate ? 'Check-in required before you continue' : 'Compliance Check-In Required'}
               </p>
@@ -252,6 +355,8 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                       Report an incident
                     </Button>
                   </div>
+                </>
+              )}
                 </>
               )}
             </div>

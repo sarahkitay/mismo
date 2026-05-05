@@ -268,6 +268,7 @@ export const mockPrompts: Prompt[] = [
     createdBy: 'user-admin-1',
     createdAt: new Date(),
     updatedAt: new Date(),
+    includeFinancialQuestion: true,
   },
   {
     id: 'prompt-2',
@@ -312,6 +313,7 @@ export const mockPrompts: Prompt[] = [
     createdAt: new Date(),
     updatedAt: new Date(),
     routeToPayroll: true,
+    includeFinancialQuestion: true,
   },
   {
     id: 'prompt-4',

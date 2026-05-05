@@ -259,11 +259,13 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <Card className="mismo-card">
-          <CardContent className="p-5 space-y-3 text-center flex flex-col items-center">
-            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Yes responses</p>
-            <p className="font-command text-4xl font-medium tabular-nums text-[var(--color-alert-600)]">{countYesResponses}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch">
+        <Card className="mismo-card h-full">
+          <CardContent className="p-5 flex h-full flex-col items-center text-center">
+            <p className="min-h-[2.75rem] flex w-full max-w-[260px] items-center justify-center text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)] leading-snug">
+              Yes responses
+            </p>
+            <p className="font-command text-4xl font-medium tabular-nums leading-none text-[var(--color-alert-600)] pb-8">{countYesResponses}</p>
             <Button
               variant="outline"
               className="border-[var(--color-alert-600)] text-[var(--color-alert-600)] enterprise-interactive font-command"
@@ -271,26 +273,30 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
             >
               Review Yes responses →
             </Button>
-            <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[220px] pt-1">
+            <p className="mt-8 max-w-[220px] text-xs font-command text-[var(--color-text-secondary)] leading-relaxed">
               Check-in answers where staff chose Yes; review first (newest first in the register).
             </p>
           </CardContent>
         </Card>
-        <Card className="mismo-card">
-          <CardContent className="p-5 space-y-3 text-center flex flex-col items-center">
-            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Open investigations</p>
-            <p className="font-command text-4xl font-medium tabular-nums">{countInvestigations}</p>
+        <Card className="mismo-card h-full">
+          <CardContent className="p-5 flex h-full flex-col items-center text-center">
+            <p className="min-h-[2.75rem] flex w-full max-w-[260px] items-center justify-center text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)] leading-snug">
+              Open investigations
+            </p>
+            <p className="font-command text-4xl font-medium tabular-nums leading-none pb-8">{countInvestigations}</p>
             <Button variant="outline" className="border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command" onClick={() => onNavigate('investigations')}>
               View investigations →
             </Button>
-            <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[220px] pt-1">In progress on the investigations register.</p>
+            <p className="mt-8 max-w-[220px] text-xs font-command text-[var(--color-text-secondary)] leading-relaxed">In progress on the investigations register.</p>
           </CardContent>
         </Card>
-        <Card className="mismo-card">
-          <CardContent className="p-5 space-y-3 text-center flex flex-col items-center">
-            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Memo responses</p>
-            <p className="font-command text-4xl font-medium tabular-nums">{countActivePublishedMemos}</p>
-            <div className="flex flex-col gap-2 w-full max-w-[260px]">
+        <Card className="mismo-card h-full">
+          <CardContent className="p-5 flex h-full flex-col items-center text-center">
+            <p className="min-h-[2.75rem] flex w-full max-w-[260px] items-center justify-center text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)] leading-snug">
+              Memo responses
+            </p>
+            <p className="font-command text-4xl font-medium tabular-nums leading-none pb-8">{countActivePublishedMemos}</p>
+            <div className="flex w-full max-w-[260px] flex-col gap-2">
               <Button
                 variant="outline"
                 className="border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command"
@@ -302,22 +308,26 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
                 Manage memos
               </Button>
             </div>
-            <p className="text-sm font-command text-[var(--color-text-secondary)] tabular-nums pt-1">
-              <span className="text-[var(--color-alert-600)] font-semibold">{countAcks}</span> pending tasks
-            </p>
-            <p className="text-xs font-command text-[var(--color-text-secondary)] max-w-[240px]">
-              Published memos live today; second figure is open memo tasks (sign-offs).
-            </p>
+            <div className="mt-8 flex max-w-[240px] flex-col gap-2">
+              <p className="text-sm font-command text-[var(--color-text-secondary)] tabular-nums leading-relaxed">
+                <span className="text-[var(--color-alert-600)] font-semibold">{countAcks}</span> pending tasks
+              </p>
+              <p className="text-xs font-command text-[var(--color-text-secondary)] leading-relaxed">
+                Published memos live today; second figure is open memo tasks (sign-offs).
+              </p>
+            </div>
           </CardContent>
         </Card>
-        <Card className="mismo-card">
-          <CardContent className="p-5 space-y-2 text-center flex flex-col items-center">
-            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">At-Risk Employees</p>
-            <p className="font-command text-4xl font-medium tabular-nums">{countAtRisk}</p>
+        <Card className="mismo-card h-full">
+          <CardContent className="p-5 flex h-full flex-col items-center text-center">
+            <p className="min-h-[2.75rem] flex w-full max-w-[260px] items-center justify-center text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)] leading-snug">
+              At-Risk Employees
+            </p>
+            <p className="font-command text-4xl font-medium tabular-nums leading-none pb-8">{countAtRisk}</p>
             <Button variant="outline" className="border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command" onClick={() => onNavigate('users', { atRisk: 'true' })}>
               View Employees
             </Button>
-            <div className="flex gap-2 justify-center flex-wrap">
+            <div className="mt-8 flex flex-wrap justify-center gap-2">
               <Button variant="outline" size="sm" className="enterprise-interactive" onClick={exportAtRiskEmails}>
                 Export Email List
               </Button>
