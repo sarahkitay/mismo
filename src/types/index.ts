@@ -192,6 +192,8 @@ export interface Prompt {
   updatedAt: Date;
   /** When true, HR can send responses to payroll team */
   routeToPayroll?: boolean;
+  /** When true, employees see a pay/compensation screening question after the main check-in answer, before the response is saved */
+  includeFinancialQuestion?: boolean;
 }
 
 // Prompt Delivery

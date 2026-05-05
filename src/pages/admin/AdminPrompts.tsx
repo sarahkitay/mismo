@@ -84,6 +84,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
     departmentIds: [] as string[],
     severityOnHasIssue: 'MEDIUM' as ReportSeverity,
     allowAnonymousReports: true,
+    includeFinancialQuestion: false,
     startAt: '',
     endAt: '',
   });
@@ -139,6 +140,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
       },
       severityOnHasIssue: newPrompt.severityOnHasIssue,
       allowAnonymousReports: newPrompt.allowAnonymousReports,
+      includeFinancialQuestion: newPrompt.includeFinancialQuestion,
       status: 'ACTIVE',
     });
     
@@ -153,6 +155,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
       departmentIds: [],
       severityOnHasIssue: 'MEDIUM',
       allowAnonymousReports: true,
+      includeFinancialQuestion: false,
       startAt: '',
       endAt: '',
     });
@@ -312,6 +315,20 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                   onCheckedChange={(v) => setNewPrompt(prev => ({ ...prev, allowAnonymousReports: v }))}
                 />
               </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Financial screening question</Label>
+                  <p className="text-sm text-[var(--mismo-text-secondary)]">
+                    After the main check-in answer, employees see one follow-up about pay, bonuses, reimbursements, and benefits before the
+                    response is saved.
+                  </p>
+                </div>
+                <Switch
+                  checked={newPrompt.includeFinancialQuestion}
+                  onCheckedChange={(v) => setNewPrompt((prev) => ({ ...prev, includeFinancialQuestion: v }))}
+                />
+              </div>
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -431,6 +448,11 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                           <Badge variant="outline">{getPromptTypeLabel(prompt.type)}</Badge>
                         </>
                       )}
+                      {prompt.includeFinancialQuestion ? (
+                        <Badge variant="outline" className="border-[var(--color-primary-700)] text-[var(--color-primary-800)]">
+                          Financial follow-up
+                        </Badge>
+                      ) : null}
                     </div>
                     
                     <h3 className="font-semibold text-[var(--mismo-text)] text-lg">
@@ -553,8 +575,19 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                     }>
                       {prompt.status}
                     </Badge>
+                    {prompt.includeFinancialQuestion ? (
+                      <Badge variant="outline" className="border-[var(--color-primary-700)] text-[var(--color-primary-800)]">
+                        Financial follow-up
+                      </Badge>
+                    ) : null}
                   </div>
                   <p className="text-sm text-[var(--mismo-text-secondary)]">{prompt.description}</p>
+                  <p className="text-sm text-[var(--mismo-text-secondary)]">
+                    <span className="font-medium text-[var(--mismo-text)]">Pay and compensation screening: </span>
+                    {prompt.includeFinancialQuestion
+                      ? 'Employees answer this after their main check-in response, before the check-in is saved.'
+                      : 'Not enabled for this prompt.'}
+                  </p>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
                       <p className="text-[var(--mismo-text-muted)]">Cadence</p>
