@@ -19,17 +19,27 @@ import { Label } from '@/components/ui/label';
 interface AdminPoliciesProps {
   dataStore: DataStore;
   onNavigate: (page: string, params?: Record<string, string>) => void;
+  initialFilters?: Record<string, string>;
 }
 
-export function AdminPolicies({ dataStore, onNavigate }: AdminPoliciesProps) {
+export function AdminPolicies({ dataStore, onNavigate, initialFilters }: AdminPoliciesProps) {
   const [titleQuery, setTitleQuery] = useState('');
   const [dateRange, setDateRange] = useState<DateRangeState>(defaultDateRange);
   const [sortBy, setSortBy] = useState<'NEWEST' | 'OLDEST' | 'ALPHA'>('NEWEST');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'ARCHIVED' | 'REPLACED'>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [showArchived, setShowArchived] = useState(false);
-  const [page, setPage] = useState(1);
+  const [memoQueueFilter, setMemoQueueFilter] = useState<'ALL' | 'PENDING_ACK' | 'CLARIFICATION'>('ALL');
+
+  const filterKey = JSON.stringify(initialFilters ?? {});
+  useEffect(() => {
+    const q = initialFilters?.memoQueue;
+    if (q === 'pending_ack') setMemoQueueFilter('PENDING_ACK');
+    else if (q === 'clarification') setMemoQueueFilter('CLARIFICATION');
+    else setMemoQueueFilter('ALL');
+  }, [filterKey]);
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const pageSize = 10;
 
   useEffect(() => {
@@ -45,6 +55,7 @@ export function AdminPolicies({ dataStore, onNavigate }: AdminPoliciesProps) {
 
   const filtered = useMemo(() => {
     const q = titleQuery.trim().toLowerCase();
+    const employees = dataStore.users.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');
     return dataStore.policies
       .filter((memo) => {
         const cat = getMemoCategoryDisplay(memo);
@@ -59,6 +70,19 @@ export function AdminPolicies({ dataStore, onNavigate }: AdminPoliciesProps) {
           (statusFilter === 'ACTIVE' && memo.status === 'PUBLISHED') ||
           (statusFilter === 'ARCHIVED' && memo.status === 'ARCHIVED') ||
           (statusFilter === 'REPLACED' && !!memo.supersededBy);
+        if (memoQueueFilter === 'PENDING_ACK') {
+          if (memo.status !== 'PUBLISHED' || !memo.acknowledgmentRequired) return false;
+          const anyMissing = employees.some(
+            (emp) => !dataStore.policyAcknowledgements.some((a) => a.policyId === memo.id && a.userId === emp.id)
+          );
+          if (!anyMissing) return false;
+        }
+        if (memoQueueFilter === 'CLARIFICATION') {
+          const hasClar = dataStore.policyAcknowledgements.some(
+            (a) => a.policyId === memo.id && a.outcome === 'REQUEST_CLARIFICATION'
+          );
+          if (!hasClar) return false;
+        }
         return matchesCategory && matchesTitle && matchesDate && matchesStatus;
       })
       .sort((a, b) => {
@@ -66,7 +90,7 @@ export function AdminPolicies({ dataStore, onNavigate }: AdminPoliciesProps) {
         if (sortBy === 'OLDEST') return a.createdAt.getTime() - b.createdAt.getTime();
         return b.createdAt.getTime() - a.createdAt.getTime();
       });
-  }, [dataStore.policies, dateRange, titleQuery, sortBy, statusFilter, categoryFilter]);
+  }, [dataStore.policies, dataStore.users, dataStore.policyAcknowledgements, dateRange, titleQuery, sortBy, statusFilter, categoryFilter, memoQueueFilter]);
 
   const activeMemos = filtered.filter((m) => m.status !== 'ARCHIVED');
   const archivedMemos = filtered.filter((m) => m.status === 'ARCHIVED');
@@ -81,6 +105,14 @@ export function AdminPolicies({ dataStore, onNavigate }: AdminPoliciesProps) {
           <p className="text-[var(--mismo-text-secondary)]">
             Create, publish, and version memos. Search by category, title, or date range (publish or completion due date).
           </p>
+          {memoQueueFilter !== 'ALL' && (
+            <p className="mt-2 text-sm text-[var(--color-primary-900)] border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-3 py-2">
+              URL filter: {memoQueueFilter === 'PENDING_ACK' ? 'Memos with missing acknowledgements' : 'Memos with clarification requests'}.
+              <button type="button" className="ml-2 text-[var(--mismo-blue)] underline" onClick={() => onNavigate('policies', {})}>
+                Clear
+              </button>
+            </p>
+          )}
         </div>
         <Button className="bg-[var(--mismo-blue)] hover:bg-blue-600 shrink-0" onClick={() => onNavigate('policy-detail', { id: 'new' })}>
           Add memo

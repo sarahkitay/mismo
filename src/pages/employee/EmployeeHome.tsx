@@ -71,6 +71,8 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
   }, [heroPrompt?.id]);
 
   const isFullyCaughtUp = pendingPromptsForEmployee.length === 0 && unreadPolicies.length === 0;
+  /** No mandatory check-in card: show the lighter dashboard (with or without memos to sign). */
+  const showRelaxedDashboard = !showCheckInGate && pendingPromptsForEmployee.length === 0;
   const eqcHeaderDate = formatEqcHeaderDate(new Date());
 
   const submitFinancialAndClose = (hasPayConcern: boolean) => {
@@ -366,7 +368,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
 
       {!showCheckInGate && (
         <>
-          {isFullyCaughtUp ? (
+          {showRelaxedDashboard ? (
             <>
               <Card className="mismo-card border border-[var(--color-emerald-600)]/35 bg-gradient-to-br from-[var(--mismo-green-light)]/40 to-[var(--color-surface-100)] shadow-[var(--shadow-1)] dashboard-header">
                 <CardContent className="p-8 md:p-10">
@@ -377,14 +379,46 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                       </div>
                     </div>
                     <div className="flex-1 text-center md:text-left min-w-0">
-                      <p className="text-xs tracking-[0.1em] uppercase text-[var(--color-text-secondary)]">Dashboard</p>
+                      <p className="text-xs tracking-[0.1em] uppercase text-[var(--color-text-secondary)]">Your dashboard</p>
                       <h1 className="mismo-heading text-2xl md:text-3xl mt-1 text-[var(--color-primary-900)]">
-                        You&apos;re all caught up, {currentUser.firstName}
+                        {isFullyCaughtUp ? (
+                          <>You&apos;re all caught up, {currentUser.firstName}</>
+                        ) : (
+                          <>Nice work, {currentUser.firstName}</>
+                        )}
                       </h1>
-                      <p className="text-base text-[var(--color-text-secondary)] mt-3 leading-relaxed max-w-2xl mx-auto md:mx-0">
-                        Your check-ins are complete and no company memos need your acknowledgement right now. That helps keep everyone
-                        safer. Thank you for staying on top of it.
-                      </p>
+                      {isFullyCaughtUp ? (
+                        <p className="text-base text-[var(--color-text-secondary)] mt-3 leading-relaxed max-w-2xl mx-auto md:mx-0">
+                          Your check-ins are done and your memo sign-offs are up to date. That kind of follow-through keeps everyone safer
+                          and makes compliance feel a little lighter. Take a moment to feel good about being on top of it.
+                        </p>
+                      ) : (
+                        <p className="text-base text-[var(--color-text-secondary)] mt-3 leading-relaxed max-w-2xl mx-auto md:mx-0">
+                          Your check-ins are complete. When you have a minute, finish signing the company memos below in your library so
+                          everything stays on record. You&apos;re almost there.
+                        </p>
+                      )}
+                      <ul className="mt-4 text-sm text-[var(--color-text-secondary)] space-y-1.5 max-w-2xl mx-auto md:mx-0 list-none">
+                        <li className="flex items-center gap-2 justify-center md:justify-start">
+                          <Icons.checkCircle className="h-4 w-4 text-[var(--color-emerald-600)] shrink-0" />
+                          <span>No check-ins waiting on you right now</span>
+                        </li>
+                        <li className="flex items-center gap-2 justify-center md:justify-start">
+                          {isFullyCaughtUp ? (
+                            <>
+                              <Icons.checkCircle className="h-4 w-4 text-[var(--color-emerald-600)] shrink-0" />
+                              <span>Memos that need your signature are cleared</span>
+                            </>
+                          ) : (
+                            <>
+                              <Icons.bookOpen className="h-4 w-4 text-[var(--mismo-blue)] shrink-0" />
+                              <span>
+                                {unreadPolicies.length} memo{unreadPolicies.length === 1 ? '' : 's'} waiting in your library
+                              </span>
+                            </>
+                          )}
+                        </li>
+                      </ul>
                       <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center md:justify-start flex-wrap">
                         <Button
                           className="h-12 bg-[var(--mismo-blue)] hover:bg-blue-600 shadow-[var(--shadow-1)] enterprise-interactive"
@@ -397,15 +431,51 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                           <Icons.bookOpen className="h-4 w-4 mr-2" />
                           Open library
                         </Button>
+                        <Button variant="outline" className="h-12 enterprise-interactive" onClick={() => onNavigate('reports')}>
+                          <Icons.reports className="h-4 w-4 mr-2" />
+                          My incident reports
+                        </Button>
                       </div>
+                      <p className="text-sm text-[var(--color-text-muted)] mt-5 max-w-2xl mx-auto md:mx-0">
+                        If something happens at work, you can use <span className="font-medium text-[var(--color-text-primary)]">Report an incident</span> any
+                        time. It does not replace your check-ins; it is there whenever you need it.
+                      </p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
+              {!isFullyCaughtUp && unreadPolicies.length > 0 && (
+                <Card className="mismo-card border border-[var(--color-border-200)]">
+                  <CardContent className="p-5">
+                    <h2 className="text-lg font-semibold text-[var(--mismo-text)]">Company memos needing your acknowledgement</h2>
+                    <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
+                      Open your library to read and sign. Your dashboard will feel even lighter when these are done.
+                    </p>
+                    <div className="mt-3 space-y-2">
+                      {unreadPolicies.slice(0, 5).map((policy) => (
+                        <Button
+                          key={policy.id}
+                          variant="outline"
+                          className="w-full justify-start"
+                          onClick={() => onNavigate('resources')}
+                        >
+                          <Icons.bookOpen className="h-4 w-4 mr-2" />
+                          {policy.title}
+                          <span className="ml-2 text-xs text-[var(--mismo-amber)]">Action needed</span>
+                        </Button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               <div>
-                <h2 className="text-lg font-semibold text-[var(--mismo-text)] mb-3">Shortcuts</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <h2 className="text-lg font-semibold text-[var(--mismo-text)] mb-1">Quick links</h2>
+                <p className="text-sm text-[var(--mismo-text-secondary)] mb-3">
+                  Jump back to something useful so this page never feels empty.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <Card
                     className="mismo-card mismo-card-hover cursor-pointer border border-[var(--color-border-200)]"
                     onClick={() => onNavigate('resources')}
@@ -432,6 +502,18 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                   </Card>
                   <Card
                     className="mismo-card mismo-card-hover cursor-pointer border border-[var(--color-border-200)]"
+                    onClick={() => onNavigate('settings')}
+                  >
+                    <CardContent className="p-5">
+                      <div className="w-10 h-10 rounded-lg bg-[var(--color-surface-200)] flex items-center justify-center mb-3">
+                        <Icons.settings className="h-5 w-5 text-[var(--mismo-text-secondary)]" />
+                      </div>
+                      <h3 className="font-semibold text-[var(--mismo-text)]">Settings</h3>
+                      <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">Profile and notifications</p>
+                    </CardContent>
+                  </Card>
+                  <Card
+                    className="mismo-card mismo-card-hover cursor-pointer border border-[var(--color-border-200)]"
                     onClick={() => onNavigate('help')}
                   >
                     <CardContent className="p-5">
@@ -443,6 +525,16 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                     </CardContent>
                   </Card>
                 </div>
+              </div>
+
+              <div className="rounded-lg border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <p className="text-sm text-[var(--mismo-text-secondary)]">
+                  Something urgent or sensitive? Your company wants to hear from you.
+                </p>
+                <Button variant="outline" className="shrink-0 border-[var(--mismo-blue)] text-[var(--mismo-blue)]" onClick={() => onNavigate('report-new')}>
+                  <Icons.flag className="h-4 w-4 mr-2" />
+                  Report an incident
+                </Button>
               </div>
 
               <div className="reports-section">
@@ -487,8 +579,8 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                         <Icons.inbox className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                         <p className="text-[var(--mismo-text-secondary)]">You haven&apos;t submitted any incident reports yet.</p>
                         <p className="text-sm text-[var(--mismo-text-secondary)] mt-2">
-                          If something happens, use <span className="font-medium text-[var(--mismo-text)]">Report an incident</span> above;
-                          your team is notified right away.
+                          That&apos;s okay. If something happens, use <span className="font-medium text-[var(--mismo-text)]">Report an incident</span> at the top of
+                          this page; your team is notified right away.
                         </p>
                       </div>
                     )}
@@ -503,7 +595,10 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                   <div>
                     <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Employee Compliance Workspace</h1>
                     <p className="text-[var(--mismo-text-secondary)] mt-1">
-                      {currentUser.firstName}, no check-ins are due right now. Finish the items below when you can.
+                      {currentUser.firstName},{' '}
+                      {pendingCount === 1
+                        ? 'complete your open check-in below, then use the rest of the page for memos and shortcuts.'
+                        : 'complete your open check-ins below, then use the rest of the page for memos and shortcuts.'}
                     </p>
                   </div>
                   <Button

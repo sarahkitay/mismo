@@ -8,7 +8,9 @@ interface NavItem {
   id: string;
   label: string;
   icon: IconName;
-  badge?: number;
+  badgeKey?: keyof DataStore['dashboardCounts'];
+  /** When set, navigate with these query params so the badge matches the filtered list */
+  badgeNavigateParams?: Record<string, string>;
 }
 
 const employeeNavItems: NavItem[] = [
@@ -20,47 +22,58 @@ const employeeNavItems: NavItem[] = [
 
 const adminNavItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-  { id: 'policies', label: 'Memos & announcements', icon: 'bookOpen' },
-  { id: 'users', label: 'Employees', icon: 'employees' },
-  { id: 'investigations', label: 'Investigations', icon: 'investigations' },
-  { id: 'prompts', label: 'Prompts', icon: 'prompts' },
-  { id: 'prompt-responses', label: 'Case register & check-ins', icon: 'reports' },
+  {
+    id: 'prompt-responses',
+    label: 'Prompt Responses',
+    icon: 'reports',
+    badgeKey: 'yesResponsesNeedingReview',
+    badgeNavigateParams: { answer: 'HAS_ISSUE', needs_review: '1', rangePreset: 'ALL' },
+  },
+  {
+    id: 'investigations',
+    label: 'Investigations',
+    icon: 'investigations',
+    badgeKey: 'activeInvestigations',
+    badgeNavigateParams: { status: 'OPEN' },
+  },
+  {
+    id: 'policies',
+    label: 'Memos & Announcements',
+    icon: 'bookOpen',
+    badgeKey: 'memoAcknowledgementsPending',
+    badgeNavigateParams: { memoQueue: 'pending_ack' },
+  },
   { id: 'analytics', label: 'Analytics', icon: 'analytics' },
-  { id: 'compliance', label: 'Compliance', icon: 'shield' },
-  { id: 'system-health', label: 'System Health', icon: 'systemHealth' },
+  { id: 'compliance', label: 'State Compliance', icon: 'shield' },
+  { id: 'users', label: 'Manage Employees', icon: 'employees', badgeKey: 'atRiskEmployees', badgeNavigateParams: { atRisk: 'true' } },
+  { id: 'prompts', label: 'Manage Prompts', icon: 'prompts' },
+  { id: 'system-health', label: 'System Health', icon: 'systemHealth', badgeKey: 'criticalReports' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
-const clientNavItems: NavItem[] = [
-  { id: 'client-dashboard', label: 'Overview', icon: 'dashboard' },
-];
+const clientNavItems: NavItem[] = [{ id: 'client-dashboard', label: 'Overview', icon: 'dashboard' }];
 
 interface SidebarProps {
   dataStore: DataStore;
   activePage: string;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, params?: Record<string, string>) => void;
   isOpen?: boolean;
   onClose?: () => void;
 }
 
-function SidebarContent({ 
-  dataStore, 
-  activePage, 
-  onNavigate 
+function SidebarContent({
+  dataStore,
+  activePage,
+  onNavigate,
 }: Omit<SidebarProps, 'isOpen' | 'onClose'>) {
   const { currentRole, dashboardCounts, employeeReports } = dataStore;
   const navItems =
-    currentRole === 'EMPLOYEE'
-      ? employeeNavItems
-      : currentRole === 'CLIENT'
-        ? clientNavItems
-        : adminNavItems;
-  
-  // Get badge count for nav items
-  const getBadgeCount = (itemId: string): number | undefined => {
+    currentRole === 'EMPLOYEE' ? employeeNavItems : currentRole === 'CLIENT' ? clientNavItems : adminNavItems;
+
+  const getBadgeCount = (item: NavItem): number | undefined => {
     if (currentRole === 'CLIENT') return undefined;
     if (currentRole === 'EMPLOYEE') {
-      switch (itemId) {
+      switch (item.id) {
         case 'home':
           return dashboardCounts.scheduledMemos > 0 ? dashboardCounts.scheduledMemos : undefined;
         case 'reports':
@@ -69,24 +82,19 @@ function SidebarContent({
           return undefined;
       }
     }
-    
-    switch (itemId) {
-      case 'prompt-responses':
-        return dashboardCounts.criticalReports > 0 ? dashboardCounts.criticalReports : undefined;
-      case 'investigations':
-        return dashboardCounts.activeInvestigations > 0 ? dashboardCounts.activeInvestigations : undefined;
-      case 'employees':
-      case 'users':
-        return dashboardCounts.atRiskEmployees > 0 ? dashboardCounts.atRiskEmployees : undefined;
-      case 'prompts':
-        return dashboardCounts.scheduledMemos > 0 ? dashboardCounts.scheduledMemos : undefined;
-      case 'system-health':
-        return dashboardCounts.criticalReports > 0 ? dashboardCounts.criticalReports : undefined;
-      default:
-        return undefined;
-    }
+    if (!item.badgeKey) return undefined;
+    const n = dashboardCounts[item.badgeKey];
+    return typeof n === 'number' && n > 0 ? n : undefined;
   };
-  
+
+  const goNav = (item: NavItem) => {
+    if (currentRole !== 'EMPLOYEE' && currentRole !== 'CLIENT' && item.badgeNavigateParams) {
+      onNavigate(item.id, item.badgeNavigateParams);
+      return;
+    }
+    onNavigate(item.id);
+  };
+
   return (
     <nav className="flex flex-col h-full py-4">
       <div className="px-4 mb-4">
@@ -98,21 +106,22 @@ function SidebarContent({
               : 'Human Resources'}
         </p>
       </div>
-      
+
       <div className="flex-1 px-2 space-y-0.5">
         {navItems.map((item) => {
           const Icon = Icons[item.icon];
-          const badgeCount = getBadgeCount(item.id);
+          const badgeCount = getBadgeCount(item);
           const isActive =
             activePage === item.id ||
             (item.id === 'policies' && activePage === 'announcements') ||
             (item.id === 'prompt-responses' &&
               (activePage === 'report-detail' || activePage === 'prompt-response-detail'));
-          
+
           return (
             <button
               key={item.id}
-              onClick={() => onNavigate(item.id)}
+              type="button"
+              onClick={() => goNav(item)}
               className={cn(
                 'w-full flex items-center gap-2.5 px-3 py-1.5 text-sm font-medium transition-colors border border-transparent',
                 isActive
@@ -131,10 +140,10 @@ function SidebarContent({
           );
         })}
       </div>
-      
-      {/* Bottom section */}
+
       <div className="px-4 pt-4 border-t border-[var(--color-primary-700)]">
         <button
+          type="button"
           onClick={() => onNavigate('help')}
           className={cn(
             'w-full flex items-center gap-2.5 px-3 py-1.5 text-sm font-medium transition-colors border border-transparent',
@@ -147,6 +156,7 @@ function SidebarContent({
           <span className="flex-1 text-left">Help & Support</span>
         </button>
         <button
+          type="button"
           onClick={() => onNavigate('settings')}
           className={cn(
             'w-full mt-1 flex items-center gap-2.5 px-3 py-1.5 text-sm font-medium transition-colors border border-transparent',
@@ -163,25 +173,13 @@ function SidebarContent({
   );
 }
 
-export function Sidebar({ 
-  dataStore, 
-  activePage, 
-  onNavigate, 
-  isOpen, 
-  onClose 
-}: SidebarProps) {
+export function Sidebar({ dataStore, activePage, onNavigate, isOpen, onClose }: SidebarProps) {
   return (
     <>
-      {/* Desktop Sidebar */}
       <aside className="hidden lg:block fixed left-0 top-16 w-64 h-[calc(100vh-64px)] bg-[var(--color-primary-900)] border-r border-[var(--color-primary-700)] overflow-y-auto z-40 pointer-events-auto">
-        <SidebarContent 
-          dataStore={dataStore} 
-          activePage={activePage} 
-          onNavigate={onNavigate} 
-        />
+        <SidebarContent dataStore={dataStore} activePage={activePage} onNavigate={onNavigate} />
       </aside>
-      
-      {/* Mobile Sidebar */}
+
       <Sheet
         open={isOpen}
         onOpenChange={(open) => {
@@ -192,13 +190,13 @@ export function Sidebar({
       >
         <SheetContent side="left" className="w-64 p-0">
           <div className="pt-16">
-            <SidebarContent 
-              dataStore={dataStore} 
-              activePage={activePage} 
-              onNavigate={(page) => {
-                onNavigate(page);
+            <SidebarContent
+              dataStore={dataStore}
+              activePage={activePage}
+              onNavigate={(page, params) => {
+                onNavigate(page, params);
                 onClose?.();
-              }} 
+              }}
             />
           </div>
         </SheetContent>

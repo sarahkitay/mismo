@@ -81,7 +81,12 @@ export interface InvestigationNote {
 export type NudgeChannel = 'EMAIL' | 'SMS' | 'MANUAL';
 
 // Nudge Context Type
-export type NudgeContextType = 'PROMPT_REMINDER' | 'AT_RISK_OUTREACH';
+export type NudgeContextType =
+  | 'PROMPT_REMINDER'
+  | 'AT_RISK_OUTREACH'
+  | 'MEMO_REMINDER'
+  | 'CASE_REPORT_REMINDER'
+  | 'MANUAL_OUTREACH';
 
 // Activity Event Type
 export type ActivityEventType = 
@@ -222,6 +227,10 @@ export interface PromptResponse {
   notes?: string;
   createdAt: Date;
   updatedAt: Date;
+  /** When true (default for HAS_ISSUE), item appears in HR review queue until reviewed */
+  needsReview?: boolean;
+  reviewedByUserId?: string;
+  reviewedAt?: Date;
 }
 
 // Report
@@ -301,9 +310,17 @@ export interface ReportChecklistItem {
 export interface Investigation {
   id: string;
   orgId: string;
+  /** Human-readable investigation reference (e.g. INV-2024-001) */
+  referenceNumber?: string;
   status: InvestigationStatus;
   ownerId: string;
   linkedReportIds: string[];
+  /** Primary category derived from linked reports (admin may override later) */
+  category?: ReportCategory;
+  severity?: ReportSeverity;
+  witnessUserIds?: string[];
+  /** Free-text external witnesses (names / orgs) */
+  witnessExternal?: string[];
   openedAt: Date;
   closedAt?: Date;
   lastUpdateAt: Date;
@@ -342,6 +359,10 @@ export interface ReportStatusEvent {
 export interface NudgeContext {
   type: NudgeContextType;
   promptId?: string;
+  policyId?: string;
+  reportId?: string;
+  /** Short reason label shown in admin history (e.g. memo title, case id) */
+  relatedLabel?: string;
 }
 
 // Nudge
@@ -455,6 +476,20 @@ export interface Announcement {
   updatedAt: Date;
 }
 
+/** Append-only audit trail for admin-visible configuration and HR record edits */
+export interface AuditLogEntry {
+  id: string;
+  orgId: string;
+  recordType: string;
+  recordId: string;
+  field?: string;
+  oldValue?: string;
+  newValue?: string;
+  actorUserId: string;
+  createdAt: Date;
+  reason?: string;
+}
+
 // Dashboard Counts
 export interface DashboardCounts {
   criticalReports: number;
@@ -463,6 +498,18 @@ export interface DashboardCounts {
   atRiskEmployees: number;
   scheduledMemos: number;
   activeCampaigns: number;
+  /** HAS_ISSUE responses not yet marked reviewed */
+  yesResponsesNeedingReview: number;
+  /** Deliveries still pending (unanswered prompts) */
+  unansweredPromptDeliveries: number;
+  /** Case register items in NEEDS_INFO (clarification / follow-up) */
+  reportsNeedingClarification: number;
+  /** Required memo acknowledgements not yet recorded */
+  memoAcknowledgementsPending: number;
+  /** Memo acknowledgements where employee requested clarification */
+  memosNeedingClarification: number;
+  /** Distinct actionable queue items for command center (deduped sum) */
+  actionRequiredTotal: number;
 }
 
 // Employee Engagement

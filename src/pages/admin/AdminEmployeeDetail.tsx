@@ -3,7 +3,9 @@ import type { DataStore } from '@/hooks/useDataStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Icons } from '@/lib/icons';
+import { downloadCsv } from '@/lib/exportCsv';
 import {
   formatRelativeTime,
   formatDate,
@@ -31,6 +33,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
   const employee = dataStore.users.find((u) => u.id === employeeId);
   if (!employee) return <div className="text-sm text-[var(--mismo-text-secondary)]">Employee not found.</div>;
 
+  const [historyTab, setHistoryTab] = useState('overview');
   const [editingOrgInfo, setEditingOrgInfo] = useState(false);
   const [editManagerId, setEditManagerId] = useState(employee.managerId ?? '');
   const [editHiredDate, setEditHiredDate] = useState(toDateInputValue(employee.hiredDate));
@@ -91,6 +94,49 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
     setEditingOrgInfo(false);
   };
 
+  const employeeInvestigations = dataStore.investigations.filter(
+    (inv) =>
+      inv.subjectUserIds?.includes(employee.id) ||
+      inv.linkedReportIds.some((rid) => {
+        const rep = dataStore.reports.find((r) => r.id === rid);
+        return rep?.createdByUserId === employee.id;
+      })
+  );
+  const employeeMemoAcks = dataStore.policyAcknowledgements.filter((a) => a.userId === employee.id);
+  const employeeAuditLogs = dataStore.auditLogs.filter(
+    (log) => log.recordId === employee.id || log.actorUserId === employee.id
+  );
+
+  const exportEmployeeReport = () => {
+    const headers = ['Section', 'Id', 'Summary', 'Timestamp', 'Detail'];
+    const rows: (string | number)[][] = [];
+    rows.push([
+      'Profile',
+      employee.id,
+      `${employee.firstName} ${employee.lastName}`,
+      employee.createdAt.toISOString(),
+      employee.email,
+    ]);
+    employeeReports.forEach((r) => {
+      rows.push(['Case', r.id, r.summary, r.createdAt.toISOString(), r.status]);
+    });
+    employeeResponses.forEach((r) => {
+      rows.push(['Prompt response', r.id, r.answer, r.submittedAt.toISOString(), r.promptId]);
+    });
+    employeeInvestigations.forEach((i) => {
+      rows.push(['Investigation', i.id, i.referenceNumber ?? i.id, i.openedAt.toISOString(), i.status]);
+    });
+    employeeMemoAcks.forEach((a) => {
+      const pol = dataStore.policies.find((p) => p.id === a.policyId);
+      rows.push(['Memo acknowledgement', a.policyId, pol?.title ?? a.policyId, a.acknowledgedAt.toISOString(), a.outcome ?? '']);
+    });
+    nudgesToEmployee.forEach((n) => {
+      rows.push(['Outreach / nudge', n.id, n.channel, n.sentAt.toISOString(), n.message]);
+    });
+    downloadCsv(`mismo-employee-${employee.id}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+    toast.success('Employee report CSV downloaded.');
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
@@ -100,6 +146,9 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
         </Button>
         <Button variant="default" onClick={handleViewAsEmployee} className="ml-auto">
           View as this employee
+        </Button>
+        <Button variant="outline" onClick={exportEmployeeReport}>
+          Export employee report (CSV)
         </Button>
         <Button
           variant="outline"
@@ -137,6 +186,11 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
               <p className="text-sm mt-1">
                 Role: {employee.role} · Status:{' '}
                 <span className={employee.status === 'active' ? 'text-emerald-700' : 'text-slate-600'}>{employee.status}</span>
+              </p>
+              <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
+                Hire date: <span className="font-medium text-[var(--color-text-primary)]">{employee.hiredDate ? formatDate(employee.hiredDate) : '-'}</span>
+                {' · '}
+                Mismo record since: <span className="font-medium text-[var(--color-text-primary)]">{formatDate(employee.createdAt)}</span>
               </p>
               <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
                 Employee ID: <span className="font-medium text-[var(--color-text-primary)]">{employee.employeeId?.trim() || '-'}</span>
@@ -278,104 +332,282 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
               <p className="font-semibold text-sm">{engagement?.lastResponseAt ? formatRelativeTime(engagement.lastResponseAt) : 'Never'}</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 pt-2">
-            <Button variant="outline" size="sm" onClick={() => dataStore.sendNudge(employee.id, 'EMAIL', 'Please complete pending prompts.', { type: 'AT_RISK_OUTREACH' })}>
-              Send Email Reminder
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => dataStore.sendNudge(employee.id, 'SMS', 'Please complete pending prompts.', { type: 'AT_RISK_OUTREACH' })}>
-              Send SMS Reminder
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => dataStore.sendNudge(employee.id, 'MANUAL', 'Direct outreach performed.', { type: 'AT_RISK_OUTREACH' })}>
-              Log Manual Outreach
-            </Button>
-          </div>
         </CardContent>
       </Card>
 
       <Card className="mismo-card">
         <CardContent className="p-5">
-          <h2 className="section-label mb-3">Report info</h2>
-          {employeeReports.length === 0 ? (
-            <p className="text-sm text-[var(--color-text-muted)]">No reports submitted.</p>
-          ) : (
-            <div className="space-y-2">
-              {employeeReports.map((report) => (
-                <div
-                  key={report.id}
-                  className="flex flex-wrap items-center justify-between gap-2 border border-[var(--color-border-200)] p-3 rounded-[var(--radius-medium)]"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{report.summary}</p>
-                    <p className="text-xs text-[var(--color-text-secondary)]">{report.id} · {formatDate(report.createdAt)}</p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge className={getCategoryColor(report.category)}>{getCategoryLabel(report.category)}</Badge>
-                    <Badge className={getSeverityColor(report.severity)}>{report.severity}</Badge>
-                    <Badge className={getStatusColor(report.status)}>{report.status}</Badge>
-                    <Button variant="outline" size="sm" onClick={() => onNavigate('report-detail', { id: report.id })}>
-                      Open case
-                    </Button>
-                  </div>
+          <h2 className="section-label mb-3">Employee history</h2>
+          <Tabs value={historyTab} onValueChange={setHistoryTab}>
+            <TabsList className="flex flex-wrap h-auto gap-1 bg-[var(--color-surface-100)] p-1 border border-[var(--color-border-200)]">
+              <TabsTrigger value="overview" className="text-xs sm:text-sm">
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value="prompts" className="text-xs sm:text-sm">
+                Prompt responses
+              </TabsTrigger>
+              <TabsTrigger value="memos" className="text-xs sm:text-sm">
+                Memos
+              </TabsTrigger>
+              <TabsTrigger value="investigations" className="text-xs sm:text-sm">
+                Investigations
+              </TabsTrigger>
+              <TabsTrigger value="cases" className="text-xs sm:text-sm">
+                Case reports
+              </TabsTrigger>
+              <TabsTrigger value="outreach" className="text-xs sm:text-sm">
+                Outreach / nudges
+              </TabsTrigger>
+              <TabsTrigger value="audit" className="text-xs sm:text-sm">
+                Audit log
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="mt-4 space-y-3">
+              <div className="rounded-md border border-dashed border-[var(--color-border-200)] bg-[var(--color-surface-100)] p-3 text-sm text-[var(--color-text-secondary)]">
+                Assistant (preview): one-paragraph risk summary for this employee will appear here when connected to your model provider. No automated decisions are made from this panel.
+              </div>
+              <p className="text-sm text-[var(--color-text-secondary)]">
+                This employee has {employeeResponses.length} prompt response(s), {employeeReports.length} submitted case report(s),{' '}
+                {employeeInvestigations.length} linked investigation(s), and {nudgesToEmployee.length} logged outreach event(s).
+              </p>
+              <div>
+                <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider mb-2">Recent activity</p>
+                {employeeActivities.length === 0 ? (
+                  <p className="text-sm text-[var(--color-text-secondary)]">No recent activity rows for this employee.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {employeeActivities.slice(0, 6).map((a) => (
+                      <li key={a.id} className="text-sm text-[var(--color-text-secondary)]">
+                        {a.type.replace(/_/g, ' ')} · {formatRelativeTime(a.createdAt)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="prompts" className="mt-4">
+              {employeeResponses.length === 0 ? (
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  No prompt responses yet. Once this employee answers HR prompts, their responses will appear here.
+                </p>
+              ) : (
+                <div className="overflow-x-auto border border-[var(--color-border-200)]">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[var(--color-surface-200)] text-[var(--color-text-secondary)]">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Prompt</th>
+                        <th className="px-3 py-2 text-left">Category</th>
+                        <th className="px-3 py-2 text-left">Response</th>
+                        <th className="px-3 py-2 text-left">Needs review</th>
+                        <th className="px-3 py-2 text-left">Answered</th>
+                        <th className="px-3 py-2 text-right">Link</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {employeeResponses.map((r) => {
+                        const prompt = dataStore.prompts.find((p) => p.id === r.promptId);
+                        const needsReview = r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false;
+                        const reviewer = r.reviewedByUserId ? dataStore.users.find((u) => u.id === r.reviewedByUserId) : null;
+                        return (
+                          <tr key={r.id} className="border-t border-[var(--color-border-200)]">
+                            <td className="px-3 py-2 font-medium">{prompt?.title ?? r.promptId}</td>
+                            <td className="px-3 py-2 text-[var(--color-text-secondary)]">{prompt?.type ?? '-'}</td>
+                            <td className="px-3 py-2">{r.answer}</td>
+                            <td className="px-3 py-2">{needsReview ? 'Yes' : 'No'}{reviewer ? ` · ${reviewer.firstName}` : ''}</td>
+                            <td className="px-3 py-2 text-[var(--color-text-secondary)]">{formatDate(r.submittedAt)}</td>
+                            <td className="px-3 py-2 text-right">
+                              <Button size="sm" variant="outline" onClick={() => onNavigate('prompt-response-detail', { id: r.id })}>
+                                Open
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              )}
+            </TabsContent>
 
-      <Card className="mismo-card">
-        <CardContent className="p-5">
-          <h2 className="section-label mb-3">Prompt responses</h2>
-          {employeeResponses.length === 0 ? (
-            <p className="text-sm text-[var(--color-text-muted)]">No prompt responses yet.</p>
-          ) : (
-            <ul className="space-y-2">
-              {employeeResponses.slice(0, 15).map((r) => {
-                const prompt = dataStore.prompts.find((p) => p.id === r.promptId);
-                return (
-                  <li key={r.id} className="flex flex-wrap items-center gap-2 border border-[var(--color-border-200)] p-2 rounded-[var(--radius-medium)] text-sm">
-                    <span className="font-medium">{prompt?.title ?? r.promptId}</span>
-                    <Badge variant={r.answer === 'HAS_ISSUE' ? 'destructive' : 'secondary'}>{r.answer === 'HAS_ISSUE' ? 'Had issue' : 'No issue'}</Badge>
-                    <span className="text-[var(--color-text-muted)]">{formatRelativeTime(r.submittedAt)}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+            <TabsContent value="memos" className="mt-4">
+              {employeeMemoAcks.length === 0 ? (
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  No memo acknowledgements recorded for this employee yet. Published memos that require sign-off will show read and acknowledgement status here.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {employeeMemoAcks.map((a) => {
+                    const pol = dataStore.policies.find((p) => p.id === a.policyId);
+                    return (
+                      <li key={`${a.policyId}-${a.userId}`} className="border border-[var(--color-border-200)] p-3 rounded-[var(--radius-medium)] text-sm flex flex-wrap justify-between gap-2">
+                        <div>
+                          <p className="font-medium">{pol?.title ?? a.policyId}</p>
+                          <p className="text-xs text-[var(--color-text-secondary)]">
+                            Acknowledged {formatDate(a.acknowledgedAt)} · {a.outcome ?? 'Recorded'}
+                          </p>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => onNavigate('policy-detail', { id: a.policyId })}>
+                          Open memo
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </TabsContent>
 
-      <Card className="mismo-card">
-        <CardContent className="p-5">
-          <h2 className="section-label mb-3">Nudges / reminders sent</h2>
-          {nudgesToEmployee.length === 0 ? (
-            <p className="text-sm text-[var(--color-text-muted)]">None.</p>
-          ) : (
-            <ul className="space-y-2">
-              {nudgesToEmployee.slice(0, 10).map((n) => (
-                <li key={n.id} className="text-sm border border-[var(--color-border-200)] p-2 rounded-[var(--radius-medium)]">
-                  <span className="font-medium">{n.channel}</span> · {formatRelativeTime(n.sentAt)}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+            <TabsContent value="investigations" className="mt-4">
+              {employeeInvestigations.length === 0 ? (
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  No investigations are linked to this employee yet. Escalations from the case register will appear here when opened.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {employeeInvestigations.map((inv) => (
+                    <li key={inv.id} className="border border-[var(--color-border-200)] p-3 rounded-[var(--radius-medium)] text-sm flex flex-wrap justify-between gap-2">
+                      <div>
+                        <p className="font-medium">{inv.referenceNumber ?? inv.id}</p>
+                        <p className="text-xs text-[var(--color-text-secondary)]">
+                          {inv.status} · Opened {formatDate(inv.openedAt)} · Modified {formatDate(inv.updatedAt)}
+                        </p>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => onNavigate('investigation-detail', { id: inv.id })}>
+                        Open
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </TabsContent>
 
-      <Card className="mismo-card">
-        <CardContent className="p-5">
-          <h2 className="section-label mb-3">Recent activity</h2>
-          {employeeActivities.length === 0 ? (
-            <p className="text-sm text-[var(--color-text-muted)]">No activity.</p>
-          ) : (
-            <ul className="space-y-2">
-              {employeeActivities.map((a) => (
-                <li key={a.id} className="text-sm border border-[var(--color-border-200)] p-2 rounded-[var(--radius-medium)]">
-                  <span className="font-medium">{a.type}</span> · {formatRelativeTime(a.createdAt)}
-                </li>
-              ))}
-            </ul>
-          )}
+            <TabsContent value="cases" className="mt-4">
+              {employeeReports.length === 0 ? (
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  No reports submitted for this employee yet. Any future incident reports, prompt escalations, or memo clarifications will appear here.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {employeeReports.map((report) => (
+                    <div
+                      key={report.id}
+                      className="flex flex-wrap items-center justify-between gap-2 border border-[var(--color-border-200)] p-3 rounded-[var(--radius-medium)]"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{report.summary}</p>
+                        <p className="text-xs text-[var(--color-text-secondary)]">{report.id} · {formatDate(report.createdAt)}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className={getCategoryColor(report.category)}>{getCategoryLabel(report.category)}</Badge>
+                        <Badge className={getSeverityColor(report.severity)}>{report.severity}</Badge>
+                        <Badge className={getStatusColor(report.status)}>{report.status}</Badge>
+                        <Button variant="outline" size="sm" onClick={() => onNavigate('report-detail', { id: report.id })}>
+                          Open case
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="outreach" className="mt-4 space-y-4">
+              <p className="text-sm text-[var(--color-text-secondary)]">
+                Send reminders only with a clear reason. Messages are logged on this employee&apos;s record with channel, body, and sender.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const msg = window.prompt('Email reminder message:', 'Please complete your pending HR check-ins.');
+                    if (msg == null) return;
+                    dataStore.sendNudge(employee.id, 'EMAIL', msg, { type: 'AT_RISK_OUTREACH', relatedLabel: 'Manual admin outreach' });
+                    toast.success('Email reminder logged.');
+                  }}
+                >
+                  Send email reminder…
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const msg = window.prompt('SMS reminder message:', 'Reminder: please complete your HR check-ins.');
+                    if (msg == null) return;
+                    dataStore.sendNudge(employee.id, 'SMS', msg, { type: 'AT_RISK_OUTREACH', relatedLabel: 'Manual admin outreach' });
+                    toast.success('SMS reminder logged.');
+                  }}
+                >
+                  Send SMS reminder…
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const msg = window.prompt('Describe manual outreach:', 'Called employee to discuss engagement.');
+                    if (msg == null) return;
+                    dataStore.sendNudge(employee.id, 'MANUAL', msg, { type: 'MANUAL_OUTREACH', relatedLabel: 'Manual outreach' });
+                    toast.success('Manual outreach logged.');
+                  }}
+                >
+                  Log manual outreach…
+                </Button>
+              </div>
+              {nudgesToEmployee.length === 0 ? (
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  No reminders or manual outreach have been logged for this employee.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {nudgesToEmployee.map((n) => (
+                    <li key={n.id} className="text-sm border border-[var(--color-border-200)] p-3 rounded-[var(--radius-medium)]">
+                      <span className="font-medium">{n.channel}</span> · {formatRelativeTime(n.sentAt)}
+                      <p className="text-xs text-[var(--color-text-muted)] mt-1">{n.message}</p>
+                      <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                        {n.context.type}
+                        {n.context.policyId ? ` · memo ${n.context.policyId}` : ''}
+                        {n.context.promptId ? ` · prompt ${n.context.promptId}` : ''}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </TabsContent>
+
+            <TabsContent value="audit" className="mt-4">
+              {employeeAuditLogs.length === 0 ? (
+                <p className="text-sm text-[var(--color-text-secondary)]">No audit entries reference this employee yet.</p>
+              ) : (
+                <div className="overflow-x-auto border border-[var(--color-border-200)]">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[var(--color-surface-200)] text-[var(--color-text-secondary)]">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Record</th>
+                        <th className="px-3 py-2 text-left">Field</th>
+                        <th className="px-3 py-2 text-left">Change</th>
+                        <th className="px-3 py-2 text-left">When</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {employeeAuditLogs.map((log) => (
+                        <tr key={log.id} className="border-t border-[var(--color-border-200)]">
+                          <td className="px-3 py-2">
+                            {log.recordType} · {log.recordId}
+                          </td>
+                          <td className="px-3 py-2">{log.field ?? '-'}</td>
+                          <td className="px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+                            {(log.oldValue ?? '').slice(0, 40)} → {(log.newValue ?? '').slice(0, 40)}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">{formatDate(log.createdAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>

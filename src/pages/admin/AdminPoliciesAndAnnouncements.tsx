@@ -8,12 +8,14 @@ interface AdminPoliciesAndAnnouncementsProps {
   dataStore: DataStore;
   onNavigate: (page: string, params?: Record<string, string>) => void;
   initialTab?: 'policies' | 'announcements';
+  initialFilters?: Record<string, string>;
 }
 
 export function AdminPoliciesAndAnnouncements({
   dataStore,
   onNavigate,
   initialTab = 'policies',
+  initialFilters,
 }: AdminPoliciesAndAnnouncementsProps) {
   const [tab, setTab] = useState<'policies' | 'announcements'>(initialTab);
 
@@ -45,7 +47,7 @@ export function AdminPoliciesAndAnnouncements({
           Announcements
         </button>
       </div>
-      {tab === 'policies' && <AdminPolicies dataStore={dataStore} onNavigate={onNavigate} />}
+      {tab === 'policies' && <AdminPolicies dataStore={dataStore} onNavigate={onNavigate} initialFilters={initialFilters} />}
       {tab === 'announcements' && <AdminAnnouncements dataStore={dataStore} onNavigate={onNavigate} />}
     </div>
   );

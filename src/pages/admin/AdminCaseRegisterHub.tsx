@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import type { Report, ReportSeverity, ReportStatus } from '@/types';
+import { downloadCsv } from '@/lib/exportCsv';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -83,11 +84,9 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters }: 
   const filters = initialFilters ?? {};
   const { reports, users, investigations, deliveries, responses, prompts, assignReport, updateReportStatus, createInvestigation } = dataStore;
 
-  const [bucket, setBucket] = useState<CaseRegisterBucket>(() => deriveBucket(filters));
+  const bucket = deriveBucket(filters);
+  const needsReviewOnly = filters.needs_review === '1';
   const filterKey = JSON.stringify(filters);
-  useEffect(() => {
-    setBucket(deriveBucket(filters));
-  }, [filterKey]);
 
   const [query, setQuery] = useState('');
   const [promptQuery, setPromptQuery] = useState('');
@@ -146,6 +145,10 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters }: 
 
   const unansweredCount = deliveries.filter((d) => d.status === 'PENDING').length;
   const yesCount = responses.filter((r) => r.answer === 'HAS_ISSUE').length;
+  const yesNeedingReviewCount = useMemo(
+    () => responses.filter((r) => r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false).length,
+    [responses]
+  );
   const noCount = responses.filter((r) => r.answer === 'NO_ISSUE').length;
 
   const promptRows = useMemo(() => {
@@ -171,6 +174,10 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters }: 
     return responses
       .filter((r) => inDateRange(r.createdAt, range))
       .filter((r) => ansFilter === null || r.answer === ansFilter)
+      .filter((r) => {
+        if (!needsReviewOnly || bucket !== 'PROMPT_YES') return true;
+        return r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false;
+      })
       .map((r) => {
         const u = users.find((user) => user.id === r.userId);
         return {
@@ -183,7 +190,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters }: 
       })
       .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
       .sort((a, b) => b.date.getTime() - a.date.getTime());
-  }, [bucket, deliveries, responses, prompts, users, range, promptQuery]);
+  }, [bucket, deliveries, responses, prompts, users, range, promptQuery, needsReviewOnly]);
 
   const filteredRegisterReports = useMemo(() => {
     const ms24h = 24 * 60 * 60 * 1000;
@@ -266,38 +273,59 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters }: 
   return (
     <div className="space-y-5">
       <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-5 py-4">
-        <h1 className="mismo-heading text-3xl text-[var(--color-primary-900)]">Case register &amp; check-ins</h1>
+        <h1 className="mismo-heading text-3xl text-[var(--color-primary-900)]">Prompt responses &amp; case register</h1>
         <p className="mt-1 text-[var(--color-text-secondary)]">
-          Check-in answers (including Yes), unanswered prompts, and incident reports from Report now. Filter and triage in one place.{' '}
-          <strong>Open investigations</strong> stay on the{' '}
+          <strong>Prompt responses</strong> are scheduled check-in answers. <strong>Case register</strong> items are reports and escalations
+          (from a Yes response, incident intake, memo clarification, or manual entry) that HR triages here. Escalations may become{' '}
           <button type="button" className="text-[var(--mismo-blue)] hover:underline font-medium" onClick={() => onNavigate('investigations')}>
             Investigations
-          </button>{' '}
-          tab only; those cases are removed from this register until closed.
+          </button>
+          . Cases linked to an open investigation are hidden from this register until closed.
         </p>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <BucketBtn active={bucket === 'PROMPT_YES'} onClick={() => setBucket('PROMPT_YES')}>
+        <BucketBtn
+          active={bucket === 'PROMPT_YES' && !needsReviewOnly}
+          onClick={() => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', rangePreset: filters.rangePreset ?? 'ALL' })}
+        >
           Yes ({yesCount})
         </BucketBtn>
-        <BucketBtn active={bucket === 'PROMPT_NO'} onClick={() => setBucket('PROMPT_NO')}>
+        <BucketBtn
+          active={bucket === 'PROMPT_YES' && needsReviewOnly}
+          onClick={() => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', needs_review: '1', rangePreset: 'ALL' })}
+        >
+          Yes · needs review ({yesNeedingReviewCount})
+        </BucketBtn>
+        <BucketBtn
+          active={bucket === 'PROMPT_NO'}
+          onClick={() => onNavigate('prompt-responses', { answer: 'NO_ISSUE', rangePreset: filters.rangePreset ?? 'ALL' })}
+        >
           No ({noCount})
         </BucketBtn>
-        <BucketBtn active={bucket === 'PROMPT_UNANSWERED'} onClick={() => setBucket('PROMPT_UNANSWERED')}>
+        <BucketBtn
+          active={bucket === 'PROMPT_UNANSWERED'}
+          onClick={() => onNavigate('prompt-responses', { bucket: 'UNANSWERED', rangePreset: filters.rangePreset ?? 'ALL' })}
+        >
           Unanswered ({unansweredCount})
         </BucketBtn>
-        <BucketBtn active={bucket === 'PROMPT_ALL'} onClick={() => setBucket('PROMPT_ALL')}>
+        <BucketBtn active={bucket === 'PROMPT_ALL'} onClick={() => onNavigate('prompt-responses', { rangePreset: filters.rangePreset ?? 'ALL' })}>
           All check-ins
         </BucketBtn>
-        <BucketBtn active={bucket === 'CASE_REGISTER'} onClick={() => setBucket('CASE_REGISTER')}>
+        <BucketBtn active={bucket === 'CASE_REGISTER'} onClick={() => onNavigate('prompt-responses', { register: '1' })}>
           Case register
         </BucketBtn>
-        <BucketBtn active={bucket === 'NEW_CRITICAL'} onClick={() => setBucket('NEW_CRITICAL')}>
+        <BucketBtn active={bucket === 'NEW_CRITICAL'} onClick={() => onNavigate('prompt-responses', { register: '1', critical: '1' })}>
           New critical
         </BucketBtn>
-        <BucketBtn active={bucket === 'NEEDS_RESPONSE'} onClick={() => setBucket('NEEDS_RESPONSE')}>
-          Needs response
+        <BucketBtn active={bucket === 'NEEDS_RESPONSE'} onClick={() => onNavigate('prompt-responses', { register: '1', needs_info: '1' })}>
+          Needs clarification
+        </BucketBtn>
+        <BucketBtn active={false} onClick={() => onNavigate('policies', { memoQueue: 'pending_ack' })}>
+          Memo tasks pending →
+        </BucketBtn>
+        <BucketBtn active={false} onClick={() => onNavigate('policies', { memoQueue: 'clarification' })}>
+          Memos need clarification →
         </BucketBtn>
       </div>
 
@@ -368,8 +396,45 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters }: 
                 <option value="CRITICAL">CRITICAL</option>
               </select>
             </div>
-            <DateRangeFilter value={range} onChange={setRange} />
-
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-end sm:justify-between">
+              <DateRangeFilter value={range} onChange={setRange} />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => {
+                  const headers = [
+                    'Case ID',
+                    'Reported date',
+                    'Employee',
+                    'Category',
+                    'Severity',
+                    'Status',
+                    'Assigned',
+                    'Last updated',
+                  ];
+                  const rows = filteredRegisterReports.map((r) => {
+                    const reporter = r.createdByUserId ? users.find((u) => u.id === r.createdByUserId) : null;
+                    const assignee = r.assignedTo ? users.find((u) => u.id === r.assignedTo) : null;
+                    return [
+                      r.id,
+                      formatDate(r.createdAt),
+                      r.isAnonymous ? 'Anonymous' : reporter ? `${reporter.firstName} ${reporter.lastName}` : '-',
+                      r.category,
+                      r.severity,
+                      r.status,
+                      assignee ? `${assignee.firstName} ${assignee.lastName}` : 'Unassigned',
+                      formatDate(r.updatedAt),
+                    ];
+                  });
+                  downloadCsv(`mismo-case-register-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+                  toast.success('Case register CSV downloaded.');
+                }}
+              >
+                Export CSV
+              </Button>
+            </div>
             {selectedRows.length > 0 && (
               <div className="flex flex-wrap items-center gap-2 bg-[var(--color-surface-200)] border border-[var(--color-border-200)] px-3 py-2">
                 <span className="text-sm text-[var(--color-text-secondary)]">{selectedRows.length} selected</span>
