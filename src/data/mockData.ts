@@ -16,6 +16,7 @@ import type {
   Policy,
   PolicyAcknowledgement,
   Announcement,
+  AuditLogEntry,
 } from '@/types';
 
 // Current user org ID
@@ -424,6 +425,7 @@ export const mockPromptResponses: PromptResponse[] = [
     answer: 'HAS_ISSUE',
     submittedAt: new Date('2024-02-21'),
     notes: 'I have a concern about workplace safety',
+    needsReview: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -490,7 +492,7 @@ export const mockReports: Report[] = [
     severity: 'HIGH',
     summary: 'Promotion process seems unfair',
     description: 'I have concerns about the transparency of the recent promotion decisions.',
-    status: 'NEW',
+    status: 'NEEDS_INFO',
     preferredContactMethod: 'PHONE',
     createdAt: new Date('2024-02-22'),
     updatedAt: new Date(),
@@ -580,9 +582,14 @@ export const mockInvestigations: Investigation[] = [
   {
     id: 'inv-1',
     orgId: ORG_ID,
+    referenceNumber: 'INV-2024-0142',
     status: 'OPEN',
     ownerId: 'user-admin-2',
     linkedReportIds: ['report-1'],
+    category: 'SAFETY',
+    severity: 'HIGH',
+    witnessUserIds: ['user-emp-3'],
+    witnessExternal: ['Contractor on site (name on file)'],
     openedAt: new Date('2024-02-21'),
     lastUpdateAt: new Date('2024-02-21'),
     createdAt: new Date(),
@@ -604,9 +611,12 @@ export const mockInvestigations: Investigation[] = [
   {
     id: 'inv-2',
     orgId: ORG_ID,
+    referenceNumber: 'INV-2024-0143',
     status: 'OPEN',
     ownerId: 'user-admin-1',
     linkedReportIds: ['report-5'],
+    category: 'OTHER',
+    severity: 'MEDIUM',
     openedAt: new Date('2024-02-19'),
     lastUpdateAt: new Date('2024-02-20'),
     createdAt: new Date(),
@@ -618,9 +628,12 @@ export const mockInvestigations: Investigation[] = [
   {
     id: 'inv-3',
     orgId: ORG_ID,
+    referenceNumber: 'INV-2024-0099',
     status: 'CLOSED',
     ownerId: 'user-admin-1',
     linkedReportIds: ['report-3'],
+    category: 'WAGE_HOURS',
+    severity: 'MEDIUM',
     openedAt: new Date('2024-02-10'),
     closedAt: new Date('2024-02-15'),
     lastUpdateAt: new Date('2024-02-15'),
@@ -630,9 +643,12 @@ export const mockInvestigations: Investigation[] = [
   {
     id: 'inv-outcome-demo',
     orgId: ORG_ID,
+    referenceNumber: 'INV-2024-0201',
     status: 'OPEN',
     ownerId: 'user-admin-1',
     linkedReportIds: ['report-outcome-test'],
+    category: 'HARASSMENT',
+    severity: 'HIGH',
     openedAt: new Date('2024-02-22'),
     lastUpdateAt: new Date('2024-02-22'),
     createdAt: new Date(),
@@ -836,6 +852,27 @@ export const mockPolicies: Policy[] = [
 export const mockPolicyAcknowledgements: PolicyAcknowledgement[] = [
   { policyId: 'policy-1', userId: 'user-emp-1', acknowledgedAt: new Date('2024-01-16') },
   { policyId: 'policy-2', userId: 'user-emp-2', acknowledgedAt: new Date('2024-02-02') },
+  {
+    policyId: 'policy-1',
+    userId: 'user-emp-3',
+    acknowledgedAt: new Date('2024-01-18'),
+    outcome: 'REQUEST_CLARIFICATION',
+  },
+];
+
+export const mockAuditLogs: AuditLogEntry[] = [
+  {
+    id: 'audit-seed-1',
+    orgId: ORG_ID,
+    recordType: 'User',
+    recordId: 'user-emp-1',
+    field: 'location',
+    oldValue: 'HQ',
+    newValue: 'Warehouse B',
+    actorUserId: 'user-admin-1',
+    createdAt: new Date('2024-02-01'),
+    reason: 'Org chart update',
+  },
 ];
 
 export const mockAnnouncements: Announcement[] = [
@@ -911,7 +948,25 @@ export function getDashboardCounts(): DashboardCounts {
   const activeCampaigns = mockPrompts.filter(
     p => p.status === 'ACTIVE'
   ).length;
-  
+
+  const yesResponsesNeedingReview = mockPromptResponses.filter(
+    (r) => r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false
+  ).length;
+  const unansweredPromptDeliveries = mockPromptDeliveries.filter((d) => d.status === 'PENDING').length;
+  const reportsNeedingClarification = mockReports.filter((r) => r.status === 'NEEDS_INFO').length;
+  const activeEmployees = mockUsers.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');
+  const requiredPolicies = mockPolicies.filter((p) => p.status === 'PUBLISHED' && p.acknowledgmentRequired);
+  const totalRequiredAcks = activeEmployees.length * requiredPolicies.length;
+  const memoAcknowledgementsPending = Math.max(0, totalRequiredAcks - mockPolicyAcknowledgements.length);
+  const memosNeedingClarification = mockPolicyAcknowledgements.filter((a) => a.outcome === 'REQUEST_CLARIFICATION').length;
+  const actionRequiredTotal =
+    yesResponsesNeedingReview +
+    unansweredPromptDeliveries +
+    activeInvestigations +
+    reportsNeedingClarification +
+    memoAcknowledgementsPending +
+    memosNeedingClarification;
+
   return {
     criticalReports,
     activeInvestigations,
@@ -919,6 +974,12 @@ export function getDashboardCounts(): DashboardCounts {
     atRiskEmployees,
     scheduledMemos,
     activeCampaigns,
+    yesResponsesNeedingReview,
+    unansweredPromptDeliveries,
+    reportsNeedingClarification,
+    memoAcknowledgementsPending,
+    memosNeedingClarification,
+    actionRequiredTotal,
   };
 }
 

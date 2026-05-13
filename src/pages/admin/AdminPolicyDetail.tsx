@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { findRelatedMemos, formatDate, getMemoCategoryDisplay } from '@/lib/utils';
+import { MEMO_CATEGORY_PRESETS } from '@/lib/memoCategoryPresets';
 import { toast } from 'sonner';
 
 interface AdminPolicyDetailProps {
@@ -21,17 +22,6 @@ interface AdminPolicyDetailProps {
   policyId: string;
   onNavigate: (page: string, params?: Record<string, string>) => void;
 }
-
-const MEMO_CATEGORY_PRESETS = [
-  'General',
-  'Safety',
-  'Conduct & ethics',
-  'Legal',
-  'HR',
-  'Operations',
-  'IT & security',
-  'Payroll & benefits',
-];
 
 function inferPolicyType(category: string): Policy['type'] {
   const c = category.toLowerCase();
@@ -80,7 +70,7 @@ export function AdminPolicyDetail({ dataStore, policyId, onNavigate }: AdminPoli
     }
     if (!existing) return;
     const displayCat = getMemoCategoryDisplay(existing);
-    const presetHit = MEMO_CATEGORY_PRESETS.includes(displayCat);
+    const presetHit = (MEMO_CATEGORY_PRESETS as readonly string[]).includes(displayCat);
     setUseCustomCategory(!presetHit);
     setMemoCategory(presetHit ? displayCat : MEMO_CATEGORY_PRESETS[0]);
     setMemoCategoryCustom(presetHit ? '' : displayCat);

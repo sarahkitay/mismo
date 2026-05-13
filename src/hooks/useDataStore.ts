@@ -21,6 +21,8 @@ import type {
   ReportHandlingEntry,
   ReportHandlingEntryType,
   ReportChecklistItem,
+  AuditLogEntry,
+  NudgeContext,
 } from '@/types';
 import {
   mockUsers,
@@ -36,8 +38,15 @@ import {
   mockPolicies,
   mockPolicyAcknowledgements,
   mockAnnouncements,
+  mockAuditLogs,
 } from '@/data/mockData';
 import { INDUSTRY_CHECKLIST_SECTIONS } from '@/data/industryChecklist';
+
+function formatAuditFieldValue(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
 
 function normalizeUserRoles(list: User[]): User[] {
   return list.map((user) => (user.role === 'MANAGER' ? { ...user, role: 'HR' as UserRole } : user));
@@ -157,6 +166,7 @@ export function useDataStore() {
     persisted?.policyAcknowledgements ?? mockPolicyAcknowledgements
   );
   const [announcements, setAnnouncements] = useState<Announcement[]>(persisted?.announcements ?? mockAnnouncements);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(persisted?.auditLogs ?? mockAuditLogs);
   const [currentRole, setCurrentRole] = useState<UserRole>(
     persisted?.currentRole === 'MANAGER' ? 'HR' : (persisted?.currentRole ?? 'EMPLOYEE')
   );
@@ -235,12 +245,14 @@ export function useDataStore() {
         policies,
         policyAcknowledgements,
         announcements,
+        auditLogs,
         currentRole,
       })
     );
   }, [
     activities,
     announcements,
+    auditLogs,
     currentRole,
     deliveries,
     investigations,
@@ -517,18 +529,23 @@ users,
     
     const now = new Date();
     
+    const refNum = `INV-${now.getFullYear()}-${String(investigations.filter((i) => i.orgId === mockOrg.id).length + 1).padStart(4, '0')}`;
     const newInvestigation: Investigation = {
       id: `inv-${Date.now()}`,
       orgId: mockOrg.id,
+      referenceNumber: refNum,
       status: 'OPEN',
       ownerId,
       linkedReportIds: [reportId],
+      category: report.category,
+      severity: report.severity,
       openedAt: now,
       lastUpdateAt: now,
       createdAt: now,
       updatedAt: now,
       workflowPhase: 'QUEUED',
-      subjectUserIds: [],
+      subjectUserIds:
+        report.createdByUserId && !report.isAnonymous ? [report.createdByUserId] : [],
       notes: [],
     };
     
@@ -555,7 +572,7 @@ users,
     setActivities(prev => [newActivity, ...prev]);
     
     return newInvestigation;
-  }, [reports, currentUser.id]);
+  }, [reports, investigations, currentUser.id]);
 
   const pickUpInvestigation = useCallback(
     (investigationId: string, preferred: InvestigationEmployeeContactPreference) => {
@@ -762,7 +779,7 @@ users,
     targetUserId: string,
     channel: 'EMAIL' | 'SMS' | 'MANUAL',
     message: string,
-    context: { type: 'PROMPT_REMINDER' | 'AT_RISK_OUTREACH'; promptId?: string }
+    context: NudgeContext
   ) => {
     const now = new Date();
     
@@ -793,6 +810,52 @@ users,
     
     setActivities(prev => [newActivity, ...prev]);
   }, [currentUser.id]);
+
+  const markPromptResponseReviewed = useCallback(
+    (responseId: string) => {
+      const now = new Date();
+      setResponses((prev) =>
+        prev.map((r) =>
+          r.id === responseId
+            ? {
+                ...r,
+                reviewedAt: now,
+                reviewedByUserId: currentUser.id,
+                needsReview: false,
+                updatedAt: now,
+              }
+            : r
+        )
+      );
+      const newActivity: ActivityEvent = {
+        id: `activity-${Date.now()}`,
+        orgId: mockOrg.id,
+        type: 'PROMPT_RESPONSE',
+        actorUserId: currentUser.id,
+        metadata: { responseId, action: 'REVIEWED' },
+        createdAt: now,
+      };
+      setActivities((prev) => [newActivity, ...prev]);
+    },
+    [currentUser.id]
+  );
+
+  const sendMemoReminderToUnacknowledged = useCallback(
+    (policyId: string, channel: 'EMAIL' | 'SMS', message: string) => {
+      const policy = policies.find((p) => p.id === policyId);
+      if (!policy?.acknowledgmentRequired) return 0;
+      const employees = users.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');
+      let sent = 0;
+      for (const u of employees) {
+        const ack = policyAcknowledgements.find((a) => a.policyId === policyId && a.userId === u.id);
+        if (ack) continue;
+        sendNudge(u.id, channel, message, { type: 'MEMO_REMINDER', policyId, relatedLabel: policy.title });
+        sent += 1;
+      }
+      return sent;
+    },
+    [policies, users, policyAcknowledgements, sendNudge]
+  );
 
   // Log export event for audit (append-only)
   const logExportEvent = useCallback((reportId: string, format: 'PDF' | 'CSV') => {
@@ -1101,8 +1164,35 @@ users,
   );
 
   const updateUser = useCallback((userId: string, updates: Partial<User>) => {
-    setUsers((prev) => prev.map((user) => (user.id === userId ? { ...user, ...updates, updatedAt: new Date() } : user)));
-  }, []);
+    const now = new Date();
+    const auditEntries: AuditLogEntry[] = [];
+    setUsers((prev) => {
+      const prevUser = prev.find((u) => u.id === userId);
+      if (!prevUser) return prev;
+      const next: User = { ...prevUser, ...updates, updatedAt: now };
+      for (const key of Object.keys(updates) as (keyof User)[]) {
+        if (key === 'updatedAt' || key === 'createdAt') continue;
+        const before = prevUser[key];
+        const after = next[key];
+        if (before === after) continue;
+        auditEntries.push({
+          id: `audit-${now.getTime()}-${String(key)}-${Math.random().toString(36).slice(2, 6)}`,
+          orgId: mockOrg.id,
+          recordType: 'User',
+          recordId: userId,
+          field: String(key),
+          oldValue: formatAuditFieldValue(before),
+          newValue: formatAuditFieldValue(after),
+          actorUserId: currentUser.id,
+          createdAt: now,
+        });
+      }
+      return prev.map((user) => (user.id === userId ? next : user));
+    });
+    if (auditEntries.length) {
+      setAuditLogs((prev) => [...auditEntries, ...prev]);
+    }
+  }, [currentUser.id]);
 
   const createUsers = useCallback((newUsers: Array<Omit<User, 'id' | 'orgId' | 'createdAt' | 'updatedAt'> & { id?: string }>) => {
     const now = new Date();
@@ -1341,7 +1431,28 @@ users,
       return d.dueAt <= nextWeek || d.dueAt < now;
     }).length,
     activeCampaigns: effectivePrompts.filter((p) => p.status === 'ACTIVE').length,
+    yesResponsesNeedingReview: effectiveResponses.filter(
+      (r) => r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false
+    ).length,
+    unansweredPromptDeliveries: effectiveDeliveries.filter((d) => d.status === 'PENDING').length,
+    reportsNeedingClarification: effectiveReports.filter((r) => r.status === 'NEEDS_INFO').length,
+    memoAcknowledgementsPending: (() => {
+      const activeEmployees = effectiveUsers.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');
+      const requiredPolicies = effectivePolicies.filter((p) => p.status === 'PUBLISHED' && p.acknowledgmentRequired);
+      const totalRequiredAcks = activeEmployees.length * requiredPolicies.length;
+      return Math.max(0, totalRequiredAcks - effectivePolicyAcknowledgements.length);
+    })(),
+    memosNeedingClarification: effectivePolicyAcknowledgements.filter((a) => a.outcome === 'REQUEST_CLARIFICATION').length,
+    actionRequiredTotal: 0,
   };
+  const actionRequiredTotal =
+    dashboardCounts.yesResponsesNeedingReview +
+    dashboardCounts.unansweredPromptDeliveries +
+    dashboardCounts.activeInvestigations +
+    dashboardCounts.reportsNeedingClarification +
+    dashboardCounts.memoAcknowledgementsPending +
+    dashboardCounts.memosNeedingClarification;
+  const dashboardCountsWithAction = { ...dashboardCounts, actionRequiredTotal };
   
   return {
     // State (org-scoped when session exists)
@@ -1357,6 +1468,7 @@ users,
     policies: effectivePolicies,
     policyAcknowledgements: effectivePolicyAcknowledgements,
     announcements: effectiveAnnouncements,
+    auditLogs,
     currentUser,
     currentRole: effectiveCurrentRole,
     orgSettings,
@@ -1369,7 +1481,7 @@ users,
     setPreviewUserId,
     
     // Derived data
-    dashboardCounts,
+    dashboardCounts: dashboardCountsWithAction,
     pendingPromptsForEmployee,
     employeeReports,
     atRiskEmployees,
@@ -1392,6 +1504,8 @@ users,
     closeInvestigation,
     completeIncidentIntake,
     sendNudge,
+    markPromptResponseReviewed,
+    sendMemoReminderToUnacknowledged,
     createPrompt,
     updatePrompt,
     createPolicy,

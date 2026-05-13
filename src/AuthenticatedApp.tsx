@@ -34,6 +34,7 @@ import { AdminPromptResponseDetail } from '@/pages/admin/AdminPromptResponseDeta
 import { AdminCompliance } from '@/pages/admin/AdminCompliance';
 import { ManagerDashboard } from '@/pages/manager/ManagerDashboard';
 import { ClientDashboard } from '@/pages/client/ClientDashboard';
+import { buildAppUrl, parseAppLocation, type AppRole } from '@/lib/appUrl';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -48,122 +49,24 @@ function isStaffRole(role: DataStore['currentRole']) {
 export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
   const { currentRole, switchRole, session, previewUserId, setPreviewUserId, pendingPromptsForEmployee } = dataStore;
 
-  const getPathForPage = (page: string, role: typeof currentRole) => {
-    const employeeMap: Record<string, string> = {
-      home: '/employee/dashboard',
-      reports: '/employee/my-reports',
-      resources: '/employee/resources',
-      settings: '/employee/settings',
-      'report-new': '/employee/report/new',
-      help: '/employee/help',
-    };
-    const adminMap: Record<string, string> = {
-      dashboard: '/admin/dashboard',
-      help: '/admin/help',
-      analytics: '/admin/analytics',
-      policies: '/admin/policy-manager',
-      announcements: '/admin/announcements',
-      users: '/admin/users',
-      employees: '/admin/users',
-      prompts: '/admin/prompts',
-      'prompt-responses': '/admin/employee-prompt-responses',
-      compliance: '/admin/compliance',
-      investigations: '/admin/investigations',
-      activity: '/admin/activity',
-      settings: '/admin/settings',
-      'system-health': '/admin/system-health',
-      'manager-dashboard': '/admin/human-resources-dashboard',
-      'client-dashboard': '/admin/client-dashboard',
-      'scheduled-memos': '/admin/prompts/scheduled',
-    };
-    if (page.startsWith('incident-intake/')) return `/employee/my-reports/${page.split('incident-intake/')[1]}/intake`;
-    if (page.startsWith('report-detail/')) return `/employee/my-reports/${page.split('report-detail/')[1]}`;
-    if (page === 'report-detail') return `/admin/all-reports/${pageParams.id ?? ''}`;
-    if (page === 'employee-detail') return `/admin/users/${pageParams.id ?? ''}`;
-    if (page === 'investigation-detail') return `/admin/investigations/${pageParams.id ?? ''}`;
-    if (page === 'policy-detail') return `/admin/policy-manager/${pageParams.id ?? ''}`;
-    if (page === 'announcement-detail') return `/admin/announcements/${pageParams.id ?? ''}`;
-    if (page === 'prompt-response-detail') return `/admin/employee-prompt-responses/${pageParams.id ?? ''}`;
-    if (role === 'EMPLOYEE') return employeeMap[page] ?? '/employee/dashboard';
-    if (role === 'CLIENT') return adminMap[page] ?? '/admin/client-dashboard';
-    return adminMap[page] ?? '/admin/dashboard';
-  };
-
-  const parsePath = (path: string): { role: typeof currentRole; page: string; params: Record<string, string> } => {
-    const cleanPath = path.split('?')[0];
-    const params: Record<string, string> = {};
-    if (cleanPath === '/employee/dashboard') return { role: 'EMPLOYEE', page: 'home', params };
-    if (cleanPath === '/employee/my-reports') return { role: 'EMPLOYEE', page: 'reports', params };
-    if (cleanPath === '/employee/resources') return { role: 'EMPLOYEE', page: 'resources', params };
-    if (cleanPath === '/employee/settings') return { role: 'EMPLOYEE', page: 'settings', params };
-    if (cleanPath === '/employee/report/new') return { role: 'EMPLOYEE', page: 'report-new', params };
-    if (cleanPath === '/employee/help') return { role: 'EMPLOYEE', page: 'help', params };
-    const intakeMatch = cleanPath.match(/^\/employee\/my-reports\/([^/]+)\/intake$/);
-    if (intakeMatch) {
-      return { role: 'EMPLOYEE', page: `incident-intake/${intakeMatch[1]}`, params };
-    }
-    if (cleanPath.startsWith('/employee/my-reports/')) {
-      return { role: 'EMPLOYEE', page: `report-detail/${cleanPath.split('/employee/my-reports/')[1]}`, params };
-    }
-
-    if (cleanPath === '/admin/dashboard') return { role: 'HR', page: 'dashboard', params };
-    if (cleanPath === '/admin/help') return { role: currentRole === 'CLIENT' ? 'CLIENT' : 'HR', page: 'help', params };
-    if (cleanPath === '/admin/all-reports') return { role: 'HR', page: 'prompt-responses', params };
-    if (cleanPath.startsWith('/admin/all-reports/')) {
-      params.id = cleanPath.split('/admin/all-reports/')[1];
-      return { role: 'HR', page: 'report-detail', params };
-    }
-    if (cleanPath === '/admin/analytics') return { role: 'HR', page: 'analytics', params };
-    if (cleanPath === '/admin/policy-manager') return { role: 'HR', page: 'policies', params };
-    if (cleanPath.startsWith('/admin/policy-manager/')) {
-      params.id = cleanPath.split('/admin/policy-manager/')[1];
-      return { role: 'HR', page: 'policy-detail', params };
-    }
-    if (cleanPath === '/admin/announcements') return { role: 'HR', page: 'announcements', params };
-    if (cleanPath.startsWith('/admin/announcements/')) {
-      params.id = cleanPath.split('/admin/announcements/')[1];
-      return { role: 'HR', page: 'announcement-detail', params };
-    }
-    if (cleanPath === '/admin/users') return { role: 'HR', page: 'users', params };
-    if (cleanPath.startsWith('/admin/users/')) {
-      params.id = cleanPath.split('/admin/users/')[1];
-      return { role: 'HR', page: 'employee-detail', params };
-    }
-    if (cleanPath === '/admin/prompts') return { role: 'HR', page: 'prompts', params };
-    if (cleanPath === '/admin/prompts/scheduled') return { role: 'HR', page: 'scheduled-memos', params };
-    if (cleanPath === '/admin/employee-prompt-responses') return { role: 'HR', page: 'prompt-responses', params };
-    if (cleanPath.startsWith('/admin/employee-prompt-responses/')) {
-      params.id = cleanPath.split('/admin/employee-prompt-responses/')[1];
-      return { role: 'HR', page: 'prompt-response-detail', params };
-    }
-    if (cleanPath === '/admin/compliance') return { role: 'HR', page: 'compliance', params };
-    if (cleanPath === '/admin/investigations') return { role: 'HR', page: 'investigations', params };
-    if (cleanPath.startsWith('/admin/investigations/')) {
-      params.id = cleanPath.split('/admin/investigations/')[1];
-      return { role: 'HR', page: 'investigation-detail', params };
-    }
-    if (cleanPath === '/admin/campaigns') return { role: 'HR', page: 'prompts', params };
-    if (cleanPath === '/admin/activity') return { role: 'HR', page: 'activity', params };
-    if (cleanPath === '/admin/settings') return { role: 'HR', page: 'settings', params };
-    if (cleanPath === '/admin/system-health') return { role: 'HR', page: 'system-health', params };
-    if (cleanPath === '/admin/human-resources-dashboard' || cleanPath === '/admin/manager-dashboard') {
-      return { role: 'HR', page: 'dashboard', params };
-    }
-    if (cleanPath === '/admin/client-dashboard') return { role: 'CLIENT', page: 'client-dashboard', params };
-    return {
-      role: currentRole === 'EMPLOYEE' ? 'EMPLOYEE' : currentRole === 'CLIENT' ? 'CLIENT' : 'HR',
-      page: currentRole === 'EMPLOYEE' ? 'home' : currentRole === 'CLIENT' ? 'client-dashboard' : 'dashboard',
-      params,
-    };
-  };
-
   const [activePage, setActivePage] = useState(() => {
-    const parsed = parsePath(window.location.pathname);
+    const parsed = parseAppLocation(
+      window.location.pathname,
+      window.location.search,
+      currentRole as AppRole
+    );
     return parsed.page;
   });
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [pageParams, setPageParams] = useState<Record<string, string>>({});
+  const [pageParams, setPageParams] = useState<Record<string, string>>(() => {
+    const parsed = parseAppLocation(
+      typeof window !== 'undefined' ? window.location.pathname : '/admin/dashboard',
+      typeof window !== 'undefined' ? window.location.search : '',
+      currentRole as AppRole
+    );
+    return parsed.params;
+  });
 
   useEffect(() => {
     const sessionRole = session?.role;
@@ -202,7 +105,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       window.history.replaceState({}, '', `/admin/prompts${window.location.search}`);
     }
 
-    const parsed = parsePath(window.location.pathname);
+    const parsed = parseAppLocation(window.location.pathname, window.location.search, sessionRole as AppRole);
     setPageParams(parsed.params);
     if (parsed.role !== sessionRole) {
       switchRole(sessionRole);
@@ -221,8 +124,8 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       nextPage = 'dashboard';
     }
     setActivePage(nextPage);
-    const nextPath = getPathForPage(nextPage, currentRole);
-    if (window.location.pathname !== nextPath) {
+    const nextPath = buildAppUrl(nextPage, currentRole as AppRole, {});
+    if (window.location.pathname.split('?')[0] !== nextPath.split('?')[0]) {
       window.history.pushState({}, '', nextPath);
     }
   }, [currentRole]);
@@ -236,38 +139,20 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       window.scrollTo(0, 0);
       return;
     }
+    const routeParams = params ?? {};
     setActivePage(page);
-    if (params) {
-      setPageParams(params);
-    } else {
-      setPageParams({});
-    }
+    setPageParams(routeParams);
     setSidebarOpen(false);
     if (params?.previewEmployee === 'true') {
       window.history.pushState({}, '', '/employee/dashboard');
     } else {
-      let nextPath = getPathForPage(page, currentRole);
-      if ((page === 'investigations' || page === 'prompt-responses') && params && Object.keys(params).length > 0) {
-        const q = new URLSearchParams(params).toString();
-        if (q) nextPath += `?${q}`;
-      }
+      const nextPath = buildAppUrl(page, currentRole as AppRole, routeParams);
       if (window.location.pathname + window.location.search !== nextPath) {
         window.history.pushState({}, '', nextPath);
       }
     }
     window.scrollTo(0, 0);
   };
-
-  useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const params: Record<string, string> = {};
-    searchParams.forEach((value, key) => {
-      params[key] = value;
-    });
-    if (Object.keys(params).length > 0) {
-      setPageParams(params);
-    }
-  }, []);
 
   useEffect(() => {
     const onPop = () => {
@@ -289,15 +174,8 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
         return;
       }
 
-      const parsed = parsePath(window.location.pathname);
-      const params = { ...parsed.params };
-      if ((parsed.page === 'investigations' || parsed.page === 'prompt-responses') && window.location.search) {
-        const searchParams = new URLSearchParams(window.location.search);
-        searchParams.forEach((value, key) => {
-          params[key] = value;
-        });
-      }
-      setPageParams(params);
+      const parsed = parseAppLocation(window.location.pathname, window.location.search, currentRole as AppRole);
+      setPageParams(parsed.params);
       setActivePage(parsed.page);
       if (sessionRole && parsed.role !== sessionRole) {
         switchRole(sessionRole);
@@ -383,7 +261,14 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       case 'users':
         return <AdminEmployees dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
       case 'policies':
-        return <AdminPoliciesAndAnnouncements dataStore={dataStore} onNavigate={handleNavigate} initialTab="policies" />;
+        return (
+          <AdminPoliciesAndAnnouncements
+            dataStore={dataStore}
+            onNavigate={handleNavigate}
+            initialTab="policies"
+            initialFilters={pageParams}
+          />
+        );
       case 'policy-detail':
         return <AdminPolicyDetail dataStore={dataStore} policyId={pageParams.id ?? ''} onNavigate={handleNavigate} />;
       case 'announcements':
@@ -401,7 +286,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       case 'analytics':
         return <AdminAnalytics dataStore={dataStore} onNavigate={handleNavigate} />;
       case 'compliance':
-        return <AdminCompliance dataStore={dataStore} />;
+        return <AdminCompliance dataStore={dataStore} onNavigate={handleNavigate} />;
       case 'system-health':
         return <AdminSystemHealth dataStore={dataStore} />;
       case 'settings':
