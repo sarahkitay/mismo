@@ -451,6 +451,7 @@ export const mockReports: Report[] = [
     assignedTo: 'user-admin-2',
     investigationId: 'inv-1',
     preferredContactMethod: 'EMAIL',
+    reportSourceType: 'EMPLOYEE_PROMPT_RESPONSE',
     createdAt: new Date('2024-02-21'),
     updatedAt: new Date(),
   },
@@ -582,12 +583,18 @@ export const mockInvestigations: Investigation[] = [
   {
     id: 'inv-1',
     orgId: ORG_ID,
-    referenceNumber: 'INV-2024-0142',
+    referenceNumber: 'INV-2026-1042',
     status: 'OPEN',
     ownerId: 'user-admin-2',
     linkedReportIds: ['report-1'],
     category: 'SAFETY',
     severity: 'HIGH',
+    priority: 'HIGH',
+    riskLevel: 'HIGH',
+    investigationType: 'Safety Investigation',
+    reportSourceType: 'EMPLOYEE_PROMPT_RESPONSE',
+    linkedPromptId: 'prompt-1',
+    linkedPromptResponseId: 'response-2',
     witnessUserIds: ['user-emp-3'],
     witnessExternal: ['Contractor on site (name on file)'],
     openedAt: new Date('2024-02-21'),
@@ -595,18 +602,66 @@ export const mockInvestigations: Investigation[] = [
     createdAt: new Date(),
     updatedAt: new Date(),
     workflowPhase: 'IN_PROGRESS',
+    stage: 'EVIDENCE_REVIEW',
+    stageHistory: [
+      { stage: 'INTAKE_RECEIVED', enteredAt: new Date('2024-02-21'), enteredByUserId: 'user-admin-1', note: 'Auto-created from prompt response' },
+      { stage: 'PENDING_REVIEW', enteredAt: new Date('2024-02-21'), enteredByUserId: 'user-admin-1' },
+      { stage: 'ASSIGNED', enteredAt: new Date('2024-02-21'), enteredByUserId: 'user-admin-1', ownerId: 'user-admin-2' },
+      { stage: 'IN_PROGRESS', enteredAt: new Date('2024-02-21'), enteredByUserId: 'user-admin-2', ownerId: 'user-admin-2' },
+      { stage: 'EVIDENCE_REVIEW', enteredAt: new Date('2024-02-22'), enteredByUserId: 'user-admin-2', ownerId: 'user-admin-2' },
+    ],
     pickedUpAt: new Date('2024-02-21'),
     employeePreferredContact: 'IN_APP_MESSAGE',
     subjectUserIds: ['user-emp-2'],
+    persons: [
+      { id: 'p-1', role: 'REPORTING_PARTY', userId: 'user-emp-2', addedAt: new Date('2024-02-21'), addedByUserId: 'user-admin-1' },
+      { id: 'p-2', role: 'WITNESS', userId: 'user-emp-3', addedAt: new Date('2024-02-21'), addedByUserId: 'user-admin-2' },
+      { id: 'p-3', role: 'INVESTIGATOR', userId: 'user-admin-2', addedAt: new Date('2024-02-21'), addedByUserId: 'user-admin-1' },
+      { id: 'p-4', role: 'EXTERNAL_PARTY', externalName: 'Contractor on site (name on file)', addedAt: new Date('2024-02-21') },
+    ],
     notes: [
       {
         id: 'inv-note-seed-1',
         visibility: 'INTERNAL',
-        body: 'Initial intake call scheduled with reporter.',
+        body: 'Initial intake call with reporting party — described slip hazard near loading dock. Interview auto-logged.',
+        createdAt: new Date('2024-02-21'),
+        createdByUserId: 'user-admin-2',
+        noteType: 'INTERVIEW',
+        pinned: true,
+      },
+    ],
+    evidenceRecords: [
+      {
+        id: 'ev-seed-1',
+        type: 'SCREENSHOT',
+        fileName: 'loading-dock-photo.jpg',
+        mimeType: 'image/jpeg',
+        description: 'Photo of wet floor area submitted by reporting party',
+        sourceType: 'UPLOAD',
+        uploadedAt: new Date('2024-02-22'),
+        uploadedByUserId: 'user-admin-2',
+        preserved: true,
+        promptLabel: 'Upload screenshots related to incident',
+      },
+    ],
+    responseRequests: [
+      {
+        id: 'req-seed-1',
+        partyUserId: 'user-emp-2',
+        partyRole: 'REPORTING_PARTY',
+        method: 'IN_APP',
+        status: 'SUBMITTED',
+        sentAt: new Date('2024-02-21'),
+        viewedAt: new Date('2024-02-21'),
+        submittedAt: new Date('2024-02-22'),
+        message: 'Please confirm details of the incident and provide any additional context.',
         createdAt: new Date('2024-02-21'),
         createdByUserId: 'user-admin-2',
       },
     ],
+    findingsRationale: 'Reporting party statement corroborated by witness account and photographic evidence of wet floor without signage.',
+    policyAnalysisNotes: 'Incident may relate to Workplace Safety Policy Section 3.1 — hazard identification and signage requirements.',
+    linkedPolicyIds: ['policy-1'],
   },
   {
     id: 'inv-2',
@@ -849,6 +904,131 @@ export const mockPolicies: Policy[] = [
   },
 ];
 
+/** Admin-managed company library items (HR portal → Resources / Company Library). */
+export const mockCompanyResources: import('@/types').CompanyResource[] = [
+  {
+    id: 'resource-handbook-1',
+    orgId: ORG_ID,
+    title: 'Employee Handbook (2024)',
+    description: 'Company standards, procedures, and expectations.',
+    category: 'EMPLOYEE_HANDBOOK',
+    url: 'https://example.com/handbook',
+    status: 'PUBLISHED',
+    sortOrder: 1,
+    publishedAt: new Date('2024-01-01'),
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-01'),
+  },
+  {
+    id: 'resource-conduct-1',
+    orgId: ORG_ID,
+    title: 'Code of Conduct',
+    description: 'Professional behavior and workplace respect.',
+    category: 'POLICIES_PROCEDURES',
+    url: 'https://www.shrm.org/',
+    status: 'PUBLISHED',
+    sortOrder: 2,
+    publishedAt: new Date('2024-01-15'),
+    createdAt: new Date('2024-01-15'),
+    updatedAt: new Date('2024-01-15'),
+  },
+  {
+    id: 'resource-eap-1',
+    orgId: ORG_ID,
+    title: 'Employee Assistance Program',
+    description: 'Confidential counseling and support services.',
+    category: 'WELLNESS',
+    url: 'https://www.samhsa.gov/find-help/national-helpline',
+    status: 'PUBLISHED',
+    sortOrder: 3,
+    publishedAt: new Date('2024-02-01'),
+    createdAt: new Date('2024-02-01'),
+    updatedAt: new Date('2024-02-01'),
+  },
+  {
+    id: 'resource-safety-1',
+    orgId: ORG_ID,
+    title: 'Emergency Procedures',
+    description: 'Workplace safety protocols and evacuation plans.',
+    category: 'SAFETY_SECURITY',
+    url: 'https://www.ready.gov/workplace-emergency-plans',
+    status: 'PUBLISHED',
+    sortOrder: 4,
+    publishedAt: new Date('2024-02-01'),
+    createdAt: new Date('2024-02-01'),
+    updatedAt: new Date('2024-02-01'),
+  },
+  {
+    id: 'resource-rights-1',
+    orgId: ORG_ID,
+    title: 'Know Your Rights',
+    description: 'Overview of employee rights and legal protections.',
+    category: 'LEGAL_COMPLIANCE',
+    url: 'https://www.dol.gov/general/aboutdol/majorlaws',
+    status: 'PUBLISHED',
+    sortOrder: 5,
+    publishedAt: new Date('2024-03-01'),
+    createdAt: new Date('2024-03-01'),
+    updatedAt: new Date('2024-03-01'),
+  },
+  {
+    id: 'resource-hr-contact',
+    orgId: ORG_ID,
+    title: 'HR Contact Information',
+    description: 'Reach HR for questions about policies or workplace concerns.',
+    category: 'SUPPORT_CONTACTS',
+    url: 'mailto:hr@mismo.com',
+    status: 'PUBLISHED',
+    sortOrder: 6,
+    publishedAt: new Date('2024-01-01'),
+    createdAt: new Date('2024-01-01'),
+    updatedAt: new Date('2024-01-01'),
+  },
+  {
+    id: 'resource-training-1',
+    orgId: ORG_ID,
+    title: 'Compliance Training Portal',
+    description: 'Required and optional learning modules.',
+    category: 'TRAINING_DEVELOPMENT',
+    url: 'https://www.osha.gov/education-center',
+    status: 'PUBLISHED',
+    sortOrder: 7,
+    publishedAt: new Date('2024-04-01'),
+    createdAt: new Date('2024-04-01'),
+    updatedAt: new Date('2024-04-01'),
+  },
+];
+
+export const mockEmergencyHotlines: import('@/types').EmergencyHotline[] = [
+  {
+    id: 'hotline-eap',
+    orgId: ORG_ID,
+    name: 'Employee Assistance Program',
+    phone: '1-800-555-HELP',
+    description: 'Confidential counseling and support services',
+    status: 'PUBLISHED',
+    sortOrder: 1,
+  },
+  {
+    id: 'hotline-ethics',
+    orgId: ORG_ID,
+    name: 'Ethics Hotline',
+    phone: '1-800-555-ETHICS',
+    description: 'Report ethical concerns anonymously',
+    status: 'PUBLISHED',
+    sortOrder: 2,
+  },
+  {
+    id: 'hotline-crisis',
+    orgId: ORG_ID,
+    name: 'Crisis Support Line',
+    phone: '988',
+    description: 'National Suicide & Crisis Lifeline',
+    status: 'PUBLISHED',
+    sortOrder: 3,
+  },
+];
+
 export const mockPolicyAcknowledgements: PolicyAcknowledgement[] = [
   { policyId: 'policy-1', userId: 'user-emp-1', acknowledgedAt: new Date('2024-01-16') },
   { policyId: 'policy-2', userId: 'user-emp-2', acknowledgedAt: new Date('2024-02-02') },
@@ -967,6 +1147,13 @@ export function getDashboardCounts(): DashboardCounts {
     memoAcknowledgementsPending +
     memosNeedingClarification;
 
+  const openCaseRegisterCount = mockReports.filter((r) => {
+    if (['RESOLVED', 'CLOSED'].includes(r.status)) return false;
+    if (!r.investigationId) return true;
+    const inv = mockInvestigations.find((i) => i.id === r.investigationId);
+    return inv?.status !== 'OPEN';
+  }).length;
+
   return {
     criticalReports,
     activeInvestigations,
@@ -980,6 +1167,7 @@ export function getDashboardCounts(): DashboardCounts {
     memoAcknowledgementsPending,
     memosNeedingClarification,
     actionRequiredTotal,
+    openCaseRegisterCount,
   };
 }
 

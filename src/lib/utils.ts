@@ -6,8 +6,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Employee app: list/detail title: prefer what they wrote in description; summary is HR-facing. */
-export function employeeIncidentReportHeadline(report: Pick<Report, 'summary' | 'description'>): string {
+/** Employee app: list/detail title */
+export function employeeIncidentReportHeadline(report: Pick<Report, 'summary' | 'description' | 'caseType'>): string {
+  if (report.caseType === 'WAGE_HOUR') {
+    const d = report.description?.trim();
+    if (d && d !== 'Protected wage and hour concern — complete intake to submit details.') {
+      return d.length > 96 ? `${d.slice(0, 93)}…` : d;
+    }
+    return 'Wage & hour concern';
+  }
   const d = report.description?.trim();
   if (d) return d.length > 96 ? `${d.slice(0, 93)}…` : d;
   const s = report.summary?.trim();
@@ -83,6 +90,7 @@ export function getStatusColor(status: string): string {
     ASSIGNED: 'status-chip status-chip--info',
     IN_REVIEW: 'status-chip status-chip--warn',
     NEEDS_INFO: 'status-chip status-chip--warn',
+    PENDING_WAGE_HOUR_REVIEW: 'status-chip status-chip--warn',
     RESOLVED: 'status-chip status-chip--success',
     CLOSED: 'status-chip status-chip--neutral',
     OPEN: 'status-chip status-chip--warn',
@@ -202,11 +210,22 @@ export function getPromptTypeLabel(type: string): string {
 }
 
 /** Extended portal intake is required and not yet submitted */
+export function isWageHourIntakeComplete(report: Pick<Report, 'caseType' | 'needsExtendedWageHourIntake' | 'wageHourIntakeCompletedAt'>): boolean {
+  if (report.caseType !== 'WAGE_HOUR') return true;
+  if (!report.needsExtendedWageHourIntake) return true;
+  return Boolean(report.wageHourIntakeCompletedAt);
+}
+
 export function isIncidentIntakeComplete(report: Report): boolean {
   if (report.needsExtendedIncidentIntake === true) {
     return Boolean(report.incidentIntakeCompletedAt);
   }
   return true;
+}
+
+export function isEmployeeReportIntakeComplete(report: Report): boolean {
+  if (report.caseType === 'WAGE_HOUR') return isWageHourIntakeComplete(report);
+  return isIncidentIntakeComplete(report);
 }
 
 export type EffectiveInvestigationPhase = InvestigationWorkflowPhase | 'CLOSED';

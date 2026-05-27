@@ -52,16 +52,18 @@ export function NewReport({ dataStore, onNavigate, initialParams }: NewReportPro
         isAnonymous,
         sourcePromptId: promptId || undefined,
         sourcePromptResponseId: deliveryId || undefined,
+        caseType: 'WORKPLACE_INVESTIGATION',
+        reportSourceType: 'SELF_REPORTED',
         category: 'OTHER',
         severity: 'LOW',
-        summary: 'Incident report',
+        summary: 'Workplace concern report',
         description: description.trim(),
         peopleInvolved: peopleInvolved.trim() || undefined,
         location: location.trim() || undefined,
         incidentAt: incidentDate ? new Date(incidentDate) : undefined,
         preferredContactMethod: isAnonymous ? undefined : contactMethod,
       });
-      toast.success('Incident report submitted');
+      toast.success('Workplace concern submitted securely');
       onNavigate('reports');
     } catch {
       toast.error('Failed to submit. Please try again.');
@@ -81,9 +83,9 @@ export function NewReport({ dataStore, onNavigate, initialParams }: NewReportPro
           <Icons.arrowLeft className="h-4 w-4" />
           Back to Home
         </button>
-        <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Incident report</h1>
+        <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Report workplace concern</h1>
         <p className="text-[var(--mismo-text-secondary)] mt-1">
-          Tell us what you can. HR will review, assign a category, and assess severity. You do not need to classify the issue yourself.
+          Report harassment, discrimination, retaliation, safety, ethics, or other workplace concerns. HR will review and assign appropriate follow-up. You do not need to classify the issue yourself.
         </p>
       </div>
 
@@ -184,7 +186,7 @@ export function NewReport({ dataStore, onNavigate, initialParams }: NewReportPro
                 ) : (
                   <>
                     <Icons.send className="h-4 w-4 mr-2" />
-                    Submit incident report
+                    Submit report
                   </>
                 )}
               </Button>

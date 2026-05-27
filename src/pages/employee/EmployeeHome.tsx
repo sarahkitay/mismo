@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { PromptAnswer } from '@/types';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Icons } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { employeeIncidentReportHeadline, formatDate, formatRelativeTime, getStatusColor, isIncidentIntakeComplete } from '@/lib/utils';
+import { employeeIncidentReportHeadline, formatDate, formatRelativeTime, getStatusColor, isEmployeeReportIntakeComplete } from '@/lib/utils';
+import { ReportConcernSection } from '@/components/employee/ReportConcernSection';
 import { toast } from 'sonner';
 
 /** EQC-style mandatory incident query copy (shown for prompts with type INCIDENT). */
@@ -12,10 +13,10 @@ const EQC_INCIDENT_QUESTION =
   "Have you experienced or witnessed an incident or occurrence which you perceive to be a violation of your or your co-worker's employment rights that you have not reported prior to this question.";
 
 const EQC_RETALIATION_NOTE =
-  'You will not be retaliated against for reporting an actual or potential violation of your employment rights. Retaliation is against the law and will not be tolerated by this company.';
+  'You will not be retaliated against for sharing a concern in good faith. Retaliation is against the law and is not tolerated by this company.';
 
 const EQC_CONFIRMATION_BODY =
-  'We are prepared to fully investigate any and all acts and circumstances surrounding your response. However, if you selected "YES" by mistake, please go back to the prior screen and submit your intended response. If your intended response is "YES" please submit now.';
+  'Thank you for letting us know. Your response will be reviewed by the appropriate HR contact. If this was selected by mistake, you can go back and update your answer before submitting.';
 
 /** Shown after the main check-in when the prompt has `includeFinancialQuestion`. */
 const FINANCIAL_SCREENING_QUESTION =
@@ -52,7 +53,6 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
       p.acknowledgmentRequired &&
       !policyAcknowledgements.some((a) => a.policyId === p.id && a.userId === currentUser.id)
   );
-  const nowRef = useRef(new Date());
   const heroPrompt = pendingPromptsForEmployee[0];
   const showCheckInGate = Boolean(heroPrompt);
   const isIncidentGate = Boolean(heroPrompt?.prompt.type === 'INCIDENT');
@@ -91,9 +91,9 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
       );
       onNavigate('report-new', { promptId: promptIdForReport, deliveryId });
     } else if (answer === 'HAS_ISSUE' && isIncidentGate) {
-      toast.success('Your “Yes” response has been recorded for today. You are not required to add details for this check-in.');
+      toast.success('Thank you for sharing this. Your response has been recorded.');
     } else if (answer === 'NO_ISSUE' && isIncidentGate) {
-      toast.success('Your “No” response has been recorded. No further action is required for this check-in.');
+      toast.success('Your response has been recorded. No further action is needed for this check-in.');
     } else {
       toast.success('Response recorded in compliance log.');
     }
@@ -118,8 +118,8 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
     submitPromptResponse(deliveryId, 'NO_ISSUE');
     toast.success(
       isIncidentGate
-        ? 'Your “No” response has been recorded. No further action is required for this check-in.'
-        : 'Response recorded in compliance log.'
+        ? 'Your response has been recorded. No further action is needed for this check-in.'
+        : 'Your response has been recorded.'
     );
   };
 
@@ -148,28 +148,24 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
     }
     submitPromptResponse(deliveryId, 'HAS_ISSUE');
     setIncidentStep('question');
-    toast.success('Your “Yes” response has been recorded for today. You are not required to add details for this check-in.');
+    toast.success('Thank you for sharing this. Your response has been recorded for today.');
   };
   
-  const pendingIntakes = employeeReports.filter((r) => !isIncidentIntakeComplete(r));
-  const pendingCount = pendingPromptsForEmployee.length;
-  const openReportsCount = employeeReports.filter(r => !['RESOLVED', 'CLOSED'].includes(r.status)).length;
-  const recentUpdatesCount = employeeReports.filter(r => {
-    const daysSinceUpdate = (nowRef.current.getTime() - r.updatedAt.getTime()) / (1000 * 60 * 60 * 24);
-    return daysSinceUpdate < 7;
-  }).length;
+  const pendingIntakes = employeeReports.filter((r) => !isEmployeeReportIntakeComplete(r));
   
   return (
     <div className="space-y-6 relative z-[1]">
+      <ReportConcernSection onNavigate={onNavigate} />
+
       {pendingIntakes.length > 0 && (
         <Card className="mismo-card border-2 border-amber-400/60 bg-amber-50/90">
           <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <p className="font-semibold text-[var(--mismo-text)]">Incident form needed</p>
+              <p className="font-semibold text-[var(--mismo-text)]">Action needed on your report</p>
               <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
                 {pendingIntakes.length === 1
-                  ? 'Complete your incident questionnaire from the link in your receipt email, or open it here.'
-                  : `You have ${pendingIntakes.length} incident reports waiting on your incident questionnaire.`}
+                  ? 'Complete your pending intake form to finish submitting your concern.'
+                  : `You have ${pendingIntakes.length} reports waiting on intake completion.`}
               </p>
             </div>
             <div className="flex flex-wrap gap-2 shrink-0">
@@ -177,7 +173,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                 const label = employeeIncidentReportHeadline(r);
                 const short = label.length > 28 ? `${label.slice(0, 28)}…` : label;
                 return (
-                <Button key={r.id} variant="default" className="bg-[var(--mismo-blue)] hover:bg-blue-600" onClick={() => onNavigate(`incident-intake/${r.id}`)}>
+                <Button key={r.id} variant="default" className="bg-[var(--mismo-blue)] hover:bg-blue-600" onClick={() => onNavigate(r.caseType === 'WAGE_HOUR' ? `wage-hour-intake/${r.id}` : `incident-intake/${r.id}`)}>
                   Open form: {short}
                 </Button>
                 );
@@ -304,19 +300,6 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                     </>
                   )}
 
-                  <div className="mt-8 pt-6 border-t border-[var(--color-border-200)]">
-                    <p className="text-sm text-[var(--color-text-secondary)] mb-3">
-                      To file a separate detailed report outside this check-in, you may still use Report an incident.
-                    </p>
-                    <Button
-                      variant="outline"
-                      className="border-[var(--mismo-blue)] text-[var(--mismo-blue)] hover:bg-[var(--mismo-blue-light)] enterprise-interactive"
-                      onClick={() => onNavigate('report-new')}
-                    >
-                      <Icons.flag className="h-4 w-4 mr-2" />
-                      Report an incident
-                    </Button>
-                  </div>
                 </>
               ) : (
                 <>
@@ -344,19 +327,6 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                       <Icons.arrowRight className="h-4 w-4 ml-2" />
                     </Button>
                   </div>
-                  <div className="mt-8 pt-6 border-t border-[var(--color-border-200)]">
-                    <p className="text-sm text-[var(--color-text-secondary)] mb-3">
-                      Something else happened outside this check-in? You can inform your company at any time.
-                    </p>
-                    <Button
-                      variant="outline"
-                      className="border-[var(--mismo-blue)] text-[var(--mismo-blue)] hover:bg-[var(--mismo-blue-light)] enterprise-interactive"
-                      onClick={() => onNavigate('report-new')}
-                    >
-                      <Icons.flag className="h-4 w-4 mr-2" />
-                      Report an incident
-                    </Button>
-                  </div>
                 </>
               )}
                 </>
@@ -366,10 +336,8 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
         </Card>
       )}
 
-      {!showCheckInGate && (
+      {!showCheckInGate && showRelaxedDashboard && (
         <>
-          {showRelaxedDashboard ? (
-            <>
               <Card className="mismo-card border border-[var(--color-emerald-600)]/35 bg-gradient-to-br from-[var(--mismo-green-light)]/40 to-[var(--color-surface-100)] shadow-[var(--shadow-1)] dashboard-header">
                 <CardContent className="p-8 md:p-10">
                   <div className="flex flex-col md:flex-row md:items-start gap-6 md:gap-8">
@@ -420,13 +388,6 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                         </li>
                       </ul>
                       <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center md:justify-start flex-wrap">
-                        <Button
-                          className="h-12 bg-[var(--mismo-blue)] hover:bg-blue-600 shadow-[var(--shadow-1)] enterprise-interactive"
-                          onClick={() => onNavigate('report-new')}
-                        >
-                          <Icons.flag className="h-4 w-4 mr-2" />
-                          Report an incident
-                        </Button>
                         <Button variant="outline" className="h-12 enterprise-interactive" onClick={() => onNavigate('resources')}>
                           <Icons.bookOpen className="h-4 w-4 mr-2" />
                           Open library
@@ -436,10 +397,6 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                           My incident reports
                         </Button>
                       </div>
-                      <p className="text-sm text-[var(--color-text-muted)] mt-5 max-w-2xl mx-auto md:mx-0">
-                        If something happens at work, you can use <span className="font-medium text-[var(--color-text-primary)]">Report an incident</span> any
-                        time. It does not replace your check-ins; it is there whenever you need it.
-                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -527,16 +484,6 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <p className="text-sm text-[var(--mismo-text-secondary)]">
-                  Something urgent or sensitive? Your company wants to hear from you.
-                </p>
-                <Button variant="outline" className="shrink-0 border-[var(--mismo-blue)] text-[var(--mismo-blue)]" onClick={() => onNavigate('report-new')}>
-                  <Icons.flag className="h-4 w-4 mr-2" />
-                  Report an incident
-                </Button>
-              </div>
-
               <div className="reports-section">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-[var(--mismo-text)]">Recent incident reports</h2>
@@ -567,7 +514,9 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-[var(--mismo-blue)]" />
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-[var(--mismo-text)] truncate">{employeeIncidentReportHeadline(report)}</p>
-                              <p className="text-sm text-[var(--mismo-text-secondary)]">Submitted {formatRelativeTime(report.createdAt)}</p>
+                              <p className="text-sm text-[var(--mismo-text-secondary)]">
+                                Submitted {formatRelativeTime(report.createdAt)} · Updated {formatRelativeTime(report.updatedAt)}
+                              </p>
                             </div>
                             <span className={`text-xs font-medium ${getStatusColor(report.status)}`}>{report.status}</span>
                             <Icons.chevronRight className="h-5 w-5 text-gray-400 flex-shrink-0" />
@@ -579,159 +528,13 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                         <Icons.inbox className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                         <p className="text-[var(--mismo-text-secondary)]">You haven&apos;t submitted any incident reports yet.</p>
                         <p className="text-sm text-[var(--mismo-text-secondary)] mt-2">
-                          That&apos;s okay. If something happens, use <span className="font-medium text-[var(--mismo-text)]">Report an incident</span> at the top of
-                          this page; your team is notified right away.
+                          If something happens, you can use <span className="font-medium text-[var(--mismo-text)]">Report an incident</span> in the sidebar whenever you need to.
                         </p>
                       </div>
                     )}
                   </CardContent>
                 </Card>
               </div>
-            </>
-          ) : (
-            <>
-              <div className="header-block">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                  <div>
-                    <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Employee Compliance Workspace</h1>
-                    <p className="text-[var(--mismo-text-secondary)] mt-1">
-                      {currentUser.firstName},{' '}
-                      {pendingCount === 1
-                        ? 'complete your open check-in below, then use the rest of the page for memos and shortcuts.'
-                        : 'complete your open check-ins below, then use the rest of the page for memos and shortcuts.'}
-                    </p>
-                  </div>
-                  <Button
-                    className="shrink-0 bg-[var(--mismo-blue)] hover:bg-blue-600 enterprise-interactive"
-                    onClick={() => onNavigate('report-new')}
-                  >
-                    <Icons.flag className="h-4 w-4 mr-2" />
-                    Report an incident
-                  </Button>
-                </div>
-              </div>
-
-              {unreadPolicies.length > 0 && (
-                <Card className="mismo-card border border-[var(--color-border-200)]">
-                  <CardContent className="p-5">
-            <h2 className="text-lg font-semibold text-[var(--mismo-text)]">Company memos needing your acknowledgement</h2>
-            <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">Review and sign off in your library when you&apos;re ready.</p>
-                    <div className="mt-3 space-y-2">
-                      {unreadPolicies.slice(0, 3).map((policy) => (
-                        <Button
-                          key={policy.id}
-                          variant="outline"
-                          className="w-full justify-start"
-                          onClick={() => onNavigate('resources')}
-                        >
-                          <Icons.bookOpen className="h-4 w-4 mr-2" />
-                          {policy.title}
-                          <span className="ml-2 text-xs text-[var(--mismo-amber)]">Action needed</span>
-                        </Button>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <Card className="stat-tile mismo-card tile-border-blue border border-[var(--color-border-200)]">
-                  <CardContent className="p-5">
-                    <div>
-                      <p className="text-sm text-[var(--mismo-text-secondary)]">Pending check-ins</p>
-                      <p className="text-3xl font-bold text-[var(--mismo-text)] mt-1">{pendingCount}</p>
-                    </div>
-                    <button type="button" onClick={() => onNavigate('home')} className="text-sm text-[var(--mismo-blue)] mt-3 hover:underline">
-                      Dashboard
-                    </button>
-                  </CardContent>
-                </Card>
-                <Card className="stat-tile mismo-card tile-border-amber border border-[var(--color-border-200)]">
-                  <CardContent className="p-5">
-                    <div>
-                      <p className="text-sm text-[var(--mismo-text-secondary)]">Open incident reports</p>
-                      <p className="text-3xl font-bold text-[var(--mismo-text)] mt-1">{openReportsCount}</p>
-                    </div>
-                    <button type="button" onClick={() => onNavigate('reports')} className="text-sm text-[var(--mismo-blue)] mt-3 hover:underline">
-                      View all
-                    </button>
-                  </CardContent>
-                </Card>
-                <Card className="stat-tile mismo-card tile-border-green border border-[var(--color-border-200)]">
-                  <CardContent className="p-5">
-                    <div>
-                      <p className="text-sm text-[var(--mismo-text-secondary)]">Updates (7 days)</p>
-                      <p className="text-3xl font-bold text-[var(--mismo-text)] mt-1">{recentUpdatesCount}</p>
-                    </div>
-                    <button type="button" onClick={() => onNavigate('reports')} className="text-sm text-[var(--mismo-blue)] mt-3 hover:underline">
-                      View all
-                    </button>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="reports-section">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-[var(--mismo-text)]">My incident reports</h2>
-                  <button type="button" onClick={() => onNavigate('reports')} className="text-sm text-[var(--mismo-blue)] hover:underline">
-                    View all incident reports
-                  </button>
-                </div>
-                <Card className="mismo-card border border-[var(--color-border-200)]">
-                  <CardContent className="p-0">
-                    {employeeReports.length > 0 ? (
-                      <div className="divide-y divide-gray-100">
-                        {employeeReports.slice(0, 3).map((report) => (
-                          <div
-                            key={report.id}
-                            className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors cursor-pointer"
-                            onClick={() => onNavigate(`report-detail/${report.id}`)}
-                          >
-                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-[var(--mismo-blue)]" />
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium text-[var(--mismo-text)] truncate">{employeeIncidentReportHeadline(report)}</p>
-                              <p className="text-sm text-[var(--mismo-text-secondary)]">Submitted {formatRelativeTime(report.createdAt)}</p>
-                            </div>
-                            <span className={`text-xs font-medium ${getStatusColor(report.status)}`}>{report.status}</span>
-                            <Icons.chevronRight className="h-5 w-5 text-gray-400 flex-shrink-0" />
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="p-8 text-center">
-                        <Icons.inbox className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                        <p className="text-[var(--mismo-text-secondary)]">No incident reports submitted yet</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="resources-section">
-                <h2 className="text-lg font-semibold text-[var(--mismo-text)] mb-4">Resources</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Card className="mismo-card mismo-card-hover cursor-pointer border border-[var(--color-border-200)]" onClick={() => onNavigate('resources')}>
-                    <CardContent className="p-5">
-                      <div className="w-10 h-10 rounded-lg bg-[var(--mismo-blue-light)] flex items-center justify-center mb-3">
-                        <Icons.resources className="h-5 w-5 text-[var(--mismo-blue)]" />
-                      </div>
-                      <h3 className="font-semibold text-[var(--mismo-text)]">Employee handbook</h3>
-                      <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">Memos and procedures</p>
-                    </CardContent>
-                  </Card>
-                  <Card className="mismo-card mismo-card-hover cursor-pointer border border-[var(--color-border-200)]" onClick={() => onNavigate('resources')}>
-                    <CardContent className="p-5">
-                      <div className="w-10 h-10 rounded-lg bg-[var(--mismo-green-light)] flex items-center justify-center mb-3">
-                        <Icons.heartPulse className="h-5 w-5 text-[var(--mismo-green)]" />
-                      </div>
-                      <h3 className="font-semibold text-[var(--mismo-text)]">Wellness resources</h3>
-                      <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">Support and assistance</p>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            </>
-          )}
         </>
       )}
     </div>

@@ -9,8 +9,6 @@ interface NavItem {
   label: string;
   icon: IconName;
   badgeKey?: keyof DataStore['dashboardCounts'];
-  /** When set, navigate with these query params so the badge matches the filtered list */
-  badgeNavigateParams?: Record<string, string>;
 }
 
 const employeeNavItems: NavItem[] = [
@@ -27,26 +25,28 @@ const adminNavItems: NavItem[] = [
     label: 'Prompt Responses',
     icon: 'reports',
     badgeKey: 'yesResponsesNeedingReview',
-    badgeNavigateParams: { answer: 'HAS_ISSUE', needs_review: '1', rangePreset: 'ALL' },
   },
   {
     id: 'investigations',
     label: 'Investigations',
     icon: 'investigations',
     badgeKey: 'activeInvestigations',
-    badgeNavigateParams: { status: 'OPEN' },
   },
   {
     id: 'policies',
-    label: 'Memos & Announcements',
+    label: "Memo's & Announcements",
     icon: 'bookOpen',
     badgeKey: 'memoAcknowledgementsPending',
-    badgeNavigateParams: { memoQueue: 'pending_ack' },
   },
+  {
+    id: 'case-register',
+    label: 'Case Register & Check-ins',
+    icon: 'reports',
+    badgeKey: 'openCaseRegisterCount',
+  },
+  { id: 'users', label: 'Employees', icon: 'employees', badgeKey: 'atRiskEmployees' },
   { id: 'analytics', label: 'Analytics', icon: 'analytics' },
-  { id: 'compliance', label: 'State Compliance', icon: 'shield' },
-  { id: 'users', label: 'Manage Employees', icon: 'employees', badgeKey: 'atRiskEmployees', badgeNavigateParams: { atRisk: 'true' } },
-  { id: 'prompts', label: 'Manage Prompts', icon: 'prompts' },
+  { id: 'compliance', label: 'Compliance', icon: 'shield' },
   { id: 'system-health', label: 'System Health', icon: 'systemHealth', badgeKey: 'criticalReports' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
@@ -73,9 +73,17 @@ function SidebarContent({
   const getBadgeCount = (item: NavItem): number | undefined => {
     if (currentRole === 'CLIENT') return undefined;
     if (currentRole === 'EMPLOYEE') {
+      const pendingMemos = dataStore.policies.filter(
+        (p) =>
+          p.status === 'PUBLISHED' &&
+          p.acknowledgmentRequired &&
+          !dataStore.policyAcknowledgements.some(
+            (a) => a.policyId === p.id && a.userId === dataStore.currentUser.id && a.outcome !== 'REQUEST_CLARIFICATION'
+          )
+      ).length;
       switch (item.id) {
         case 'home':
-          return dashboardCounts.scheduledMemos > 0 ? dashboardCounts.scheduledMemos : undefined;
+          return pendingMemos > 0 ? pendingMemos : dataStore.pendingPromptsForEmployee.length || undefined;
         case 'reports':
           return (employeeReports?.length ?? 0) > 0 ? (employeeReports?.length ?? 0) : undefined;
         default:
@@ -88,10 +96,6 @@ function SidebarContent({
   };
 
   const goNav = (item: NavItem) => {
-    if (currentRole !== 'EMPLOYEE' && currentRole !== 'CLIENT' && item.badgeNavigateParams) {
-      onNavigate(item.id, item.badgeNavigateParams);
-      return;
-    }
     onNavigate(item.id);
   };
 
@@ -108,6 +112,36 @@ function SidebarContent({
       </div>
 
       <div className="flex-1 px-2 space-y-0.5">
+        {currentRole === 'EMPLOYEE' && (
+          <div className="mb-2 space-y-1">
+            <button
+              type="button"
+              onClick={() => onNavigate('report-new')}
+              className={cn(
+                'w-full flex items-center gap-2.5 px-3 py-2 text-sm font-semibold transition-colors border',
+                activePage === 'report-new'
+                  ? 'bg-[var(--color-alert-600)] text-white border-white/20'
+                  : 'bg-[var(--color-primary-700)] text-white border-white/10 hover:bg-[var(--color-alert-600)]'
+              )}
+            >
+              <Icons.shield className="h-4 w-4 flex-shrink-0" />
+              <span className="flex-1 text-left">Workplace concern</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('wage-hour-report')}
+              className={cn(
+                'w-full flex items-center gap-2.5 px-3 py-2 text-sm font-semibold transition-colors border',
+                activePage === 'wage-hour-report' || activePage.startsWith('wage-hour-intake/')
+                  ? 'bg-emerald-700 text-white border-white/20'
+                  : 'bg-emerald-900/80 text-white border-white/10 hover:bg-emerald-700'
+              )}
+            >
+              <Icons.reports className="h-4 w-4 flex-shrink-0" />
+              <span className="flex-1 text-left">Wage &amp; hour</span>
+            </button>
+          </div>
+        )}
         {navItems.map((item) => {
           const Icon = Icons[item.icon];
           const badgeCount = getBadgeCount(item);
@@ -115,7 +149,10 @@ function SidebarContent({
             activePage === item.id ||
             (item.id === 'policies' && activePage === 'announcements') ||
             (item.id === 'prompt-responses' &&
-              (activePage === 'report-detail' || activePage === 'prompt-response-detail'));
+              (activePage === 'prompt-response-detail')) ||
+            (item.id === 'case-register' &&
+              (activePage === 'report-detail' || activePage === 'case-register')) ||
+            (currentRole === 'EMPLOYEE' && item.id === 'home' && (activePage === 'report-new' || activePage === 'wage-hour-report' || activePage.startsWith('wage-hour-intake/')));
 
           return (
             <button
@@ -166,7 +203,7 @@ function SidebarContent({
           )}
         >
           <Icons.info className={cn('h-4.5 w-4.5 flex-shrink-0', activePage === 'settings' ? 'text-white' : 'text-white/55')} />
-          <span className="flex-1 text-left">AI Guide</span>
+          <span className="flex-1 text-left">Settings</span>
         </button>
       </div>
     </nav>

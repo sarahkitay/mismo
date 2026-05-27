@@ -30,14 +30,16 @@ function getSlaLabel(report: { createdAt: Date; updatedAt: Date; status: string 
   return { label: `Due in ${days} day${days !== 1 ? 's' : ''}`, overdue: false };
 }
 import { exportCaseCsv, exportCasePdf } from '@/lib/evidenceExport';
+import { formatReportReference, getInvestigationDisplayId } from '@/lib/investigationWorkflow';
 
 interface AdminReportDetailProps {
   dataStore: DataStore;
   reportId: string;
   onNavigate: (page: string, params?: Record<string, string>) => void;
+  fromInvestigationId?: string;
 }
 
-export function AdminReportDetail({ dataStore, reportId, onNavigate }: AdminReportDetailProps) {
+export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvestigationId }: AdminReportDetailProps) {
   const report = dataStore.reports.find((r) => r.id === reportId);
   const statusEvents = dataStore.reportStatusEvents
     .filter((event) => event.reportId === reportId)
@@ -82,6 +84,10 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate }: AdminRepo
     [report?.responseChecklist]
   );
 
+  const linkedInvestigation = fromInvestigationId
+    ? dataStore.investigations.find((i) => i.id === fromInvestigationId)
+    : dataStore.investigations.find((i) => i.linkedReportIds.includes(reportId));
+
   if (!report) {
     return <div className="text-sm text-[var(--mismo-text-secondary)]">Report not found.</div>;
   }
@@ -93,10 +99,33 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate }: AdminRepo
 
   return (
     <div className="space-y-5">
-      <Button variant="ghost" onClick={() => onNavigate('prompt-responses', { register: '1' })}>
-        <Icons.arrowLeft className="h-4 w-4 mr-2" />
-        Back to Reports
-      </Button>
+      {linkedInvestigation ? (
+        <div className="space-y-2">
+          <nav className="flex flex-wrap items-center gap-2 text-sm text-[var(--color-text-muted)]">
+            <button
+              type="button"
+              className="text-[var(--mismo-blue)] hover:underline font-medium"
+              onClick={() => onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'overview' })}
+            >
+              {getInvestigationDisplayId(linkedInvestigation)}
+            </button>
+            <span aria-hidden>/</span>
+            <span className="text-[var(--color-text-primary)]">{formatReportReference(report.id)}</span>
+          </nav>
+          <Button
+            variant="ghost"
+            onClick={() => onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'linked-reports' })}
+          >
+            <Icons.arrowLeft className="h-4 w-4 mr-2" />
+            Back to investigation
+          </Button>
+        </div>
+      ) : (
+        <Button variant="ghost" onClick={() => onNavigate('prompt-responses', { register: '1' })}>
+          <Icons.arrowLeft className="h-4 w-4 mr-2" />
+          Back to Reports
+        </Button>
+      )}
 
       {/* Above-the-fold: Case Command Center header */}
       <Card className="mismo-card border border-[var(--color-border-200)]">

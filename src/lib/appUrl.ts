@@ -23,6 +23,7 @@ export function buildAppUrl(page: string, role: AppRole, routeParams: Record<str
     resources: '/employee/resources',
     settings: '/employee/settings',
     'report-new': '/employee/report/new',
+    'wage-hour-report': '/employee/report/wage-hour',
     help: '/employee/help',
   };
 
@@ -36,6 +37,7 @@ export function buildAppUrl(page: string, role: AppRole, routeParams: Record<str
     employees: '/admin/users',
     prompts: '/admin/prompts',
     'prompt-responses': '/admin/employee-prompt-responses',
+    'case-register': '/admin/case-register',
     compliance: '/admin/compliance',
     investigations: '/admin/investigations',
     activity: '/admin/activity',
@@ -47,6 +49,10 @@ export function buildAppUrl(page: string, role: AppRole, routeParams: Record<str
   };
 
   if (role === 'EMPLOYEE') {
+    if (page.startsWith('wage-hour-intake/')) {
+      const rid = page.slice('wage-hour-intake/'.length);
+      return `/employee/my-reports/${rid}/wage-hour${tail}`;
+    }
     if (page.startsWith('incident-intake/')) {
       const rid = page.slice('incident-intake/'.length);
       return `/employee/my-reports/${rid}/intake${tail}`;
@@ -95,6 +101,11 @@ export function parseAppLocation(
   if (pathname === '/employee/settings') return merge({ role: 'EMPLOYEE', page: 'settings', params: {} });
   if (pathname === '/employee/report/new') return merge({ role: 'EMPLOYEE', page: 'report-new', params: {} });
   if (pathname === '/employee/help') return merge({ role: 'EMPLOYEE', page: 'help', params: {} });
+  if (pathname === '/employee/report/wage-hour') return merge({ role: 'EMPLOYEE', page: 'wage-hour-report', params: {} });
+  const wageHourIntakeMatch = pathname.match(/^\/employee\/my-reports\/([^/]+)\/wage-hour$/);
+  if (wageHourIntakeMatch) {
+    return merge({ role: 'EMPLOYEE', page: `wage-hour-intake/${wageHourIntakeMatch[1]}`, params: {} });
+  }
   const intakeMatch = pathname.match(/^\/employee\/my-reports\/([^/]+)\/intake$/);
   if (intakeMatch) return merge({ role: 'EMPLOYEE', page: `incident-intake/${intakeMatch[1]}`, params: {} });
   if (pathname.startsWith('/employee/my-reports/')) {
@@ -127,6 +138,7 @@ export function parseAppLocation(
   if (pathname === '/admin/prompts') return merge({ role: 'HR', page: 'prompts', params: {} });
   if (pathname === '/admin/prompts/scheduled') return merge({ role: 'HR', page: 'scheduled-memos', params: {} });
   if (pathname === '/admin/employee-prompt-responses') return merge({ role: 'HR', page: 'prompt-responses', params: {} });
+  if (pathname === '/admin/case-register') return merge({ role: 'HR', page: 'case-register', params: {} });
   if (pathname.startsWith('/admin/employee-prompt-responses/')) {
     const rid = pathname.split('/admin/employee-prompt-responses/')[1]?.split('?')[0] ?? '';
     return merge({

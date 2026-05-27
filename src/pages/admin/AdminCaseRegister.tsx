@@ -1,19 +1,19 @@
 import type { DataStore } from '@/hooks/useDataStore';
 import { AdminCaseRegisterHub } from '@/pages/admin/AdminCaseRegisterHub';
 
-interface AdminPromptResponsesProps {
+interface AdminCaseRegisterProps {
   dataStore: DataStore;
   onNavigate: (page: string, params?: Record<string, string>) => void;
   initialFilters?: Record<string, string>;
 }
 
-export function AdminPromptResponses({ dataStore, onNavigate, initialFilters }: AdminPromptResponsesProps) {
+export function AdminCaseRegister({ dataStore, onNavigate, initialFilters }: AdminCaseRegisterProps) {
   return (
     <AdminCaseRegisterHub
       dataStore={dataStore}
       onNavigate={onNavigate}
-      hubPage="prompt-responses"
-      initialFilters={{ view: 'prompts', ...initialFilters }}
+      hubPage="case-register"
+      initialFilters={{ view: 'register', register: '1', ...initialFilters }}
     />
   );
 }
