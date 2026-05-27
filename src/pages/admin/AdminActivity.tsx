@@ -20,6 +20,8 @@ const activityTypeLabels: Record<ActivityEventType, { label: string; icon: keyof
   REPORT_STATUS_CHANGED: { label: 'Status Changed', icon: 'refresh', color: 'amber' },
   INVESTIGATION_CREATED: { label: 'Investigation Created', icon: 'search', color: 'purple' },
   INVESTIGATION_UPDATED: { label: 'Investigation Updated', icon: 'search', color: 'purple' },
+  WAGE_HOUR_SCREENING: { label: 'Wage & Hour Screening', icon: 'shield', color: 'teal' },
+  WAGE_HOUR_SUBMITTED: { label: 'Wage & Hour Submitted', icon: 'reports', color: 'green' },
   NUDGE_SENT: { label: 'Reminder Sent', icon: 'bell', color: 'teal' },
   EXPORT_PDF: { label: 'Export PDF', icon: 'reports', color: 'amber' },
   EXPORT_CSV: { label: 'Export CSV', icon: 'reports', color: 'amber' },

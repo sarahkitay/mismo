@@ -1,420 +1,347 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { Icons } from '@/lib/icons';
-
-function useCountUp(target: number, durationMs = 1000, decimals = 0) {
-  const [value, setValue] = useState(0);
-  const startRef = useRef<number | null>(null);
-  const rafRef = useRef<number>(0);
-  useEffect(() => {
-    startRef.current = null;
-    const tick = (now: number) => {
-      if (startRef.current == null) startRef.current = now;
-      const elapsed = now - startRef.current;
-      const t = Math.min(elapsed / durationMs, 1);
-      const eased = 1 - (1 - t) ** 2.5;
-      const current = target * eased;
-      setValue(decimals > 0 ? Math.round(current * 10 ** decimals) / 10 ** decimals : Math.round(current));
-      if (t < 1) rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [target, durationMs, decimals]);
-  return value;
-}
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 interface AdminDashboardProps {
   dataStore: DataStore;
   onNavigate: (page: string, params?: Record<string, string>) => void;
 }
 
-type ActivityWindow = '24H' | '7D' | '30D';
+const CHART_COLORS = {
+  navy: '#1e3a5f',
+  green: '#059669',
+  amber: '#d97706',
+  red: '#dc2626',
+  gray: '#94a3b8',
+};
 
-function formatUtcTimestamp(date: Date): string {
-  const datePart = new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: '2-digit',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(date);
-  const timePart = new Intl.DateTimeFormat('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'UTC',
-  }).format(date);
-  return `${datePart} | ${timePart} UTC`;
+function ActionLine({
+  label,
+  count,
+  onClick,
+  urgent,
+}: {
+  label: string;
+  count: number;
+  onClick: () => void;
+  urgent?: boolean;
+}) {
+  if (count === 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full text-left flex items-center justify-between gap-2 py-1.5 px-2 -mx-2 rounded hover:bg-[var(--color-surface-200)] transition-colors"
+    >
+      <span className={`text-sm ${urgent ? 'text-[var(--color-alert-600)] font-medium' : 'text-[var(--color-text-secondary)]'}`}>
+        {label}
+      </span>
+      <span className={`text-sm font-semibold tabular-nums ${urgent ? 'text-[var(--color-alert-600)]' : ''}`}>{count}</span>
+    </button>
+  );
 }
 
 export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
-  const nowRef = useRef(new Date());
-  const [activityWindow, setActivityWindow] = useState<ActivityWindow>('7D');
-  const [isLoadingActivity] = useState(false);
+  const dc = dataStore.dashboardCounts;
+  const { policies, policyAcknowledgements, responses, deliveries, investigations, activities, users } = dataStore;
 
-  const { users, reports, policies, policyAcknowledgements, investigations, responses, deliveries, activities } = dataStore;
+  const chartData = useMemo(() => {
+    const yesCount = responses.filter((r) => r.answer === 'HAS_ISSUE').length;
+    const noCount = responses.filter((r) => r.answer === 'NO_ISSUE').length;
+    const unanswered = deliveries.filter((d) => d.status === 'PENDING').length;
+    const needsClarification = dc.reportsNeedingClarification;
 
-  const computed = useMemo(() => {
     const activeEmployees = users.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');
-    const requiredPolicies = policies.filter((p) => p.status === 'PUBLISHED' && p.acknowledgmentRequired);
-    const totalRequiredAcks = activeEmployees.length * requiredPolicies.length;
-    const pendingAcks = Math.max(0, totalRequiredAcks - policyAcknowledgements.length);
+    const requiredMemos = policies.filter((p) => p.status === 'PUBLISHED' && p.acknowledgmentRequired);
+    let memoUnderstood = 0;
+    let memoNeedsClar = 0;
+    let memoUnanswered = 0;
+    for (const p of requiredMemos) {
+      for (const emp of activeEmployees) {
+        const ack = policyAcknowledgements.find((a) => a.policyId === p.id && a.userId === emp.id);
+        if (!ack) memoUnanswered += 1;
+        else if (ack.outcome === 'REQUEST_CLARIFICATION') memoNeedsClar += 1;
+        else memoUnderstood += 1;
+      }
+    }
 
-    const openInvestigations = investigations.filter((inv) => inv.status === 'OPEN');
-    const memoResponses = reports.filter((report) => report.status === 'NEEDS_INFO');
-    const yesPromptResponsesCount = responses.filter((r) => r.answer === 'HAS_ISSUE').length;
-    const activePublishedMemos = policies.filter((p) => p.status === 'PUBLISHED').length;
-
-    const startOfToday = new Date(nowRef.current.getFullYear(), nowRef.current.getMonth(), nowRef.current.getDate());
-    const upcomingMemoDeadlines = policies
-      .filter((p) => p.status === 'PUBLISHED' && p.completionDueDate)
-      .filter((p) => {
-        const d = p.completionDueDate instanceof Date ? p.completionDueDate : new Date(String(p.completionDueDate));
-        return d.getTime() >= startOfToday.getTime();
-      })
-      .sort((a, b) => {
-        const da = a.completionDueDate instanceof Date ? a.completionDueDate : new Date(String(a.completionDueDate));
-        const db = b.completionDueDate instanceof Date ? b.completionDueDate : new Date(String(b.completionDueDate));
-        return da.getTime() - db.getTime();
-      })
-      .slice(0, 6)
-      .map((p) => ({
-        id: p.id,
-        title: p.title,
-        dueAt: (p.completionDueDate instanceof Date ? p.completionDueDate : new Date(String(p.completionDueDate))) as Date,
-      }));
-
-    const atRiskEmployees = activeEmployees.filter((employee) => {
-      const employeeDeliveries30d = deliveries.filter(
-        (delivery) => delivery.userId === employee.id && nowRef.current.getTime() - delivery.deliveredAt.getTime() <= 30 * 24 * 60 * 60 * 1000
-      );
-      const completed30d = employeeDeliveries30d.filter((delivery) => delivery.status === 'COMPLETED').length;
-      const responseRate30d = employeeDeliveries30d.length ? completed30d / employeeDeliveries30d.length : 0;
-      const lastResponse = responses
-        .filter((response) => response.userId === employee.id)
-        .sort((a, b) => b.submittedAt.getTime() - a.submittedAt.getTime())[0];
-      return !lastResponse || responseRate30d < dataStore.orgSettings.thresholds.atRiskMinResponseRate;
-    });
-
-    // Analytics index: weighted composite 0–1 → displayed 0–100 (e.g. 29.6)
-    // 28% policy acknowledgment rate, 26% prompt completion rate, 30% investigation closure rate, 16% inverse of exposure (open memos + open investigations, capped)
-    const policyRate = totalRequiredAcks > 0 ? 1 - pendingAcks / totalRequiredAcks : 1;
-    const promptRate = deliveries.length > 0 ? responses.length / deliveries.length : 1;
-    const investigationRate = investigations.length > 0 ? investigations.filter((i) => i.status === 'CLOSED').length / investigations.length : 1;
-    const riskExposurePenalty = Math.min(1, (memoResponses.length + openInvestigations.length) / 24);
-    const analyticsIndex = policyRate * 0.28 + promptRate * 0.26 + investigationRate * 0.3 + (1 - riskExposurePenalty) * 0.16;
-
-    const actionRequiredCount = openInvestigations.length + memoResponses.length + pendingAcks + yesPromptResponsesCount;
-
-    const windowMs = activityWindow === '24H' ? 24 * 60 * 60 * 1000 : activityWindow === '7D' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
-    const recentActivity = activities
-      .filter((activity) => nowRef.current.getTime() - activity.createdAt.getTime() <= windowMs)
-      .slice(0, 6);
-
-    const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
-    const hasIssueResponsesToday = responses.filter(
-      (r) => r.answer === 'HAS_ISSUE' && r.submittedAt >= startOfToday && r.submittedAt <= endOfToday
-    ).length;
-    const pendingPromptResponsesToday = deliveries.filter(
-      (d) => d.status === 'PENDING' && d.dueAt && d.dueAt <= endOfToday
-    ).length;
+    const invOpen = investigations.filter((i) => i.status === 'OPEN' && i.workflowPhase === 'QUEUED').length;
+    const invProgress = investigations.filter((i) => i.status === 'OPEN' && i.workflowPhase === 'IN_PROGRESS').length;
+    const invComplete = investigations.filter((i) => i.status === 'CLOSED' || i.workflowPhase === 'AWAITING_OUTCOME_ACK').length;
 
     return {
-      pendingAcks,
-      openInvestigations,
-      memoResponses,
-      atRiskEmployees,
-      analyticsIndex,
-      actionRequiredCount,
-      recentActivity,
-      hasIssueResponsesToday,
-      pendingPromptResponsesToday,
-      yesPromptResponsesCount,
-      activePublishedMemos,
-      upcomingMemoDeadlines,
+      promptResponses: [
+        { name: 'Yes', value: yesCount, fill: CHART_COLORS.red },
+        { name: 'No', value: noCount, fill: CHART_COLORS.green },
+        { name: 'Unanswered', value: unanswered, fill: CHART_COLORS.amber },
+        { name: 'Needs clarification', value: needsClarification, fill: CHART_COLORS.navy },
+      ],
+      memoStatus: [
+        { name: 'Read & understood', value: memoUnderstood, fill: CHART_COLORS.green },
+        { name: 'Needs clarification', value: memoNeedsClar, fill: CHART_COLORS.amber },
+        { name: 'Unanswered', value: memoUnanswered, fill: CHART_COLORS.red },
+      ],
+      investigations: [
+        { name: 'Open (queued)', value: invOpen, fill: CHART_COLORS.amber },
+        { name: 'In progress', value: invProgress, fill: CHART_COLORS.navy },
+        { name: 'Complete / closed', value: invComplete, fill: CHART_COLORS.green },
+      ],
     };
-  }, [activities, activityWindow, dataStore.orgSettings.thresholds.atRiskMinResponseRate, deliveries, investigations, policies, policyAcknowledgements, reports, responses, users]);
+  }, [responses, deliveries, dc.reportsNeedingClarification, policies, policyAcknowledgements, users, investigations]);
 
-  const atRiskEmails = computed.atRiskEmployees.map((user) => user.email).filter(Boolean);
+  const recentActivity = activities.slice(0, 6);
+  const analyticsScore = useMemo(() => {
+    const activeEmployees = users.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active').length;
+    const required = policies.filter((p) => p.status === 'PUBLISHED' && p.acknowledgmentRequired).length * activeEmployees;
+    const policyRate = required > 0 ? policyAcknowledgements.length / required : 1;
+    const promptRate = deliveries.length ? responses.length / deliveries.length : 1;
+    const invRate = investigations.length ? investigations.filter((i) => i.status === 'CLOSED').length / investigations.length : 1;
+    return (policyRate * 0.28 + promptRate * 0.26 + invRate * 0.3 + 0.16) * 100;
+  }, [users, policies, policyAcknowledgements, deliveries, responses, investigations]);
 
-  const countAction = useCountUp(computed.actionRequiredCount, 1000, 0);
-  const countAnalyticsIndex = useCountUp(computed.analyticsIndex * 100, 1000, 1);
-  const countInvestigations = useCountUp(computed.openInvestigations.length, 900, 0);
-  const countYesResponses = useCountUp(computed.yesPromptResponsesCount, 900, 0);
-  const countActivePublishedMemos = useCountUp(computed.activePublishedMemos, 900, 0);
-  const countMemoNeedInfo = useCountUp(computed.memoResponses.length, 900, 0);
-  const countAcks = useCountUp(computed.pendingAcks, 900, 0);
-  const countAtRisk = useCountUp(computed.atRiskEmployees.length, 900, 0);
-
-  const exportAtRiskEmails = () => {
-    const csv = ['email', ...atRiskEmails].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'at-risk-emails.csv';
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const copyAtRiskEmails = async () => {
-    if (atRiskEmails.length === 0) return;
-    await navigator.clipboard.writeText(atRiskEmails.join('; '));
-  };
+  const upcomingMemoDeadlines = policies
+    .filter((p) => p.status === 'PUBLISHED' && p.completionDueDate)
+    .sort((a, b) => (a.completionDueDate!.getTime() - b.completionDueDate!.getTime()))
+    .slice(0, 5);
 
   return (
     <div className="space-y-6">
       <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-6 py-5 rounded-[var(--radius-medium)]">
         <h1 className="font-command text-[28px] sm:text-[32px] font-medium text-[var(--color-primary-900)]">Risk Command Center</h1>
-        <p className="mt-1 text-base font-command text-[var(--color-text-secondary)]">
-          We provide structured oversight across investigations, company memo adherence, and workforce exposure.
+        <p className="mt-1 text-base text-[var(--color-text-secondary)]">
+          Employee relations and compliance command center. Every count below opens the underlying filtered register.
         </p>
-        <p className="mt-2 text-sm font-command text-[var(--color-text-muted)]">Compliance made human. Everything you enter matters.</p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="enterprise-interactive font-command border-[var(--color-primary-900)] text-[var(--color-primary-900)]"
-            onClick={() => onNavigate('users')}
-          >
+          <Button variant="outline" size="sm" onClick={() => onNavigate('case-register', { view: 'register', action: 'pending' })}>
+            Open action register
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => onNavigate('users')}>
             Manage employees
           </Button>
-          <Button variant="outline" size="sm" className="enterprise-interactive font-command" onClick={() => onNavigate('users', { import: 'csv' })}>
+          <Button variant="outline" size="sm" onClick={() => onNavigate('users', { import: 'csv' })}>
             Bulk import employees
           </Button>
-          <Button variant="outline" size="sm" className="enterprise-interactive font-command" onClick={() => onNavigate('policies')}>
+          <Button variant="outline" size="sm" onClick={() => onNavigate('policies')}>
             Manage memos
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => onNavigate('prompts')}>
+            Manage prompts
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => onNavigate('analytics')}>
+            View analytics
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr] gap-4">
         <Card className="mismo-card">
-          <CardContent className="p-6 flex flex-row items-stretch gap-4">
-            <div className="flex-1 min-w-0">
-              <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Action Required</p>
-              {computed.actionRequiredCount === 0 && computed.hasIssueResponsesToday === 0 && computed.pendingPromptResponsesToday === 0 ? (
-                <p className="mt-2 text-sm font-command text-[var(--color-text-secondary)]">All systems operating within compliance thresholds.</p>
-              ) : (
-                <>
-                  {(computed.hasIssueResponsesToday > 0 || computed.pendingPromptResponsesToday > 0) && (
-                    <div className="mt-3 space-y-1 text-sm font-command">
-                      {computed.hasIssueResponsesToday > 0 && (
-                        <p className="text-[var(--color-alert-600)] font-medium">
-                          • {computed.hasIssueResponsesToday} staff chose Yes on a check-in today; review in Case register & check-ins
-                        </p>
-                      )}
-                      {computed.pendingPromptResponsesToday > 0 && (
-                        <p className="text-[var(--color-alert-600)] font-medium">• {computed.pendingPromptResponsesToday} daily prompt(s) not yet answered; send reminders</p>
-                      )}
-                    </div>
-                  )}
-                  <div className="mt-3 space-y-1 text-sm font-command text-[var(--color-text-secondary)]">
-                    <p>
-                      • <span className="text-[var(--color-alert-600)] font-medium">{countYesResponses} Yes</span> prompt responses (review first)
-                    </p>
-                    <p>• {countInvestigations} Open investigations</p>
-                    <p>• {countMemoNeedInfo} Incident reports awaiting clarification (NEEDS_INFO)</p>
-                    <p>• {countAcks} Memo tasks pending</p>
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">Action required</p>
+                {dc.actionRequiredTotal === 0 ? (
+                  <p className="mt-2 text-sm text-[var(--color-text-secondary)]">All systems operating within compliance thresholds.</p>
+                ) : (
+                  <div className="mt-3 space-y-0.5">
+                    <ActionLine
+                      label="Daily prompts not answered"
+                      count={dc.unansweredPromptDeliveries}
+                      urgent
+                      onClick={() => onNavigate('prompt-responses', { bucket: 'UNANSWERED', view: 'prompts' })}
+                    />
+                    <ActionLine
+                      label="Yes responses needing review"
+                      count={dc.yesResponsesNeedingReview}
+                      urgent
+                      onClick={() => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', needs_review: '1', view: 'prompts' })}
+                    />
+                    <ActionLine
+                      label="Open investigations"
+                      count={dc.activeInvestigations}
+                      onClick={() => onNavigate('investigations', { status: 'OPEN' })}
+                    />
+                    <ActionLine
+                      label="Incident reports awaiting clarification"
+                      count={dc.reportsNeedingClarification}
+                      onClick={() => onNavigate('case-register', { view: 'register', register: '1', needs_info: '1' })}
+                    />
+                    <ActionLine
+                      label="Memo tasks pending acknowledgement"
+                      count={dc.memoAcknowledgementsPending}
+                      onClick={() => onNavigate('policies', { memoQueue: 'pending_ack' })}
+                    />
                   </div>
-                </>
-              )}
-              <Button
-                aria-label="Open action register"
-                className="mt-4 bg-[var(--color-emerald-600)] hover:bg-[var(--color-emerald-500)] text-white enterprise-interactive font-command"
-                onClick={() => onNavigate('prompt-responses', { status: 'NEW,TRIAGED,ASSIGNED,IN_REVIEW,NEEDS_INFO' })}
-              >
-                Open Action Register →
-              </Button>
-            </div>
-            {computed.actionRequiredCount > 0 && (
-              <div className="flex items-center justify-center flex-shrink-0 pl-4 border-l border-[var(--color-border-200)]">
-                <span className="font-command text-6xl sm:text-7xl font-medium text-[var(--color-alert-600)] tabular-nums">{countAction}</span>
+                )}
+                <Button
+                  className="mt-4 bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)] text-white"
+                  onClick={() => onNavigate('case-register', { view: 'register', register: '1' })}
+                >
+                  Open action register →
+                </Button>
               </div>
-            )}
+              {dc.actionRequiredTotal > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('case-register', { view: 'register', register: '1' })}
+                  className="flex items-center justify-center flex-shrink-0 pl-4 border-l border-[var(--color-border-200)] hover:opacity-80"
+                  aria-label="View all action required items"
+                >
+                  <span className="font-command text-6xl sm:text-7xl font-medium text-[var(--color-alert-600)] tabular-nums">
+                    {dc.actionRequiredTotal}
+                  </span>
+                </button>
+              )}
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="mismo-card">
+        <Card className="mismo-card cursor-pointer hover:border-[var(--color-primary-700)] transition-colors" onClick={() => onNavigate('analytics')}>
           <CardContent className="p-6 space-y-3">
-            <p className="text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)]">Analytics (same as sidebar)</p>
-            <p className="font-command text-4xl font-medium text-[var(--color-primary-900)] tabular-nums">{countAnalyticsIndex.toFixed(1)}</p>
-            <p className="text-sm font-command text-[var(--color-text-secondary)]">
-              Snapshot index for this screen. Open <span className="font-medium text-[var(--color-text-primary)]">Analytics</span> for full
-              reporting, exports, and risk posture views.
+            <p className="text-[12px] uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">Analytics index</p>
+            <p className="font-command text-4xl font-medium text-[var(--color-primary-900)] tabular-nums">{analyticsScore.toFixed(1)}</p>
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              Weighted compliance snapshot. Open Analytics for full reporting, exports, and trend views.
             </p>
-            <p className="text-sm font-command text-[var(--color-text-secondary)]">Change from prior window: <span className="text-[var(--color-accent-gold)]">+1.6</span></p>
-            <p className="text-xs font-command text-[var(--color-text-muted)]">Last updated: {formatUtcTimestamp(nowRef.current)}</p>
-            <Button
-              aria-label="View Analytics"
-              variant="outline"
-              className="w-full sm:w-auto border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command"
-              onClick={() => onNavigate('analytics')}
-            >
-              View Analytics →
+            <Button variant="outline" className="border-[var(--color-primary-900)] text-[var(--color-primary-900)]" onClick={() => onNavigate('analytics')}>
+              View analytics →
             </Button>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch">
-        <Card className="mismo-card h-full">
-          <CardContent className="p-5 flex h-full flex-col items-center text-center">
-            <p className="min-h-[2.75rem] flex w-full max-w-[260px] items-center justify-center text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)] leading-snug">
-              Yes responses
-            </p>
-            <p className="font-command text-4xl font-medium tabular-nums leading-none text-[var(--color-alert-600)] pb-8">{countYesResponses}</p>
-            <Button
-              variant="outline"
-              className="border-[var(--color-alert-600)] text-[var(--color-alert-600)] enterprise-interactive font-command"
-              onClick={() => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', rangePreset: 'ALL' })}
-            >
-              Review Yes responses →
-            </Button>
-            <p className="mt-8 max-w-[220px] text-xs font-command text-[var(--color-text-secondary)] leading-relaxed">
-              Check-in answers where staff chose Yes; review first (newest first in the register).
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="mismo-card h-full">
-          <CardContent className="p-5 flex h-full flex-col items-center text-center">
-            <p className="min-h-[2.75rem] flex w-full max-w-[260px] items-center justify-center text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)] leading-snug">
-              Open investigations
-            </p>
-            <p className="font-command text-4xl font-medium tabular-nums leading-none pb-8">{countInvestigations}</p>
-            <Button variant="outline" className="border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command" onClick={() => onNavigate('investigations')}>
-              View investigations →
-            </Button>
-            <p className="mt-8 max-w-[220px] text-xs font-command text-[var(--color-text-secondary)] leading-relaxed">In progress on the investigations register.</p>
-          </CardContent>
-        </Card>
-        <Card className="mismo-card h-full">
-          <CardContent className="p-5 flex h-full flex-col items-center text-center">
-            <p className="min-h-[2.75rem] flex w-full max-w-[260px] items-center justify-center text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)] leading-snug">
-              Memo responses
-            </p>
-            <p className="font-command text-4xl font-medium tabular-nums leading-none pb-8">{countActivePublishedMemos}</p>
-            <div className="flex w-full max-w-[260px] flex-col gap-2">
-              <Button
-                variant="outline"
-                className="border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command"
-                onClick={() => onNavigate('policies')}
-              >
-                View memos & responses →
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {[
+          {
+            label: 'Yes responses',
+            count: responses.filter((r) => r.answer === 'HAS_ISSUE').length,
+            helper: 'Check-in answers where staff chose Yes; review first.',
+            action: 'Review yes responses',
+            onClick: () => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', view: 'prompts', rangePreset: 'ALL' }),
+            accent: 'text-[var(--color-alert-600)]',
+          },
+          {
+            label: 'Open investigations',
+            count: dc.activeInvestigations,
+            helper: 'Formal investigations in progress on the register.',
+            action: 'View investigations',
+            onClick: () => onNavigate('investigations', { status: 'OPEN' }),
+          },
+          {
+            label: 'Memo responses pending',
+            count: dc.memoAcknowledgementsPending,
+            helper: 'Published memos awaiting employee acknowledgement.',
+            action: 'View memo responses',
+            onClick: () => onNavigate('policies', { memoQueue: 'pending_ack' }),
+          },
+          {
+            label: 'At-risk employees',
+            count: dc.atRiskEmployees,
+            helper: 'Low engagement or overdue check-ins in the last 30 days.',
+            action: 'View employees',
+            onClick: () => onNavigate('users', { atRisk: 'true' }),
+          },
+        ].map((card) => (
+          <Card key={card.label} className="mismo-card h-full hover:border-[var(--color-primary-700)] transition-colors">
+            <CardContent className="p-5 flex h-full flex-col">
+              <p className="text-[12px] uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">{card.label}</p>
+              <p className={`font-command text-4xl font-medium tabular-nums mt-2 ${card.accent ?? ''}`}>{card.count}</p>
+              <p className="text-xs text-[var(--color-text-secondary)] mt-2 flex-1">{card.helper}</p>
+              <Button variant="outline" className="mt-4 w-full border-[var(--color-primary-900)] text-[var(--color-primary-900)]" onClick={card.onClick}>
+                {card.action} →
               </Button>
-              <Button variant="ghost" size="sm" className="text-[var(--color-primary-700)] font-command" onClick={() => onNavigate('policies')}>
-                Manage memos
-              </Button>
-            </div>
-            <div className="mt-8 flex max-w-[240px] flex-col gap-2">
-              <p className="text-sm font-command text-[var(--color-text-secondary)] tabular-nums leading-relaxed">
-                <span className="text-[var(--color-alert-600)] font-semibold">{countAcks}</span> pending tasks
-              </p>
-              <p className="text-xs font-command text-[var(--color-text-secondary)] leading-relaxed">
-                Published memos live today; second figure is open memo tasks (sign-offs).
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="mismo-card h-full">
-          <CardContent className="p-5 flex h-full flex-col items-center text-center">
-            <p className="min-h-[2.75rem] flex w-full max-w-[260px] items-center justify-center text-[12px] uppercase tracking-[0.08em] font-command text-[var(--color-text-secondary)] leading-snug">
-              At-Risk Employees
-            </p>
-            <p className="font-command text-4xl font-medium tabular-nums leading-none pb-8">{countAtRisk}</p>
-            <Button variant="outline" className="border-[var(--color-primary-900)] text-[var(--color-primary-900)] enterprise-interactive font-command" onClick={() => onNavigate('users', { atRisk: 'true' })}>
-              View Employees
-            </Button>
-            <div className="mt-8 flex flex-wrap justify-center gap-2">
-              <Button variant="outline" size="sm" className="enterprise-interactive" onClick={exportAtRiskEmails}>
-                Export Email List
-              </Button>
-              <Button variant="outline" size="sm" className="enterprise-interactive" onClick={() => void copyAtRiskEmails()}>
-                Copy Emails
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {[
+          { title: 'Prompt response status', data: chartData.promptResponses, onClick: () => onNavigate('prompt-responses', { view: 'prompts' }) },
+          { title: 'Memo acknowledgement status', data: chartData.memoStatus, onClick: () => onNavigate('policies') },
+          { title: 'Investigation status', data: chartData.investigations, onClick: () => onNavigate('investigations') },
+        ].map((chart) => (
+          <Card key={chart.title} className="mismo-card">
+            <CardContent className="p-4">
+              <button type="button" className="text-left w-full mb-3" onClick={chart.onClick}>
+                <h3 className="font-semibold text-[var(--color-primary-900)] text-sm hover:underline">{chart.title}</h3>
+              </button>
+              <div className="h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chart.data} layout="vertical" margin={{ left: 8, right: 8, top: 4, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--color-border-200)" />
+                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 10 }} />
+                    <Tooltip />
+                    <Bar dataKey="value" radius={[0, 2, 2, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="mismo-card">
-            <CardContent className="p-0">
-              <div className="px-5 py-4 border-b border-[var(--color-border-200)] flex items-center justify-between">
-                <div>
-                  <h2 className="font-command text-2xl font-bold text-[var(--color-primary-900)]">Recent Activity</h2>
-                  <p className="text-sm text-[var(--color-text-secondary)]">Audit-ready timeline of key actions.</p>
-                </div>
-                <select
-                  aria-label="Filter recent activity by date window"
-                  className="border border-[var(--color-border-200)] bg-white px-2 py-1 text-xs"
-                  value={activityWindow}
-                  onChange={(event) => setActivityWindow(event.target.value as ActivityWindow)}
+          <CardContent className="p-0">
+            <div className="px-5 py-4 border-b border-[var(--color-border-200)]">
+              <h2 className="font-command text-xl font-bold text-[var(--color-primary-900)]">Recent activity</h2>
+              <p className="text-sm text-[var(--color-text-secondary)]">Audit-ready timeline of key actions.</p>
+            </div>
+            <div className="divide-y divide-[var(--color-border-200)]">
+              {recentActivity.map((activity) => (
+                <button
+                  key={activity.id}
+                  type="button"
+                  className="w-full text-left px-5 py-3 hover:bg-[var(--color-surface-200)]"
+                  onClick={() => onNavigate('activity', { eventType: activity.type })}
                 >
-                  <option value="24H">24H</option>
-                  <option value="7D">7D</option>
-                  <option value="30D">30D</option>
-                </select>
-              </div>
-              {isLoadingActivity ? (
-                <div className="p-5 space-y-2" aria-label="Loading activity rows">
-                  {[0, 1, 2, 3].map((row) => (
-                    <div key={row} className="h-8 bg-[var(--color-surface-200)] animate-pulse rounded-[var(--radius-small)]" />
-                  ))}
-                </div>
-              ) : (
-                <div className="divide-y divide-[var(--color-border-200)]">
-                  {computed.recentActivity.map((activity) => (
-                    <button
-                      key={activity.id}
-                      type="button"
-                      aria-label={`View activity event ${activity.type}`}
-                      className="w-full text-left px-5 py-3 enterprise-interactive"
-                      onClick={() => onNavigate('activity', { eventType: activity.type })}
-                    >
-                      <p className="text-sm font-medium text-[var(--color-text-primary)]">{activity.type.replaceAll('_', ' ')}</p>
-                      <p className="text-xs text-[var(--color-text-secondary)]">{formatRelativeTime(activity.createdAt)}</p>
-                    </button>
-                  ))}
-                  {computed.recentActivity.length === 0 && (
-                    <p className="px-5 py-6 text-sm text-[var(--color-text-secondary)]">No activity in this date window.</p>
-                  )}
-                </div>
+                  <p className="text-sm font-medium">{activity.type.replaceAll('_', ' ')}</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">{formatRelativeTime(activity.createdAt)}</p>
+                </button>
+              ))}
+              {recentActivity.length === 0 && (
+                <p className="px-5 py-6 text-sm text-[var(--color-text-secondary)]">No recent activity recorded yet.</p>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="mismo-card">
-            <CardContent className="p-5">
-              <h3 className="font-command text-xl font-bold text-[var(--color-primary-900)]">Memo completion deadlines</h3>
-              <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-                Only published memos with a completion due date appear here (end of sign-off window).
-              </p>
-              <div className="mt-3 space-y-2">
-                {computed.upcomingMemoDeadlines.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="w-full text-left p-3 border border-[var(--color-border-200)] rounded-[var(--radius-small)] enterprise-interactive"
-                    onClick={() => onNavigate('policy-detail', { id: item.id })}
-                  >
-                    <p className="text-sm font-medium">{item.title}</p>
-                    <p className="text-xs text-[var(--color-text-secondary)]">Complete by {formatDate(item.dueAt)}</p>
-                  </button>
-                ))}
-                {computed.upcomingMemoDeadlines.length === 0 && (
-                  <p className="text-sm text-[var(--color-text-secondary)]">No memo deadlines with end dates in the current window.</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <CardContent className="p-5">
+            <h3 className="font-command text-xl font-bold text-[var(--color-primary-900)]">Memo completion deadlines</h3>
+            <p className="text-sm text-[var(--color-text-secondary)] mt-1">Published memos with a completion due date.</p>
+            <div className="mt-3 space-y-2">
+              {upcomingMemoDeadlines.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="w-full text-left p-3 border border-[var(--color-border-200)] rounded-[var(--radius-small)] hover:bg-[var(--color-surface-200)]"
+                  onClick={() => onNavigate('policy-detail', { id: item.id })}
+                >
+                  <p className="text-sm font-medium">{item.title}</p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">Complete by {formatDate(item.completionDueDate!)}</p>
+                </button>
+              ))}
+              {upcomingMemoDeadlines.length === 0 && (
+                <p className="text-sm text-[var(--color-text-secondary)]">No memo deadlines in the current window.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="border-t border-[var(--color-border-200)] pt-3 flex items-center gap-6 text-sm text-[var(--color-text-secondary)]">
-        <div className="flex items-center gap-2"><Icons.database className="h-4 w-4" /> Database: Healthy</div>
-        <div className="flex items-center gap-2"><Icons.mail className="h-4 w-4" /> Email Service: Ready</div>
+        <button type="button" className="flex items-center gap-2 hover:text-[var(--color-primary-900)]" onClick={() => onNavigate('system-health')}>
+          <Icons.database className="h-4 w-4" /> System health
+        </button>
+        <span className="flex items-center gap-2">
+          <Icons.mail className="h-4 w-4" /> Email service: Ready
+        </span>
       </div>
     </div>
   );

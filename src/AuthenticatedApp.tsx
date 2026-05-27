@@ -14,6 +14,8 @@ import { ReportDetail as EmployeeReportDetail } from '@/pages/employee/ReportDet
 import { EmployeeIncidentIntake } from '@/pages/employee/EmployeeIncidentIntake';
 import { EmployeeResources } from '@/pages/employee/EmployeeResources';
 import { EmployeeSettings } from '@/pages/employee/EmployeeSettings';
+import { WageHourReporting } from '@/pages/employee/WageHourReporting';
+import { EmployeeWageHourIntake } from '@/pages/employee/EmployeeWageHourIntake';
 
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { AdminInvestigations } from '@/pages/admin/AdminInvestigations';
@@ -30,6 +32,7 @@ import { AdminPoliciesAndAnnouncements } from '@/pages/admin/AdminPoliciesAndAnn
 import { AdminPolicyDetail } from '@/pages/admin/AdminPolicyDetail';
 import { AdminAnnouncementDetail } from '@/pages/admin/AdminAnnouncementDetail';
 import { AdminPromptResponses } from '@/pages/admin/AdminPromptResponses';
+import { AdminCaseRegister } from '@/pages/admin/AdminCaseRegister';
 import { AdminPromptResponseDetail } from '@/pages/admin/AdminPromptResponseDetail';
 import { AdminCompliance } from '@/pages/admin/AdminCompliance';
 import { ManagerDashboard } from '@/pages/manager/ManagerDashboard';
@@ -227,11 +230,17 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
         return <EmployeeReports dataStore={dataStore} onNavigate={handleNavigate} />;
       case 'report-new':
         return <NewReport dataStore={dataStore} onNavigate={handleNavigate} initialParams={pageParams} />;
+      case 'wage-hour-report':
+        return <WageHourReporting dataStore={dataStore} onNavigate={handleNavigate} />;
       case 'resources':
         return <EmployeeResources dataStore={dataStore} />;
       case 'settings':
         return <EmployeeSettings dataStore={dataStore} />;
       default:
+        if (activePage.startsWith('wage-hour-intake/')) {
+          const wageHourReportId = activePage.split('wage-hour-intake/')[1];
+          return <EmployeeWageHourIntake dataStore={dataStore} reportId={wageHourReportId} onNavigate={handleNavigate} />;
+        }
         if (activePage.startsWith('incident-intake/')) {
           const intakeReportId = activePage.split('incident-intake/')[1];
           return <EmployeeIncidentIntake dataStore={dataStore} reportId={intakeReportId} onNavigate={handleNavigate} />;
@@ -279,6 +288,8 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
         return <AdminPrompts dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
       case 'prompt-responses':
         return <AdminPromptResponses dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
+      case 'case-register':
+        return <AdminCaseRegister dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
       case 'prompt-response-detail':
         return <AdminPromptResponseDetail dataStore={dataStore} responseId={pageParams.id ?? ''} onNavigate={handleNavigate} />;
       case 'scheduled-memos':
@@ -292,11 +303,11 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       case 'settings':
         return <AdminSettings dataStore={dataStore} />;
       case 'report-detail':
-        return <AdminReportDetail dataStore={dataStore} reportId={pageParams.id ?? ''} onNavigate={handleNavigate} />;
+        return <AdminReportDetail dataStore={dataStore} reportId={pageParams.id ?? ''} onNavigate={handleNavigate} fromInvestigationId={pageParams.fromInvestigation} />;
       case 'employee-detail':
         return <AdminEmployeeDetail dataStore={dataStore} employeeId={pageParams.id ?? ''} onNavigate={handleNavigate} />;
       case 'investigation-detail':
-        return <AdminInvestigationDetail dataStore={dataStore} investigationId={pageParams.id ?? ''} onNavigate={handleNavigate} />;
+        return <AdminInvestigationDetail dataStore={dataStore} investigationId={pageParams.id ?? ''} onNavigate={handleNavigate} initialTab={pageParams.tab} />;
       case 'manager-dashboard':
         return <ManagerDashboard dataStore={dataStore} onNavigate={handleNavigate} />;
       case 'client-dashboard':

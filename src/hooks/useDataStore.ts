@@ -23,7 +23,26 @@ import type {
   ReportChecklistItem,
   AuditLogEntry,
   NudgeContext,
+  CompanyResource,
+  EmergencyHotline,
+  InvestigationPerson,
+  InvestigationStage,
+  InvestigationChecklistStage,
+  OutcomeClassification,
+  InvestigationPriority,
+  InvestigationEvidenceRecord,
+  InvestigationResponseRequest,
+  InvestigationCorrectiveAction,
+  InvestigationFollowUp,
+  InvestigationNoteType,
+  WageHourIntakeData,
+  WageHourScreeningAcknowledgement,
 } from '@/types';
+import {
+  buildDefaultChecklistStages,
+  buildStageHistoryEntry,
+  inferReportSourceType,
+} from '@/lib/investigationWorkflow';
 import {
   mockUsers,
   mockReports,
@@ -37,6 +56,8 @@ import {
   mockOrg,
   mockPolicies,
   mockPolicyAcknowledgements,
+  mockCompanyResources,
+  mockEmergencyHotlines,
   mockAnnouncements,
   mockAuditLogs,
 } from '@/data/mockData';
@@ -162,11 +183,16 @@ export function useDataStore() {
     persisted?.reportStatusEvents ?? mockReportStatusEvents
   );
   const [policies, setPolicies] = useState<Policy[]>(persisted?.policies ?? mockPolicies);
+  const [companyResources] = useState<CompanyResource[]>(mockCompanyResources);
+  const [emergencyHotlines] = useState<EmergencyHotline[]>(mockEmergencyHotlines);
   const [policyAcknowledgements, setPolicyAcknowledgements] = useState<PolicyAcknowledgement[]>(
     persisted?.policyAcknowledgements ?? mockPolicyAcknowledgements
   );
   const [announcements, setAnnouncements] = useState<Announcement[]>(persisted?.announcements ?? mockAnnouncements);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(persisted?.auditLogs ?? mockAuditLogs);
+  const [wageHourAcknowledgements, setWageHourAcknowledgements] = useState<WageHourScreeningAcknowledgement[]>(
+    persisted?.wageHourAcknowledgements ?? []
+  );
   const [currentRole, setCurrentRole] = useState<UserRole>(
     persisted?.currentRole === 'MANAGER' ? 'HR' : (persisted?.currentRole ?? 'EMPLOYEE')
   );
@@ -246,6 +272,7 @@ export function useDataStore() {
         policyAcknowledgements,
         announcements,
         auditLogs,
+        wageHourAcknowledgements,
         currentRole,
       })
     );
@@ -263,7 +290,8 @@ export function useDataStore() {
     prompts,
     reports,
     responses,
-users,
+    users,
+    wageHourAcknowledgements,
   ]);
 
   // Ensure employee has a daily prompt when they open the app (new day = new prompt)
@@ -398,6 +426,7 @@ users,
       ...reportData,
       id: `report-${Date.now()}`,
       orgId: effectiveOrgId,
+      caseType: reportData.caseType ?? (reportData.category === 'WAGE_HOURS' ? 'WAGE_HOUR' : 'WORKPLACE_INVESTIGATION'),
       status: 'NEW',
       needsExtendedIncidentIntake: needsExtended,
       incidentIntakeCompletedAt: needsExtended ? undefined : now,
@@ -431,7 +460,171 @@ users,
     setActivities(prev => [newActivity, ...prev]);
     
     return newReport;
-  }, []);
+  }, [effectiveOrgId]);
+
+  const recordWageHourScreeningNo = useCallback(
+    (userId: string) => {
+      const now = new Date();
+      const ack: WageHourScreeningAcknowledgement = {
+        id: `wh-ack-${Date.now()}`,
+        orgId: effectiveOrgId,
+        userId,
+        hasConcern: false,
+        acknowledgedAt: now,
+      };
+      setWageHourAcknowledgements((prev) => [...prev, ack]);
+      setActivities((prev) => [
+        {
+          id: `activity-${Date.now()}`,
+          orgId: mockOrg.id,
+          type: 'WAGE_HOUR_SCREENING',
+          actorUserId: userId,
+          metadata: { hasConcern: false, acknowledgementId: ack.id },
+          createdAt: now,
+        },
+        ...prev,
+      ]);
+      setAuditLogs((prev) => [
+        {
+          id: `audit-${Date.now()}`,
+          orgId: mockOrg.id,
+          recordType: 'WAGE_HOUR_SCREENING',
+          recordId: ack.id,
+          field: 'hasConcern',
+          oldValue: '',
+          newValue: 'false',
+          actorUserId: userId,
+          createdAt: now,
+        },
+        ...prev,
+      ]);
+      return ack;
+    },
+    [effectiveOrgId]
+  );
+
+  const beginWageHourCase = useCallback(
+    (userId: string) => {
+      const now = new Date();
+      const seq = reports.filter((r) => r.caseType === 'WAGE_HOUR').length + 1;
+      const refNum = `WH-${now.getFullYear()}-${String(seq).padStart(4, '0')}`;
+      const newReport: Report = {
+        id: `report-${Date.now()}`,
+        orgId: effectiveOrgId,
+        createdByUserId: userId,
+        isAnonymous: false,
+        reportSourceType: 'SELF_REPORTED',
+        caseType: 'WAGE_HOUR',
+        referenceNumber: refNum,
+        category: 'WAGE_HOURS',
+        severity: 'MEDIUM',
+        summary: 'Wage & Hour Concern',
+        description: 'Protected wage and hour concern — complete intake to submit details.',
+        status: 'PENDING_WAGE_HOUR_REVIEW',
+        needsExtendedWageHourIntake: true,
+        messages: [],
+        responseChecklist: createIndustryChecklistForReport(),
+        handlingLedger: [
+          {
+            id: `ledger-${Date.now()}`,
+            type: 'NOTE',
+            text: 'Protected wage & hour case opened from employee portal screening.',
+            createdAt: now,
+            createdBy: userId,
+          },
+        ],
+        createdAt: now,
+        updatedAt: now,
+      };
+      setReports((prev) => [newReport, ...prev]);
+      setActivities((prev) => [
+        {
+          id: `activity-${Date.now()}`,
+          orgId: mockOrg.id,
+          type: 'WAGE_HOUR_SCREENING',
+          actorUserId: userId,
+          metadata: { hasConcern: true, reportId: newReport.id, referenceNumber: refNum },
+          createdAt: now,
+        },
+        ...prev,
+      ]);
+      setAuditLogs((prev) => [
+        {
+          id: `audit-${Date.now()}`,
+          orgId: mockOrg.id,
+          recordType: 'REPORT',
+          recordId: newReport.id,
+          field: 'caseType',
+          oldValue: '',
+          newValue: 'WAGE_HOUR',
+          actorUserId: userId,
+          createdAt: now,
+        },
+        ...prev,
+      ]);
+      return newReport;
+    },
+    [effectiveOrgId, reports]
+  );
+
+  const completeWageHourIntake = useCallback(
+    (reportId: string, intake: WageHourIntakeData) => {
+      const now = new Date();
+      const submitted: WageHourIntakeData = { ...intake, submittedAt: now };
+      setReports((prev) =>
+        prev.map((r) =>
+          r.id === reportId
+            ? {
+                ...r,
+                wageHourIntake: submitted,
+                needsExtendedWageHourIntake: false,
+                wageHourIntakeCompletedAt: now,
+                status: 'PENDING_WAGE_HOUR_REVIEW',
+                description: intake.concernDescription,
+                summary: `Wage & Hour: ${intake.issueTypes.map((t) => t.replace(/_/g, ' ')).join(', ')}`,
+                updatedAt: now,
+                handlingLedger: [
+                  ...(r.handlingLedger ?? []),
+                  {
+                    id: `ledger-${Date.now()}`,
+                    type: 'NOTE',
+                    text: 'Employee completed wage & hour intake form.',
+                    createdAt: now,
+                    createdBy: r.createdByUserId,
+                  },
+                ],
+              }
+            : r
+        )
+      );
+      setActivities((prev) => [
+        {
+          id: `activity-${Date.now()}`,
+          orgId: mockOrg.id,
+          type: 'WAGE_HOUR_SUBMITTED',
+          actorUserId: reports.find((r) => r.id === reportId)?.createdByUserId,
+          metadata: { reportId },
+          createdAt: now,
+        },
+        ...prev,
+      ]);
+      setAuditLogs((prev) => [
+        {
+          id: `audit-${Date.now()}`,
+          orgId: mockOrg.id,
+          recordType: 'REPORT',
+          recordId: reportId,
+          field: 'wageHourIntake',
+          oldValue: 'draft',
+          newValue: 'submitted',
+          actorUserId: reports.find((r) => r.id === reportId)?.createdByUserId ?? currentUser.id,
+          createdAt: now,
+        },
+        ...prev,
+      ]);
+    },
+    [reports, currentUser.id]
+  );
   
   // Update report status
   const updateReportStatus = useCallback((
@@ -530,6 +723,14 @@ users,
     const now = new Date();
     
     const refNum = `INV-${now.getFullYear()}-${String(investigations.filter((i) => i.orgId === mockOrg.id).length + 1).padStart(4, '0')}`;
+    const prompt = report.sourcePromptId ? mockPrompts.find((p) => p.id === report.sourcePromptId) : undefined;
+    const sourceType = inferReportSourceType(report, prompt);
+    const priority: InvestigationPriority =
+      report.severity === 'CRITICAL' ? 'CRITICAL' : report.severity === 'HIGH' ? 'HIGH' : report.severity === 'MEDIUM' ? 'MEDIUM' : 'LOW';
+    const stageHistory = [
+      buildStageHistoryEntry('INTAKE_RECEIVED', currentUser.id, ownerId, 'Investigation shell created from linked report'),
+      buildStageHistoryEntry('PENDING_REVIEW', currentUser.id, ownerId),
+    ];
     const newInvestigation: Investigation = {
       id: `inv-${Date.now()}`,
       orgId: mockOrg.id,
@@ -539,13 +740,22 @@ users,
       linkedReportIds: [reportId],
       category: report.category,
       severity: report.severity,
+      priority,
+      riskLevel: report.severity === 'CRITICAL' || report.severity === 'HIGH' ? 'HIGH' : 'MEDIUM',
+      reportSourceType: sourceType,
+      linkedPromptId: report.sourcePromptId,
+      linkedPromptResponseId: report.sourcePromptResponseId,
       openedAt: now,
       lastUpdateAt: now,
       createdAt: now,
       updatedAt: now,
       workflowPhase: 'QUEUED',
+      stage: 'PENDING_REVIEW',
+      stageHistory,
+      checklistStages: buildDefaultChecklistStages(),
       subjectUserIds:
         report.createdByUserId && !report.isAnonymous ? [report.createdByUserId] : [],
+      persons: [],
       notes: [],
     };
     
@@ -574,6 +784,297 @@ users,
     return newInvestigation;
   }, [reports, investigations, currentUser.id]);
 
+  const appendInvestigationAudit = useCallback(
+    (investigationId: string, field: string, oldValue: string, newValue: string, reason?: string) => {
+      const entry: AuditLogEntry = {
+        id: `audit-${Date.now()}`,
+        orgId: mockOrg.id,
+        recordType: 'INVESTIGATION',
+        recordId: investigationId,
+        field,
+        oldValue,
+        newValue,
+        actorUserId: currentUser.id,
+        createdAt: new Date(),
+        reason,
+      };
+      setAuditLogs((prev) => [entry, ...prev]);
+    },
+    [currentUser.id]
+  );
+
+  const advanceInvestigationStage = useCallback(
+    (investigationId: string, stage: InvestigationStage, note?: string) => {
+      const now = new Date();
+      setInvestigations((prev) =>
+        prev.map((inv) => {
+          if (inv.id !== investigationId) return inv;
+          const history = [...(inv.stageHistory ?? []), buildStageHistoryEntry(stage, currentUser.id, inv.ownerId, note)];
+          return {
+            ...inv,
+            stage,
+            stageHistory: history,
+            lastUpdateAt: now,
+            updatedAt: now,
+            workflowPhase:
+              stage === 'IN_PROGRESS' || stage === 'EMPLOYEE_FOLLOW_UP' || stage === 'EVIDENCE_REVIEW'
+                ? 'IN_PROGRESS'
+                : stage === 'OUTCOME_PENDING'
+                  ? 'AWAITING_OUTCOME_ACK'
+                  : inv.workflowPhase,
+          };
+        })
+      );
+      appendInvestigationAudit(investigationId, 'stage', '', stage, note);
+    },
+    [currentUser.id, appendInvestigationAudit]
+  );
+
+  const assignInvestigationOwner = useCallback(
+    (investigationId: string, ownerId: string) => {
+      const now = new Date();
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId
+            ? {
+                ...inv,
+                ownerId,
+                stage: inv.stage === 'PENDING_REVIEW' || !inv.stage ? 'ASSIGNED' : inv.stage,
+                stageHistory: [
+                  ...(inv.stageHistory ?? []),
+                  buildStageHistoryEntry('ASSIGNED', currentUser.id, ownerId, 'Lead investigator assigned'),
+                ],
+                lastUpdateAt: now,
+                updatedAt: now,
+              }
+            : inv
+        )
+      );
+      appendInvestigationAudit(investigationId, 'ownerId', '', ownerId);
+    },
+    [currentUser.id, appendInvestigationAudit]
+  );
+
+  const setInvestigationPersons = useCallback((investigationId: string, persons: InvestigationPerson[]) => {
+    const now = new Date();
+    setInvestigations((prev) =>
+      prev.map((inv) =>
+        inv.id === investigationId ? { ...inv, persons, lastUpdateAt: now, updatedAt: now } : inv
+      )
+    );
+  }, []);
+
+  const updateInvestigationChecklist = useCallback(
+    (investigationId: string, stages: InvestigationChecklistStage[]) => {
+      const now = new Date();
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId ? { ...inv, checklistStages: stages, lastUpdateAt: now, updatedAt: now } : inv
+        )
+      );
+    },
+    []
+  );
+
+  const addInvestigationEvidence = useCallback(
+    (investigationId: string, record: Omit<InvestigationEvidenceRecord, 'id' | 'uploadedAt' | 'uploadedByUserId' | 'preserved'>) => {
+      const now = new Date();
+      const entry: InvestigationEvidenceRecord = {
+        ...record,
+        id: `ev-${Date.now()}`,
+        uploadedAt: now,
+        uploadedByUserId: currentUser.id,
+        preserved: true,
+      };
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId
+            ? { ...inv, evidenceRecords: [...(inv.evidenceRecords ?? []), entry], lastUpdateAt: now, updatedAt: now }
+            : inv
+        )
+      );
+      appendInvestigationAudit(investigationId, 'evidence', '', entry.fileName, 'Evidence uploaded');
+      return entry;
+    },
+    [currentUser.id, appendInvestigationAudit]
+  );
+
+  const addInvestigationResponseRequest = useCallback(
+    (investigationId: string, payload: Omit<InvestigationResponseRequest, 'id' | 'createdAt' | 'createdByUserId' | 'status'>) => {
+      const now = new Date();
+      const req: InvestigationResponseRequest = {
+        ...payload,
+        id: `req-${Date.now()}`,
+        status: payload.sentAt ? 'SENT' : 'DRAFT',
+        createdAt: now,
+        createdByUserId: currentUser.id,
+      };
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId
+            ? {
+                ...inv,
+                responseRequests: [...(inv.responseRequests ?? []), req],
+                stage: inv.stage === 'IN_PROGRESS' ? 'EMPLOYEE_FOLLOW_UP' : inv.stage,
+                lastUpdateAt: now,
+                updatedAt: now,
+              }
+            : inv
+        )
+      );
+      appendInvestigationAudit(investigationId, 'responseRequest', '', req.id, 'Response request created');
+      return req;
+    },
+    [currentUser.id, appendInvestigationAudit]
+  );
+
+  const updateInvestigationResponseRequest = useCallback(
+    (investigationId: string, requestId: string, patch: Partial<InvestigationResponseRequest>) => {
+      const now = new Date();
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId
+            ? {
+                ...inv,
+                responseRequests: (inv.responseRequests ?? []).map((r) => (r.id === requestId ? { ...r, ...patch } : r)),
+                lastUpdateAt: now,
+                updatedAt: now,
+              }
+            : inv
+        )
+      );
+    },
+    []
+  );
+
+  const updateInvestigationAnalysis = useCallback(
+    (
+      investigationId: string,
+      patch: {
+        findingsRationale?: string;
+        policyAnalysisNotes?: string;
+        linkedPolicyIds?: string[];
+        finalFindingsReport?: string;
+      }
+    ) => {
+      const now = new Date();
+      setInvestigations((prev) =>
+        prev.map((inv) => (inv.id === investigationId ? { ...inv, ...patch, lastUpdateAt: now, updatedAt: now } : inv))
+      );
+    },
+    []
+  );
+
+  const addCorrectiveAction = useCallback(
+    (investigationId: string, payload: Omit<InvestigationCorrectiveAction, 'id' | 'createdAt' | 'createdByUserId' | 'status'>) => {
+      const now = new Date();
+      const action: InvestigationCorrectiveAction = {
+        ...payload,
+        id: `ca-${Date.now()}`,
+        status: 'PENDING',
+        createdAt: now,
+        createdByUserId: currentUser.id,
+      };
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId
+            ? { ...inv, correctiveActions: [...(inv.correctiveActions ?? []), action], lastUpdateAt: now, updatedAt: now }
+            : inv
+        )
+      );
+      return action;
+    },
+    [currentUser.id]
+  );
+
+  const updateCorrectiveAction = useCallback(
+    (investigationId: string, actionId: string, patch: Partial<InvestigationCorrectiveAction>) => {
+      const now = new Date();
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId
+            ? {
+                ...inv,
+                correctiveActions: (inv.correctiveActions ?? []).map((a) =>
+                  a.id === actionId ? { ...a, ...patch, completedAt: patch.status === 'COMPLETE' ? now : a.completedAt } : a
+                ),
+                lastUpdateAt: now,
+                updatedAt: now,
+              }
+            : inv
+        )
+      );
+    },
+    []
+  );
+
+  const addFollowUp = useCallback(
+    (investigationId: string, payload: Omit<InvestigationFollowUp, 'id' | 'createdAt' | 'status'>) => {
+      const now = new Date();
+      const followUp: InvestigationFollowUp = {
+        ...payload,
+        id: `fu-${Date.now()}`,
+        status: 'SCHEDULED',
+        createdAt: now,
+      };
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId
+            ? { ...inv, followUps: [...(inv.followUps ?? []), followUp], lastUpdateAt: now, updatedAt: now }
+            : inv
+        )
+      );
+      return followUp;
+    },
+    []
+  );
+
+  const completeFollowUp = useCallback(
+    (investigationId: string, followUpId: string, notes?: string, concernLogged?: boolean) => {
+      const now = new Date();
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId
+            ? {
+                ...inv,
+                followUps: (inv.followUps ?? []).map((f) =>
+                  f.id === followUpId ? { ...f, status: 'COMPLETE', completedAt: now, notes, concernLogged } : f
+                ),
+                lastUpdateAt: now,
+                updatedAt: now,
+              }
+            : inv
+        )
+      );
+    },
+    []
+  );
+
+  const sendNonRetaliationReminder = useCallback(
+    (investigationId: string) => {
+      const now = new Date();
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId ? { ...inv, nonRetaliationSentAt: now, lastUpdateAt: now, updatedAt: now } : inv
+        )
+      );
+      appendInvestigationAudit(investigationId, 'nonRetaliation', '', 'sent', 'Non-retaliation reminder auto-sent');
+    },
+    [appendInvestigationAudit]
+  );
+
+  const setInvestigationOutcomeClassification = useCallback(
+    (investigationId: string, classification: OutcomeClassification) => {
+      const now = new Date();
+      setInvestigations((prev) =>
+        prev.map((inv) =>
+          inv.id === investigationId ? { ...inv, outcomeClassification: classification, lastUpdateAt: now, updatedAt: now } : inv
+        )
+      );
+    },
+    []
+  );
+
   const pickUpInvestigation = useCallback(
     (investigationId: string, preferred: InvestigationEmployeeContactPreference) => {
       const now = new Date();
@@ -583,9 +1084,14 @@ users,
             ? {
                 ...inv,
                 workflowPhase: 'IN_PROGRESS',
+                stage: 'IN_PROGRESS',
                 pickedUpAt: now,
                 employeePreferredContact: preferred,
                 ownerId: currentUser.id,
+                stageHistory: [
+                  ...(inv.stageHistory ?? []),
+                  buildStageHistoryEntry('IN_PROGRESS', currentUser.id, currentUser.id, 'Investigator opened case'),
+                ],
                 lastUpdateAt: now,
                 updatedAt: now,
               }
@@ -622,6 +1128,8 @@ users,
         body: string;
         attachments?: InvestigationAttachment[];
         requiresEmployeeSignature?: boolean;
+        noteType?: InvestigationNoteType;
+        taggedUserIds?: string[];
       }
     ) => {
       const now = new Date();
@@ -633,6 +1141,9 @@ users,
         createdByUserId: currentUser.id,
         attachments: payload.attachments,
         requiresEmployeeSignature: payload.requiresEmployeeSignature,
+        noteType: payload.noteType,
+        taggedUserIds: payload.taggedUserIds,
+        sentAt: payload.visibility === 'EMPLOYEE' ? now : undefined,
       };
       setInvestigations((prev) =>
         prev.map((inv) =>
@@ -676,6 +1187,11 @@ users,
                 outcomeEmployeeAgreed: null,
                 outcomeEmployeeSignedAt: undefined,
                 workflowPhase: 'AWAITING_OUTCOME_ACK',
+                stage: 'OUTCOME_PENDING',
+                stageHistory: [
+                  ...(inv.stageHistory ?? []),
+                  buildStageHistoryEntry('OUTCOME_PENDING', currentUser.id, inv.ownerId, 'Outcome sent to employee'),
+                ],
                 lastUpdateAt: now,
                 updatedAt: now,
               }
@@ -724,7 +1240,18 @@ users,
     setInvestigations((prev) =>
       prev.map((inv) =>
         inv.id === investigationId
-          ? { ...inv, status: 'CLOSED', closedAt: now, lastUpdateAt: now, updatedAt: now }
+          ? {
+              ...inv,
+              status: 'CLOSED',
+              stage: 'CLOSED',
+              closedAt: now,
+              stageHistory: [
+                ...(inv.stageHistory ?? []),
+                buildStageHistoryEntry('CLOSED', currentUser.id, inv.ownerId, 'Investigation closed'),
+              ],
+              lastUpdateAt: now,
+              updatedAt: now,
+            }
           : inv
       )
     );
@@ -954,10 +1481,27 @@ users,
     (
       policyId: string,
       userId: string,
-      opts?: { outcome?: 'READ_UNDERSTOOD' | 'REQUEST_CLARIFICATION'; signatureDataUrl?: string }
+      opts?: {
+        outcome?: 'READ_UNDERSTOOD' | 'REQUEST_CLARIFICATION';
+        signatureDataUrl?: string;
+        clarificationNote?: string;
+      }
     ) => {
       setPolicyAcknowledgements((prev) => {
-        if (prev.some((ack) => ack.policyId === policyId && ack.userId === userId)) return prev;
+        const existing = prev.find((ack) => ack.policyId === policyId && ack.userId === userId);
+        if (existing) {
+          return prev.map((ack) =>
+            ack.policyId === policyId && ack.userId === userId
+              ? {
+                  ...ack,
+                  acknowledgedAt: new Date(),
+                  outcome: opts?.outcome ?? ack.outcome ?? 'READ_UNDERSTOOD',
+                  signatureDataUrl: opts?.signatureDataUrl ?? ack.signatureDataUrl,
+                  clarificationNote: opts?.clarificationNote ?? ack.clarificationNote,
+                }
+              : ack
+          );
+        }
         return [
           ...prev,
           {
@@ -966,6 +1510,7 @@ users,
             acknowledgedAt: new Date(),
             outcome: opts?.outcome ?? 'READ_UNDERSTOOD',
             signatureDataUrl: opts?.signatureDataUrl,
+            clarificationNote: opts?.clarificationNote,
           },
         ];
       });
@@ -1444,6 +1989,13 @@ users,
     })(),
     memosNeedingClarification: effectivePolicyAcknowledgements.filter((a) => a.outcome === 'REQUEST_CLARIFICATION').length,
     actionRequiredTotal: 0,
+    openCaseRegisterCount: effectiveReports.filter((r) => {
+      if (['RESOLVED', 'CLOSED'].includes(r.status)) return false;
+      if (!r.investigationId) return true;
+      const inv = effectiveInvestigations.find((i) => i.id === r.investigationId);
+      return inv?.status !== 'OPEN';
+    }).length,
+    wageHourPendingReview: effectiveReports.filter((r) => r.status === 'PENDING_WAGE_HOUR_REVIEW').length,
   };
   const actionRequiredTotal =
     dashboardCounts.yesResponsesNeedingReview +
@@ -1467,6 +2019,8 @@ users,
     reportStatusEvents: effectiveReportStatusEvents,
     policies: effectivePolicies,
     policyAcknowledgements: effectivePolicyAcknowledgements,
+    companyResources,
+    emergencyHotlines,
     announcements: effectiveAnnouncements,
     auditLogs,
     currentUser,
@@ -1493,11 +2047,29 @@ users,
     switchRole,
     submitPromptResponse,
     createReport,
+    recordWageHourScreeningNo,
+    beginWageHourCase,
+    completeWageHourIntake,
+    wageHourAcknowledgements,
     updateReportStatus,
     assignReport,
     createInvestigation,
     pickUpInvestigation,
+    assignInvestigationOwner,
+    advanceInvestigationStage,
     setInvestigationSubjectUsers,
+    setInvestigationPersons,
+    updateInvestigationChecklist,
+    addInvestigationEvidence,
+    addInvestigationResponseRequest,
+    updateInvestigationResponseRequest,
+    updateInvestigationAnalysis,
+    addCorrectiveAction,
+    updateCorrectiveAction,
+    addFollowUp,
+    completeFollowUp,
+    sendNonRetaliationReminder,
+    setInvestigationOutcomeClassification,
     addInvestigationNote,
     sendInvestigationOutcomeToEmployee,
     employeeAcknowledgeInvestigationOutcome,

@@ -12,7 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { formatDate, formatRelativeTime, getEffectiveInvestigationPhase, investigationWorkflowLabel } from '@/lib/utils';
+import { formatDate, formatRelativeTime } from '@/lib/utils';
+import { getEffectiveStage, getInvestigationDisplayId, INVESTIGATION_STAGE_LABELS } from '@/lib/investigationWorkflow';
+import { downloadCsv } from '@/lib/exportCsv';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 const INV_SLA_DAYS = 14;
 
@@ -93,12 +97,6 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
       return matchesStatus && matchesTile && matchesSearch;
     });
   }, [investigations, filter, tileFromUrl, searchQuery, reports, currentUser.id]);
-  
-  const getInvestigationAge = (openedAt: Date): number => getInvAgeDays(openedAt);
-  
-  const getLinkedReportsInfo = (linkedReportIds: string[]) => {
-    return linkedReportIds.map(id => reports.find(r => r.id === id)).filter(Boolean);
-  };
 
   useEffect(() => {
     if (tileFromUrl && ['open', 'over_sla', 'awaiting_interview', 'awaiting_doc', 'ready_to_close'].includes(tileFromUrl)) {
@@ -131,6 +129,47 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const headers = [
+                'Reference',
+                'Employee',
+                'Initiated',
+                'Modified',
+                'Investigator',
+                'Status',
+                'Stage',
+                'Documents',
+                'Notes',
+                'Findings',
+              ];
+              const rows = filteredInvestigations.map((inv) => {
+                const subject = inv.subjectUserIds?.[0] ? users.find((u) => u.id === inv.subjectUserIds![0]) : null;
+                const investigator = users.find((u) => u.id === inv.ownerId);
+                const noteCount = inv.notes?.length ?? 0;
+                const docCount =
+                  (inv.notes ?? []).reduce((sum, n) => sum + (n.attachments?.length ?? 0), 0) + (inv.outcomeAttachment ? 1 : 0);
+                return [
+                  inv.referenceNumber ?? inv.id,
+                  subject ? `${subject.firstName} ${subject.lastName}` : '-',
+                  formatDate(inv.openedAt),
+                  formatDate(inv.updatedAt),
+                  investigator ? `${investigator.firstName} ${investigator.lastName}` : 'Unassigned',
+                  inv.status,
+                  INVESTIGATION_STAGE_LABELS[getEffectiveStage(inv)],
+                  docCount,
+                  noteCount,
+                  inv.outcomeSummary?.slice(0, 80) ?? '',
+                ];
+              });
+              downloadCsv(`mismo-investigations-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+              toast.success('Investigations register exported.');
+            }}
+          >
+            Export CSV
+          </Button>
           <span className="text-sm text-[var(--mismo-text-secondary)]">
             {filteredInvestigations.length} investigations
           </span>
@@ -222,120 +261,117 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
         </Select>
       </div>
       
-      {/* Investigations List */}
-      <div className="space-y-4">
-        {filteredInvestigations.length > 0 ? (
-          filteredInvestigations.map((investigation) => {
-            const owner = users.find(u => u.id === investigation.ownerId);
-            const linkedReports = getLinkedReportsInfo(investigation.linkedReportIds);
-            const age = getInvestigationAge(investigation.openedAt);
-            
-            return (
-              <Card 
-                key={investigation.id} 
-                className="investigation-card mismo-card mismo-card-hover cursor-pointer"
-                onClick={() => onNavigate('investigation-detail', { id: investigation.id })}
-              >
-                <CardContent className="p-5">
-                  <div className="flex flex-col lg:flex-row lg:items-start gap-4">
-                    {/* Status Indicator */}
-                    <div className={`w-1 h-full min-h-[60px] rounded-full flex-shrink-0 ${
-                      investigation.status === 'OPEN' ? 'bg-amber-500' : 'bg-green-500'
-                    }`} />
-                    
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <Badge className={
-                          investigation.status === 'OPEN' 
-                            ? 'status-chip status-chip--warn' 
-                            : 'status-chip status-chip--success'
-                        }>
+      {/* Investigations register */}
+      <Card className="mismo-card border border-[var(--color-border-200)]">
+        <CardContent className="p-0 overflow-x-auto">
+          {filteredInvestigations.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead className="bg-[var(--color-surface-200)] text-[var(--color-text-secondary)]">
+                <tr>
+                  <th className="px-3 py-2 text-left">Investigation #</th>
+                  <th className="px-3 py-2 text-left">Employee</th>
+                  <th className="px-3 py-2 text-left">Initiated</th>
+                  <th className="px-3 py-2 text-left">Modified</th>
+                  <th className="px-3 py-2 text-left">Investigator</th>
+                  <th className="px-3 py-2 text-left">Status</th>
+                  <th className="px-3 py-2 text-left">Stage</th>
+                  <th className="px-3 py-2 text-left">Report against</th>
+                  <th className="px-3 py-2 text-left">Docs</th>
+                  <th className="px-3 py-2 text-left">Notes</th>
+                  <th className="px-3 py-2 text-left">Findings</th>
+                  <th className="px-3 py-2 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredInvestigations.map((investigation) => {
+                  const owner = users.find((u) => u.id === investigation.ownerId);
+                  const subject = investigation.subjectUserIds?.[0]
+                    ? users.find((u) => u.id === investigation.subjectUserIds![0])
+                    : null;
+                  const noteCount = investigation.notes?.length ?? 0;
+                  const docCount =
+                    (investigation.notes ?? []).reduce((sum, n) => sum + (n.attachments?.length ?? 0), 0) +
+                    (investigation.outcomeAttachment ? 1 : 0);
+                  const stage = getEffectiveStage(investigation);
+                  return (
+                    <tr
+                      key={investigation.id}
+                      className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer"
+                      onClick={() => onNavigate('investigation-detail', { id: investigation.id })}
+                    >
+                      <td className="px-3 py-2 font-medium whitespace-nowrap">
+                        {getInvestigationDisplayId(investigation)}
+                      </td>
+                      <td className="px-3 py-2">
+                        {subject ? (
+                          <button
+                            type="button"
+                            className="text-[var(--mismo-blue)] hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onNavigate('employee-detail', { id: subject.id });
+                            }}
+                          >
+                            {subject.firstName} {subject.lastName}
+                          </button>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">{formatDate(investigation.openedAt)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{formatRelativeTime(investigation.updatedAt)}</td>
+                      <td className="px-3 py-2">{owner ? `${owner.firstName} ${owner.lastName}` : 'Unassigned'}</td>
+                      <td className="px-3 py-2">
+                        <Badge className={investigation.status === 'OPEN' ? 'status-chip status-chip--warn' : 'status-chip status-chip--success'}>
                           {investigation.status}
                         </Badge>
-                        <Badge variant="outline" className="text-xs border-[var(--color-border-200)]">
-                          {investigationWorkflowLabel(getEffectiveInvestigationPhase(investigation))}
-                        </Badge>
-                        <span className="text-sm text-[var(--mismo-text-secondary)]">
-                          {investigation.linkedReportIds.length} linked report{investigation.linkedReportIds.length !== 1 ? 's' : ''}
-                        </span>
-                      </div>
-                      
-                      <h3 className="font-semibold text-[var(--mismo-text)] text-lg">
-                        Investigation #{investigation.id.split('-')[1]}
-                      </h3>
-                      
-                      {/* Linked Reports */}
-                      <div className="mt-3 space-y-2">
-                        {linkedReports.slice(0, 2).map(report => (
-                          <div key={report!.id} className="flex items-center gap-2 text-sm">
-                            <div className={`w-2 h-2 rounded-full ${
-                              report!.severity === 'CRITICAL' ? 'bg-red-500' :
-                              report!.severity === 'HIGH' ? 'bg-orange-500' :
-                              report!.severity === 'MEDIUM' ? 'bg-blue-500' :
-                              'bg-gray-400'
-                            }`} />
-                            <span className="text-[var(--mismo-text)] truncate">
-                              {report!.summary}
-                            </span>
-                            <Badge className="text-xs" variant="outline">
-                              {report!.category}
-                            </Badge>
-                          </div>
-                        ))}
-                        {linkedReports.length > 2 && (
-                          <p className="text-sm text-[var(--mismo-text-secondary)]">
-                            +{linkedReports.length - 2} more reports
-                          </p>
-                        )}
-                      </div>
-                      
-                      {/* Meta */}
-                      <div className="flex flex-wrap items-center gap-4 mt-4 text-sm text-[var(--mismo-text-secondary)]">
-                        <span className="flex items-center gap-1.5">
-                          <Icons.user className="h-4 w-4" />
-                          Owner: {owner ? `${owner.firstName} ${owner.lastName}` : 'Unassigned'}
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <Icons.calendar className="h-4 w-4" />
-                          Opened {formatDate(investigation.openedAt)}
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          <Icons.clock className="h-4 w-4" />
-                          {age} day{age !== 1 ? 's' : ''} open
-                        </span>
-                        {investigation.closedAt && (
-                          <span className="flex items-center gap-1.5">
-                            <Icons.check className="h-4 w-4" />
-                            Closed {formatRelativeTime(investigation.closedAt)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    
-                    {/* Arrow */}
-                    <Icons.chevronRight className="h-5 w-5 text-gray-400 flex-shrink-0 self-center" />
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })
-        ) : (
-          <Card className="mismo-card">
-            <CardContent className="p-12 text-center">
+                      </td>
+                      <td className="px-3 py-2 text-xs">{INVESTIGATION_STAGE_LABELS[stage]}</td>
+                      <td className="px-3 py-2 max-w-[120px] truncate">
+                        {investigation.subjectUserIds?.length
+                          ? investigation.subjectUserIds
+                              .map((id) => {
+                                const u = users.find((x) => x.id === id);
+                                return u ? `${u.firstName} ${u.lastName}` : id;
+                              })
+                              .join(', ')
+                          : '-'}
+                      </td>
+                      <td className="px-3 py-2">{docCount}</td>
+                      <td className="px-3 py-2">{noteCount}</td>
+                      <td className="px-3 py-2 max-w-[140px] truncate text-xs text-[var(--color-text-secondary)]">
+                        {investigation.outcomeSummary ?? '-'}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onNavigate('investigation-detail', { id: investigation.id });
+                          }}
+                        >
+                          View
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <div className="p-12 text-center">
               <Icons.searchX className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-[var(--mismo-text)] mb-2">
-                No investigations found
-              </h3>
+              <h3 className="text-lg font-semibold text-[var(--mismo-text)] mb-2">No investigations found</h3>
               <p className="text-[var(--mismo-text-secondary)] max-w-md mx-auto">
-                {searchQuery 
-                  ? "No investigations match your search criteria."
-                  : "There are no investigations matching the selected filter."}
+                {searchQuery
+                  ? 'No investigations match your search criteria.'
+                  : 'There are no investigations matching the selected filter. Open investigations from the case register when escalation is required.'}
               </p>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

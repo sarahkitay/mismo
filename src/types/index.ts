@@ -42,8 +42,67 @@ export type ReportStatus =
   | 'ASSIGNED' 
   | 'IN_REVIEW' 
   | 'NEEDS_INFO' 
+  | 'PENDING_WAGE_HOUR_REVIEW'
   | 'RESOLVED' 
   | 'CLOSED';
+
+/** Structured case classification for filtering, analytics, and workflows */
+export type CaseType =
+  | 'WORKPLACE_INVESTIGATION'
+  | 'WAGE_HOUR'
+  | 'ETHICS_COMPLAINT'
+  | 'SAFETY_CONCERN'
+  | 'ACCOMMODATION_REQUEST';
+
+export type WageHourIssueType =
+  | 'INCORRECT_PAY'
+  | 'MISSING_HOURS'
+  | 'OVERTIME'
+  | 'BREAK_MEAL'
+  | 'CLASSIFICATION'
+  | 'BONUS_COMMISSION'
+  | 'BENEFIT_CALCULATION'
+  | 'PAYROLL_DEDUCTION'
+  | 'FINAL_PAY'
+  | 'REIMBURSEMENT'
+  | 'OTHER';
+
+export type WageHourPreferredResolution =
+  | 'CLARIFICATION'
+  | 'PAYROLL_CORRECTION'
+  | 'MEETING'
+  | 'HR_REVIEW'
+  | 'CONFIDENTIAL_REVIEW';
+
+export interface WageHourAttachment {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  dataUrl: string;
+  uploadedAt: Date;
+}
+
+export interface WageHourIntakeData {
+  issueTypes: WageHourIssueType[];
+  concernDescription: string;
+  payPeriods?: string;
+  approximateDates?: string;
+  managerInvolved?: string;
+  departmentLocation?: string;
+  amountDisputed?: string;
+  preferredResolution?: WageHourPreferredResolution;
+  attachments?: WageHourAttachment[];
+  submittedAt?: Date;
+}
+
+/** Logged when employee selects "No" on wage/hour screening — no case created */
+export interface WageHourScreeningAcknowledgement {
+  id: string;
+  orgId: string;
+  userId: string;
+  hasConcern: false;
+  acknowledgedAt: Date;
+}
 
 // Investigation Status
 export type InvestigationStatus = 'OPEN' | 'CLOSED';
@@ -52,7 +111,207 @@ export type InvestigationStatus = 'OPEN' | 'CLOSED';
 export type InvestigationWorkflowPhase = 'QUEUED' | 'IN_PROGRESS' | 'AWAITING_OUTCOME_ACK';
 
 /** How the employee asked HR to follow up once an investigator picks up the case */
-export type InvestigationEmployeeContactPreference = 'IN_APP_MESSAGE' | 'PHONE_CALL';
+export type InvestigationEmployeeContactPreference =
+  | 'IN_APP_MESSAGE'
+  | 'PHONE_CALL'
+  | 'EMAIL'
+  | 'IN_PERSON';
+
+/** Enterprise investigation progress stages (guided workflow) */
+export type InvestigationStage =
+  | 'INTAKE_RECEIVED'
+  | 'PENDING_REVIEW'
+  | 'ASSIGNED'
+  | 'IN_PROGRESS'
+  | 'EMPLOYEE_FOLLOW_UP'
+  | 'EVIDENCE_REVIEW'
+  | 'FINDINGS_DRAFTED'
+  | 'OUTCOME_PENDING'
+  | 'CLOSED';
+
+export type InvestigationPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export type ReportSourceType =
+  | 'SELF_REPORTED'
+  | 'EMPLOYEE_PROMPT_RESPONSE'
+  | 'OSHA_PROMPT'
+  | 'WAGE_HOUR_PROMPT'
+  | 'ANONYMOUS_HOTLINE'
+  | 'HR_SUBMITTED'
+  | 'SUPERVISOR_SUBMITTED'
+  | 'COMPLIANCE_AUDIT'
+  | 'SYSTEM_TRIGGERED';
+
+export type InvestigationPersonRole =
+  | 'REPORTING_PARTY'
+  | 'REPORTED_AGAINST'
+  | 'WITNESS'
+  | 'HR_REPRESENTATIVE'
+  | 'INVESTIGATOR'
+  | 'EXTERNAL_PARTY';
+
+export interface InvestigationPerson {
+  id: string;
+  role: InvestigationPersonRole;
+  userId?: string;
+  externalName?: string;
+  addedAt: Date;
+  addedByUserId?: string;
+}
+
+export interface InvestigationStageEvent {
+  stage: InvestigationStage;
+  enteredAt: Date;
+  enteredByUserId: string;
+  ownerId?: string;
+  note?: string;
+}
+
+export type OutcomeClassification =
+  | 'SUBSTANTIATED'
+  | 'PARTIALLY_SUBSTANTIATED'
+  | 'UNSUBSTANTIATED'
+  | 'INCONCLUSIVE'
+  | 'POLICY_VIOLATION_CONFIRMED'
+  | 'CONDUCT_CONCERN'
+  | 'COACHING_ISSUED'
+  | 'TERMINATION'
+  | 'WARNING_ISSUED'
+  | 'TRAINING_ASSIGNED'
+  | 'RESOLVED_INFORMALLY';
+
+export type InvestigationNoteType =
+  | 'PRIVATE_HR'
+  | 'SHARED'
+  | 'INTERVIEW'
+  | 'LEGAL'
+  | 'AI_SUMMARY'
+  | 'OUTCOME_RATIONALE'
+  | 'FOLLOW_UP';
+
+export type InvestigationEvidenceType =
+  | 'DOCUMENT'
+  | 'EMAIL'
+  | 'SLACK'
+  | 'SCREENSHOT'
+  | 'PDF'
+  | 'AUDIO'
+  | 'VIDEO'
+  | 'WRITTEN_STATEMENT'
+  | 'OTHER';
+
+export interface InvestigationEvidenceRecord {
+  id: string;
+  type: InvestigationEvidenceType;
+  fileName: string;
+  mimeType: string;
+  dataUrl?: string;
+  description?: string;
+  sourceType: 'UPLOAD' | 'EMAIL_IMPORT' | 'SYSTEM';
+  uploadedAt: Date;
+  uploadedByUserId: string;
+  preserved: boolean;
+  /** AI-guided collection prompt label, if applicable */
+  promptLabel?: string;
+}
+
+export type ResponseRequestMethod =
+  | 'IN_APP'
+  | 'WRITTEN_STATEMENT'
+  | 'ATTORNEY_STATEMENT'
+  | 'EMAIL'
+  | 'MEETING';
+
+export type ResponseRequestStatus =
+  | 'DRAFT'
+  | 'SENT'
+  | 'VIEWED'
+  | 'SUBMITTED'
+  | 'OVERDUE'
+  | 'DECLINED';
+
+export interface InvestigationResponseRequest {
+  id: string;
+  partyUserId: string;
+  partyRole: InvestigationPersonRole;
+  method: ResponseRequestMethod;
+  status: ResponseRequestStatus;
+  deadline?: Date;
+  sentAt?: Date;
+  viewedAt?: Date;
+  submittedAt?: Date;
+  message?: string;
+  createdAt: Date;
+  createdByUserId: string;
+}
+
+export type CorrectiveActionType =
+  | 'COACHING'
+  | 'WARNING'
+  | 'SUSPENSION'
+  | 'TERMINATION'
+  | 'TRAINING'
+  | 'MEDIATION'
+  | 'REASSIGNMENT'
+  | 'MONITORING'
+  | 'POLICY_UPDATE'
+  | 'NO_ACTION';
+
+export type CorrectiveActionStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETE' | 'CANCELLED';
+
+export interface InvestigationCorrectiveAction {
+  id: string;
+  type: CorrectiveActionType;
+  status: CorrectiveActionStatus;
+  assigneeUserId: string;
+  subjectUserId?: string;
+  description: string;
+  deadline?: Date;
+  completedAt?: Date;
+  createdAt: Date;
+  createdByUserId: string;
+}
+
+export type FollowUpType =
+  | 'RETALIATION_CHECK'
+  | 'WELLNESS'
+  | 'MANAGER_REVIEW'
+  | 'CORRECTIVE_VERIFY'
+  | 'GENERAL';
+
+export type FollowUpStatus = 'SCHEDULED' | 'COMPLETE' | 'OVERDUE' | 'CANCELLED';
+
+export interface InvestigationFollowUp {
+  id: string;
+  type: FollowUpType;
+  scheduledFor: Date;
+  status: FollowUpStatus;
+  assigneeUserId: string;
+  notes?: string;
+  completedAt?: Date;
+  concernLogged?: boolean;
+  createdAt: Date;
+}
+
+export type InvestigationChecklistItemStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETE' | 'NA';
+
+export interface InvestigationChecklistItem {
+  id: string;
+  label: string;
+  status: InvestigationChecklistItemStatus;
+  required: boolean;
+  notes?: string;
+  assignedToUserId?: string;
+  completedAt?: Date;
+  completedByUserId?: string;
+  autoActionHint?: string;
+}
+
+export interface InvestigationChecklistStage {
+  id: string;
+  label: string;
+  items: InvestigationChecklistItem[];
+}
 
 export interface InvestigationAttachment {
   id: string;
@@ -73,8 +332,14 @@ export interface InvestigationNote {
   /** When visibility is EMPLOYEE: optional e-sign style confirmation */
   requiresEmployeeSignature?: boolean;
   employeeSignedAt?: Date;
+  sentAt?: Date;
+  viewedAt?: Date;
+  pinned?: boolean;
   /** true = agrees information is correct / resolution; false = does not agree */
   employeeAgreed?: boolean;
+  noteType?: InvestigationNoteType;
+  taggedUserIds?: string[];
+  linkedEvidenceIds?: string[];
 }
 
 // Nudge Channel
@@ -98,6 +363,8 @@ export type ActivityEventType =
   | 'REPORT_STATUS_CHANGED'
   | 'INVESTIGATION_CREATED'
   | 'INVESTIGATION_UPDATED'
+  | 'WAGE_HOUR_SCREENING'
+  | 'WAGE_HOUR_SUBMITTED'
   | 'NUDGE_SENT'
   | 'EXPORT_PDF'
   | 'EXPORT_CSV';
@@ -241,6 +508,12 @@ export interface Report {
   isAnonymous: boolean;
   sourcePromptId?: string;
   sourcePromptResponseId?: string;
+  /** How the report entered the system */
+  reportSourceType?: ReportSourceType;
+  /** Structured case type for admin filtering and workflows */
+  caseType?: CaseType;
+  /** Human-readable case reference (e.g. IR-8821, WH-2026-0012) */
+  referenceNumber?: string;
   category: ReportCategory;
   severity: ReportSeverity;
   summary: string;
@@ -260,6 +533,10 @@ export interface Report {
   needsExtendedIncidentIntake?: boolean;
   /** Set when extended intake (or full initial portal form) is complete */
   incidentIntakeCompletedAt?: Date;
+  /** Wage & hour structured intake (employee portal) */
+  wageHourIntake?: WageHourIntakeData;
+  needsExtendedWageHourIntake?: boolean;
+  wageHourIntakeCompletedAt?: Date;
   handlingLedger?: ReportHandlingEntry[];
   responseChecklist?: ReportChecklistItem[];
   ginaBuildNotes?: string;
@@ -340,6 +617,33 @@ export interface Investigation {
   outcomeEmployeeSignedAt?: Date;
   /** Employee agrees with resolution, or does not */
   outcomeEmployeeAgreed?: boolean | null;
+  /** Guided workflow stage */
+  stage?: InvestigationStage;
+  stageHistory?: InvestigationStageEvent[];
+  priority?: InvestigationPriority;
+  investigationType?: string;
+  reportSourceType?: ReportSourceType;
+  linkedPromptId?: string;
+  linkedPromptResponseId?: string;
+  /** Categorized persons involved (preferred over legacy subject/witness arrays) */
+  persons?: InvestigationPerson[];
+  /** @deprecated Legacy checklist — use workflow modules instead */
+  checklistStages?: InvestigationChecklistStage[];
+  outcomeClassification?: OutcomeClassification;
+  outcomeViewedAt?: Date;
+  riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+  departmentId?: string;
+  /** Structured evidence with chain-of-custody metadata */
+  evidenceRecords?: InvestigationEvidenceRecord[];
+  /** Party response requests (not checklist items) */
+  responseRequests?: InvestigationResponseRequest[];
+  findingsRationale?: string;
+  policyAnalysisNotes?: string;
+  linkedPolicyIds?: string[];
+  correctiveActions?: InvestigationCorrectiveAction[];
+  followUps?: InvestigationFollowUp[];
+  finalFindingsReport?: string;
+  nonRetaliationSentAt?: Date;
 }
 
 // Report Status Event
@@ -457,6 +761,45 @@ export interface PolicyAcknowledgement {
   outcome?: PolicyAcknowledgementOutcome;
   /** PNG data URL captured when the employee signs in the portal */
   signatureDataUrl?: string;
+  /** Employee note when requesting clarification on a memo */
+  clarificationNote?: string;
+}
+
+/** Admin-managed library item surfaced in the employee Resources portal */
+export type CompanyResourceCategory =
+  | 'REQUIRED_MEMO'
+  | 'EMPLOYEE_HANDBOOK'
+  | 'POLICIES_PROCEDURES'
+  | 'SAFETY_SECURITY'
+  | 'WELLNESS'
+  | 'LEGAL_COMPLIANCE'
+  | 'SUPPORT_CONTACTS'
+  | 'TRAINING_DEVELOPMENT'
+  | 'EMERGENCY_HOTLINE';
+
+export interface CompanyResource {
+  id: string;
+  orgId: string;
+  title: string;
+  description?: string;
+  category: CompanyResourceCategory;
+  url?: string;
+  phone?: string;
+  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  sortOrder?: number;
+  publishedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface EmergencyHotline {
+  id: string;
+  orgId: string;
+  name: string;
+  phone: string;
+  description?: string;
+  status: 'PUBLISHED' | 'ARCHIVED';
+  sortOrder?: number;
 }
 
 export interface Announcement {
@@ -510,6 +853,8 @@ export interface DashboardCounts {
   memosNeedingClarification: number;
   /** Distinct actionable queue items for command center (deduped sum) */
   actionRequiredTotal: number;
+  /** Open case register rows (excl. cases under open investigation) */
+  openCaseRegisterCount: number;
 }
 
 // Employee Engagement

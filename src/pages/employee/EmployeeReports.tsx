@@ -20,8 +20,9 @@ interface EmployeeReportsProps {
 }
 
 const statusFilters: { value: ReportStatus | 'ALL'; label: string }[] = [
-  { value: 'ALL', label: 'All incident reports' },
+  { value: 'ALL', label: 'All reports' },
   { value: 'NEW', label: 'New' },
+  { value: 'PENDING_WAGE_HOUR_REVIEW', label: 'Pending wage & hour review' },
   { value: 'TRIAGED', label: 'Triaged' },
   { value: 'ASSIGNED', label: 'Assigned' },
   { value: 'IN_REVIEW', label: 'In Review' },
@@ -59,8 +60,8 @@ export function EmployeeReports({ dataStore, onNavigate }: EmployeeReportsProps)
     <div className="space-y-6">
       {/* Header */}
       <div className="reports-header">
-        <h1 className="text-2xl font-bold text-[var(--mismo-text)]">My incident reports</h1>
-        <p className="text-[var(--mismo-text-secondary)] mt-1">View and track your incident reports. Category and severity are assigned by HR.</p>
+        <h1 className="text-2xl font-bold text-[var(--mismo-text)]">My reports</h1>
+        <p className="text-[var(--mismo-text-secondary)] mt-1">Workplace concerns and wage &amp; hour submissions. Category and severity are assigned by HR.</p>
       </div>
       
       {/* Filters */}
@@ -178,7 +179,7 @@ export function EmployeeReports({ dataStore, onNavigate }: EmployeeReportsProps)
               <p className="text-[var(--mismo-text-secondary)] max-w-md mx-auto">
                 {searchQuery
                   ? 'Nothing matches your search. Try different keywords or filters.'
-                  : "You haven't submitted any incident reports yet. Use Report an incident when you need to."}
+                  : "You haven't submitted any incident reports yet. Use Report an incident in the sidebar when you need to."}
               </p>
             </CardContent>
           </Card>

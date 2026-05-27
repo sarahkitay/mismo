@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
 import { defaultDateRange, inDateRange, type DateRangeState } from '@/lib/dateFilters';
 import { formatDate, getMemoCategoryDisplay } from '@/lib/utils';
+import { downloadCsv } from '@/lib/exportCsv';
+import { ReportBuilderDialog } from '@/components/admin/ReportBuilderDialog';
+import { toast } from 'sonner';
 import {
   Select,
   SelectContent,
@@ -30,6 +33,7 @@ export function AdminPolicies({ dataStore, onNavigate, initialFilters }: AdminPo
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [showArchived, setShowArchived] = useState(false);
   const [memoQueueFilter, setMemoQueueFilter] = useState<'ALL' | 'PENDING_ACK' | 'CLARIFICATION'>('ALL');
+  const [reportOpen, setReportOpen] = useState(false);
 
   const filterKey = JSON.stringify(initialFilters ?? {});
   useEffect(() => {
@@ -114,9 +118,14 @@ export function AdminPolicies({ dataStore, onNavigate, initialFilters }: AdminPo
             </p>
           )}
         </div>
-        <Button className="bg-[var(--mismo-blue)] hover:bg-blue-600 shrink-0" onClick={() => onNavigate('policy-detail', { id: 'new' })}>
-          Add memo
-        </Button>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <Button variant="outline" onClick={() => setReportOpen(true)}>
+            Run memo report
+          </Button>
+          <Button className="bg-[var(--mismo-blue)] hover:bg-blue-600" onClick={() => onNavigate('policy-detail', { id: 'new' })}>
+            Add memo
+          </Button>
+        </div>
       </div>
 
       <Card className="mismo-card border border-[var(--color-border-200)]">
@@ -192,16 +201,36 @@ export function AdminPolicies({ dataStore, onNavigate, initialFilters }: AdminPo
       </Card>
 
       <Card className="mismo-card border border-[var(--color-border-200)]">
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           {isLoading ? (
             <p className="p-6 text-sm text-[var(--mismo-text-secondary)]">Loading memos…</p>
+          ) : activeMemos.length === 0 ? (
+            <p className="p-6 text-sm text-[var(--mismo-text-secondary)]">
+              No memos match your filters. Published memos will appear here with acknowledgement counts and status.
+            </p>
           ) : (
-            pagedActive.map((memo, idx) => (
-              <MemoRow key={memo.id} memo={memo} idx={(page - 1) * pageSize + idx + 1} onNavigate={onNavigate} />
-            ))
-          )}
-          {!isLoading && activeMemos.length === 0 && (
-            <p className="p-6 text-sm text-[var(--mismo-text-secondary)]">No memos match your filters.</p>
+            <table className="w-full text-sm">
+              <thead className="bg-[var(--color-surface-200)] text-[var(--color-text-secondary)]">
+                <tr>
+                  <th className="px-3 py-2 text-left">Title</th>
+                  <th className="px-3 py-2 text-left">Category</th>
+                  <th className="px-3 py-2 text-left">Publish</th>
+                  <th className="px-3 py-2 text-left">Due</th>
+                  <th className="px-3 py-2 text-left">Status</th>
+                  <th className="px-3 py-2 text-left">Ack req.</th>
+                  <th className="px-3 py-2 text-left">Understood</th>
+                  <th className="px-3 py-2 text-left">Clarification</th>
+                  <th className="px-3 py-2 text-left">Unanswered</th>
+                  <th className="px-3 py-2 text-left">Updated</th>
+                  <th className="px-3 py-2 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedActive.map((memo) => (
+                  <MemoTableRow key={memo.id} memo={memo} dataStore={dataStore} onNavigate={onNavigate} />
+                ))}
+              </tbody>
+            </table>
           )}
           <div className="px-4 py-3 flex items-center justify-between border-t border-[var(--color-border-200)]">
             <Button type="button" variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))}>
@@ -226,45 +255,98 @@ export function AdminPolicies({ dataStore, onNavigate, initialFilters }: AdminPo
           >
             Archived memos ({archivedMemos.length}) {showArchived ? '▲' : '▼'}
           </button>
-          {showArchived &&
-            archivedMemos.map((memo) => (
-              <MemoRow key={memo.id} memo={memo} idx={0} onNavigate={onNavigate} showIndex={false} />
-            ))}
+          {showArchived && archivedMemos.length > 0 && (
+            <table className="w-full text-sm">
+              <tbody>
+                {archivedMemos.map((memo) => (
+                  <MemoTableRow key={memo.id} memo={memo} dataStore={dataStore} onNavigate={onNavigate} archived />
+                ))}
+              </tbody>
+            </table>
+          )}
+          {showArchived && archivedMemos.length === 0 && (
+            <p className="p-4 text-sm text-[var(--mismo-text-secondary)]">No archived memos match filters.</p>
+          )}
         </CardContent>
       </Card>
+
+      <ReportBuilderDialog
+        open={reportOpen}
+        onOpenChange={setReportOpen}
+        kind="memo_ack"
+        title="Memo acknowledgement report"
+        preset={{ category: categoryFilter !== 'ALL' ? categoryFilter : '' }}
+        onExport={(_, format) => {
+          const employees = dataStore.users.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');
+          const headers = ['Memo', 'Category', 'Employee', 'Status', 'Acknowledged'];
+          const rows: (string | number)[][] = [];
+          filtered.forEach((memo) => {
+            employees.forEach((emp) => {
+              const ack = dataStore.policyAcknowledgements.find((a) => a.policyId === memo.id && a.userId === emp.id);
+              rows.push([
+                memo.title,
+                getMemoCategoryDisplay(memo),
+                `${emp.firstName} ${emp.lastName}`,
+                ack?.outcome ?? 'Unanswered',
+                ack ? formatDate(ack.acknowledgedAt) : '-',
+              ]);
+            });
+          });
+          downloadCsv(`mismo-memo-report-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+          toast.success(`${format} memo acknowledgement report exported.`);
+        }}
+      />
     </div>
   );
 }
 
-function MemoRow({
+function MemoTableRow({
   memo,
-  idx,
+  dataStore,
   onNavigate,
-  showIndex = true,
+  archived = false,
 }: {
   memo: Policy;
-  idx: number;
+  dataStore: DataStore;
   onNavigate: (page: string, params?: Record<string, string>) => void;
-  showIndex?: boolean;
+  archived?: boolean;
 }) {
   const cat = getMemoCategoryDisplay(memo);
+  const employees = dataStore.users.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');
+  const acks = dataStore.policyAcknowledgements.filter((a) => a.policyId === memo.id);
+  const understood = acks.filter((a) => a.outcome === 'READ_UNDERSTOOD').length;
+  const clarification = acks.filter((a) => a.outcome === 'REQUEST_CLARIFICATION').length;
+  const unanswered = memo.acknowledgmentRequired
+    ? employees.filter((e) => !acks.some((a) => a.userId === e.id)).length
+    : 0;
+
   return (
-    <button
-      type="button"
-      className="interactive-control w-full flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-200)] text-left hover:bg-[var(--color-surface-200)]"
+    <tr
+      className={`border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer ${archived ? 'opacity-80' : ''}`}
       onClick={() => onNavigate('policy-detail', { id: memo.id })}
     >
-      <div className="min-w-0 pr-2">
-        <p className="font-medium text-[var(--mismo-text)] truncate">
-          {showIndex ? `#${idx} ` : ''}
-          {memo.title}
-        </p>
-        <p className="text-sm text-[var(--mismo-text-secondary)]">
-          {cat} · Publish {formatDate(memo.effectiveDate)}
-          {memo.completionDueDate && ` · Due ${formatDate(memo.completionDueDate)}`}
-        </p>
-      </div>
-      <span className="text-xs border border-[var(--color-border-200)] px-2 py-1 shrink-0 rounded">{memo.status}</span>
-    </button>
+      <td className="px-3 py-2 font-medium max-w-[200px] truncate">{memo.title}</td>
+      <td className="px-3 py-2 text-xs">{cat}</td>
+      <td className="px-3 py-2 whitespace-nowrap">{formatDate(memo.effectiveDate)}</td>
+      <td className="px-3 py-2 whitespace-nowrap">{memo.completionDueDate ? formatDate(memo.completionDueDate) : '-'}</td>
+      <td className="px-3 py-2">{memo.status}</td>
+      <td className="px-3 py-2">{memo.acknowledgmentRequired ? 'Yes' : 'No'}</td>
+      <td className="px-3 py-2">{understood}</td>
+      <td className="px-3 py-2">{clarification}</td>
+      <td className="px-3 py-2">{unanswered}</td>
+      <td className="px-3 py-2 whitespace-nowrap">{formatDate(memo.updatedAt)}</td>
+      <td className="px-3 py-2 text-right">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigate('policy-detail', { id: memo.id });
+          }}
+        >
+          Open
+        </Button>
+      </td>
+    </tr>
   );
 }

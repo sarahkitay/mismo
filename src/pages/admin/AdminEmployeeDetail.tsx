@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,12 +6,14 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Icons } from '@/lib/icons';
 import { downloadCsv } from '@/lib/exportCsv';
+import { OutreachReminderModal } from '@/components/admin/OutreachReminderModal';
+import { ManualOutreachModal } from '@/components/admin/ManualOutreachModal';
+import { ReportBuilderDialog } from '@/components/admin/ReportBuilderDialog';
 import {
   formatRelativeTime,
   formatDate,
+  formatPercent,
   getCategoryLabel,
-  getCategoryColor,
-  getSeverityColor,
   getStatusColor,
   getInitials,
 } from '@/lib/utils';
@@ -34,6 +36,9 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
   if (!employee) return <div className="text-sm text-[var(--mismo-text-secondary)]">Employee not found.</div>;
 
   const [historyTab, setHistoryTab] = useState('overview');
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [editingOrgInfo, setEditingOrgInfo] = useState(false);
   const [editManagerId, setEditManagerId] = useState(employee.managerId ?? '');
   const [editHiredDate, setEditHiredDate] = useState(toDateInputValue(employee.hiredDate));
@@ -97,6 +102,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
   const employeeInvestigations = dataStore.investigations.filter(
     (inv) =>
       inv.subjectUserIds?.includes(employee.id) ||
+      inv.witnessUserIds?.includes(employee.id) ||
       inv.linkedReportIds.some((rid) => {
         const rep = dataStore.reports.find((r) => r.id === rid);
         return rep?.createdByUserId === employee.id;
@@ -106,6 +112,107 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
   const employeeAuditLogs = dataStore.auditLogs.filter(
     (log) => log.recordId === employee.id || log.actorUserId === employee.id
   );
+
+  const openInvestigationsCount = employeeInvestigations.filter((i) => i.status === 'OPEN').length;
+  const memoAckRate = useMemo(() => {
+    const required = dataStore.policies.filter((p) => p.status === 'PUBLISHED' && p.acknowledgmentRequired);
+    if (required.length === 0) return 1;
+    const acked = required.filter((p) => employeeMemoAcks.some((a) => a.policyId === p.id)).length;
+    return acked / required.length;
+  }, [dataStore.policies, employeeMemoAcks]);
+
+  const investigationsReportedBy = employeeInvestigations.filter((inv) =>
+    inv.linkedReportIds.some((rid) => {
+      const rep = dataStore.reports.find((r) => r.id === rid);
+      return rep?.createdByUserId === employee.id;
+    })
+  );
+  const investigationsAgainst = employeeInvestigations.filter(
+    (inv) => inv.subjectUserIds?.includes(employee.id) && !investigationsReportedBy.some((x) => x.id === inv.id)
+  );
+  const investigationsWitness = employeeInvestigations.filter((inv) => inv.witnessUserIds?.includes(employee.id));
+
+  const outreachRelatedOptions = useMemo(() => {
+    const opts: { id: string; label: string }[] = [];
+    employeeReports.forEach((r) => opts.push({ id: `report:${r.id}`, label: `Report · ${r.summary.slice(0, 40)}` }));
+    employeeResponses.forEach((r) => {
+      const prompt = dataStore.prompts.find((p) => p.id === r.promptId);
+      opts.push({ id: `prompt:${r.id}`, label: `Prompt · ${prompt?.title ?? r.promptId}` });
+    });
+    employeeMemoAcks.forEach((a) => {
+      const pol = dataStore.policies.find((p) => p.id === a.policyId);
+      opts.push({ id: `memo:${a.policyId}`, label: `Memo · ${pol?.title ?? a.policyId}` });
+    });
+    return opts;
+  }, [employeeReports, employeeResponses, employeeMemoAcks, dataStore.prompts, dataStore.policies]);
+
+  const activityTimeline = useMemo(() => {
+    const items: { id: string; at: Date; label: string; detail?: string }[] = [];
+    employeeActivities.forEach((a) =>
+      items.push({ id: a.id, at: a.createdAt, label: a.type.replace(/_/g, ' '), detail: JSON.stringify(a.metadata).slice(0, 80) })
+    );
+    employeeAuditLogs.forEach((log) =>
+      items.push({
+        id: log.id,
+        at: log.createdAt,
+        label: `${log.recordType} · ${log.field ?? 'update'}`,
+        detail: `${log.oldValue ?? ''} → ${log.newValue ?? ''}`,
+      })
+    );
+    nudgesToEmployee.forEach((n) =>
+      items.push({ id: n.id, at: n.sentAt, label: `${n.channel} reminder`, detail: n.message })
+    );
+    return items.sort((a, b) => b.at.getTime() - a.at.getTime());
+  }, [employeeActivities, employeeAuditLogs, nudgesToEmployee]);
+
+  const renderInvestigationTable = (rows: typeof employeeInvestigations, emptyMessage: string) => {
+    if (rows.length === 0) {
+      return <p className="text-sm text-[var(--color-text-secondary)]">{emptyMessage}</p>;
+    }
+    return (
+      <div className="overflow-x-auto border border-[var(--color-border-200)]">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--color-surface-200)] text-[var(--color-text-secondary)]">
+            <tr>
+              <th className="px-3 py-2 text-left">Investigation</th>
+              <th className="px-3 py-2 text-left">Initiated</th>
+              <th className="px-3 py-2 text-left">Modified</th>
+              <th className="px-3 py-2 text-left">Investigator</th>
+              <th className="px-3 py-2 text-left">Status</th>
+              <th className="px-3 py-2 text-left">Stage</th>
+              <th className="px-3 py-2 text-left">Docs</th>
+              <th className="px-3 py-2 text-left">Notes</th>
+              <th className="px-3 py-2 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((inv) => {
+              const investigator = dataStore.users.find((u) => u.id === inv.ownerId);
+              const noteCount = inv.notes?.length ?? 0;
+              const docCount = (inv.notes ?? []).reduce((sum, n) => sum + (n.attachments?.length ?? 0), 0) + (inv.outcomeAttachment ? 1 : 0);
+              return (
+                <tr key={inv.id} className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)]">
+                  <td className="px-3 py-2 font-medium">{inv.referenceNumber ?? inv.id}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{formatDate(inv.openedAt)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">{formatRelativeTime(inv.updatedAt)}</td>
+                  <td className="px-3 py-2">{investigator ? `${investigator.firstName} ${investigator.lastName}` : 'Unassigned'}</td>
+                  <td className="px-3 py-2">{inv.status}</td>
+                  <td className="px-3 py-2 text-xs">{inv.workflowPhase ?? 'QUEUED'}</td>
+                  <td className="px-3 py-2">{docCount}</td>
+                  <td className="px-3 py-2">{noteCount}</td>
+                  <td className="px-3 py-2 text-right">
+                    <Button size="sm" variant="outline" onClick={() => onNavigate('investigation-detail', { id: inv.id })}>
+                      View
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   const exportEmployeeReport = () => {
     const headers = ['Section', 'Id', 'Summary', 'Timestamp', 'Detail'];
@@ -147,8 +254,8 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
         <Button variant="default" onClick={handleViewAsEmployee} className="ml-auto">
           View as this employee
         </Button>
-        <Button variant="outline" onClick={exportEmployeeReport}>
-          Export employee report (CSV)
+        <Button variant="outline" onClick={() => setReportOpen(true)}>
+          Run employee report
         </Button>
         <Button
           variant="outline"
@@ -314,7 +421,11 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
               </div>
             )}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-[var(--color-border-200)]">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 pt-3 border-t border-[var(--color-border-200)]">
+            <div className="p-3 border border-[var(--color-border-200)] rounded-[var(--radius-medium)]">
+              <p className="text-xs text-[var(--color-text-secondary)] uppercase">Last response</p>
+              <p className="font-semibold text-sm">{engagement?.lastResponseAt ? formatRelativeTime(engagement.lastResponseAt) : 'Never'}</p>
+            </div>
             <div className="p-3 border border-[var(--color-border-200)] rounded-[var(--radius-medium)]">
               <p className="text-xs text-[var(--color-text-secondary)] uppercase">Response rate (30d)</p>
               <p className="font-semibold">{Math.round((engagement?.responseRate30d ?? 0) * 100)}%</p>
@@ -328,8 +439,18 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
               <p className="font-semibold">{employeeReports.length}</p>
             </div>
             <div className="p-3 border border-[var(--color-border-200)] rounded-[var(--radius-medium)]">
-              <p className="text-xs text-[var(--color-text-secondary)] uppercase">Last response</p>
-              <p className="font-semibold text-sm">{engagement?.lastResponseAt ? formatRelativeTime(engagement.lastResponseAt) : 'Never'}</p>
+              <p className="text-xs text-[var(--color-text-secondary)] uppercase">Open investigations</p>
+              <p className="font-semibold">{openInvestigationsCount}</p>
+            </div>
+            <div className="p-3 border border-[var(--color-border-200)] rounded-[var(--radius-medium)]">
+              <p className="text-xs text-[var(--color-text-secondary)] uppercase">Memo ack rate</p>
+              <p className="font-semibold">{formatPercent(memoAckRate)}</p>
+            </div>
+            <div className="p-3 border border-[var(--color-border-200)] rounded-[var(--radius-medium)]">
+              <p className="text-xs text-[var(--color-text-secondary)] uppercase">Risk status</p>
+              <p className={`font-semibold text-sm ${engagement?.isAtRisk ? 'text-[var(--color-alert-600)]' : 'text-emerald-700'}`}>
+                {engagement?.isAtRisk ? 'At risk' : 'Normal'}
+              </p>
             </div>
           </div>
         </CardContent>
@@ -337,30 +458,16 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
 
       <Card className="mismo-card">
         <CardContent className="p-5">
-          <h2 className="section-label mb-3">Employee history</h2>
+          <h2 className="section-label mb-3">Employee report / history</h2>
           <Tabs value={historyTab} onValueChange={setHistoryTab}>
             <TabsList className="flex flex-wrap h-auto gap-1 bg-[var(--color-surface-100)] p-1 border border-[var(--color-border-200)]">
-              <TabsTrigger value="overview" className="text-xs sm:text-sm">
-                Overview
-              </TabsTrigger>
-              <TabsTrigger value="prompts" className="text-xs sm:text-sm">
-                Prompt responses
-              </TabsTrigger>
-              <TabsTrigger value="memos" className="text-xs sm:text-sm">
-                Memos
-              </TabsTrigger>
-              <TabsTrigger value="investigations" className="text-xs sm:text-sm">
-                Investigations
-              </TabsTrigger>
-              <TabsTrigger value="cases" className="text-xs sm:text-sm">
-                Case reports
-              </TabsTrigger>
-              <TabsTrigger value="outreach" className="text-xs sm:text-sm">
-                Outreach / nudges
-              </TabsTrigger>
-              <TabsTrigger value="audit" className="text-xs sm:text-sm">
-                Audit log
-              </TabsTrigger>
+              <TabsTrigger value="overview" className="text-xs sm:text-sm">Overview</TabsTrigger>
+              <TabsTrigger value="reports" className="text-xs sm:text-sm">Reports</TabsTrigger>
+              <TabsTrigger value="prompts" className="text-xs sm:text-sm">Prompt responses</TabsTrigger>
+              <TabsTrigger value="memos" className="text-xs sm:text-sm">Memos / acknowledgements</TabsTrigger>
+              <TabsTrigger value="investigations" className="text-xs sm:text-sm">Investigations</TabsTrigger>
+              <TabsTrigger value="outreach" className="text-xs sm:text-sm">Reminders / outreach</TabsTrigger>
+              <TabsTrigger value="activity" className="text-xs sm:text-sm">Activity timeline</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="mt-4 space-y-3">
@@ -458,56 +565,73 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
               )}
             </TabsContent>
 
-            <TabsContent value="investigations" className="mt-4">
-              {employeeInvestigations.length === 0 ? (
-                <p className="text-sm text-[var(--color-text-secondary)]">
-                  No investigations are linked to this employee yet. Escalations from the case register will appear here when opened.
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {employeeInvestigations.map((inv) => (
-                    <li key={inv.id} className="border border-[var(--color-border-200)] p-3 rounded-[var(--radius-medium)] text-sm flex flex-wrap justify-between gap-2">
-                      <div>
-                        <p className="font-medium">{inv.referenceNumber ?? inv.id}</p>
-                        <p className="text-xs text-[var(--color-text-secondary)]">
-                          {inv.status} · Opened {formatDate(inv.openedAt)} · Modified {formatDate(inv.updatedAt)}
-                        </p>
-                      </div>
-                      <Button size="sm" variant="outline" onClick={() => onNavigate('investigation-detail', { id: inv.id })}>
-                        Open
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+            <TabsContent value="investigations" className="mt-4 space-y-6">
+              <section>
+                <h3 className="text-sm font-semibold mb-2">Reported by this employee</h3>
+                {renderInvestigationTable(
+                  investigationsReportedBy,
+                  'No investigations initiated from reports filed by this employee.'
+                )}
+              </section>
+              <section>
+                <h3 className="text-sm font-semibold mb-2">Reported against this employee</h3>
+                {renderInvestigationTable(
+                  investigationsAgainst,
+                  'No investigations where this employee is the subject.'
+                )}
+              </section>
+              <section>
+                <h3 className="text-sm font-semibold mb-2">Employee witness</h3>
+                {renderInvestigationTable(
+                  investigationsWitness,
+                  'No investigations where this employee is listed as a witness.'
+                )}
+              </section>
             </TabsContent>
 
-            <TabsContent value="cases" className="mt-4">
+            <TabsContent value="reports" className="mt-4">
               {employeeReports.length === 0 ? (
                 <p className="text-sm text-[var(--color-text-secondary)]">
                   No reports submitted for this employee yet. Any future incident reports, prompt escalations, or memo clarifications will appear here.
                 </p>
               ) : (
-                <div className="space-y-2">
-                  {employeeReports.map((report) => (
-                    <div
-                      key={report.id}
-                      className="flex flex-wrap items-center justify-between gap-2 border border-[var(--color-border-200)] p-3 rounded-[var(--radius-medium)]"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{report.summary}</p>
-                        <p className="text-xs text-[var(--color-text-secondary)]">{report.id} · {formatDate(report.createdAt)}</p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge className={getCategoryColor(report.category)}>{getCategoryLabel(report.category)}</Badge>
-                        <Badge className={getSeverityColor(report.severity)}>{report.severity}</Badge>
-                        <Badge className={getStatusColor(report.status)}>{report.status}</Badge>
-                        <Button variant="outline" size="sm" onClick={() => onNavigate('report-detail', { id: report.id })}>
-                          Open case
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                <div className="overflow-x-auto border border-[var(--color-border-200)]">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[var(--color-surface-200)] text-[var(--color-text-secondary)]">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Date</th>
+                        <th className="px-3 py-2 text-left">Type</th>
+                        <th className="px-3 py-2 text-left">Category</th>
+                        <th className="px-3 py-2 text-left">Status</th>
+                        <th className="px-3 py-2 text-left">Severity</th>
+                        <th className="px-3 py-2 text-left">Investigation</th>
+                        <th className="px-3 py-2 text-left">Owner</th>
+                        <th className="px-3 py-2 text-left">Updated</th>
+                        <th className="px-3 py-2 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {employeeReports.map((report) => {
+                        const owner = report.assignedTo ? dataStore.users.find((u) => u.id === report.assignedTo) : null;
+                        const inv = report.investigationId ? dataStore.investigations.find((i) => i.id === report.investigationId) : null;
+                        return (
+                          <tr key={report.id} className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)]">
+                            <td className="px-3 py-2 whitespace-nowrap">{formatDate(report.createdAt)}</td>
+                            <td className="px-3 py-2">{report.sourcePromptId ? 'Prompt escalation' : 'Incident report'}</td>
+                            <td className="px-3 py-2">{getCategoryLabel(report.category)}</td>
+                            <td className="px-3 py-2"><Badge className={getStatusColor(report.status)}>{report.status}</Badge></td>
+                            <td className="px-3 py-2">{report.severity}</td>
+                            <td className="px-3 py-2">{inv?.referenceNumber ?? inv?.id ?? '-'}</td>
+                            <td className="px-3 py-2">{owner ? `${owner.firstName} ${owner.lastName}` : 'Unassigned'}</td>
+                            <td className="px-3 py-2">{formatRelativeTime(report.updatedAt)}</td>
+                            <td className="px-3 py-2 text-right">
+                              <Button size="sm" variant="outline" onClick={() => onNavigate('report-detail', { id: report.id })}>View</Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </TabsContent>
@@ -517,40 +641,10 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                 Send reminders only with a clear reason. Messages are logged on this employee&apos;s record with channel, body, and sender.
               </p>
               <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const msg = window.prompt('Email reminder message:', 'Please complete your pending HR check-ins.');
-                    if (msg == null) return;
-                    dataStore.sendNudge(employee.id, 'EMAIL', msg, { type: 'AT_RISK_OUTREACH', relatedLabel: 'Manual admin outreach' });
-                    toast.success('Email reminder logged.');
-                  }}
-                >
-                  Send email reminder…
+                <Button variant="outline" size="sm" onClick={() => setReminderOpen(true)}>
+                  Send reminder…
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const msg = window.prompt('SMS reminder message:', 'Reminder: please complete your HR check-ins.');
-                    if (msg == null) return;
-                    dataStore.sendNudge(employee.id, 'SMS', msg, { type: 'AT_RISK_OUTREACH', relatedLabel: 'Manual admin outreach' });
-                    toast.success('SMS reminder logged.');
-                  }}
-                >
-                  Send SMS reminder…
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const msg = window.prompt('Describe manual outreach:', 'Called employee to discuss engagement.');
-                    if (msg == null) return;
-                    dataStore.sendNudge(employee.id, 'MANUAL', msg, { type: 'MANUAL_OUTREACH', relatedLabel: 'Manual outreach' });
-                    toast.success('Manual outreach logged.');
-                  }}
-                >
+                <Button variant="outline" size="sm" onClick={() => setManualOpen(true)}>
                   Log manual outreach…
                 </Button>
               </div>
@@ -564,52 +658,89 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                     <li key={n.id} className="text-sm border border-[var(--color-border-200)] p-3 rounded-[var(--radius-medium)]">
                       <span className="font-medium">{n.channel}</span> · {formatRelativeTime(n.sentAt)}
                       <p className="text-xs text-[var(--color-text-muted)] mt-1">{n.message}</p>
-                      <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                        {n.context.type}
-                        {n.context.policyId ? ` · memo ${n.context.policyId}` : ''}
-                        {n.context.promptId ? ` · prompt ${n.context.promptId}` : ''}
-                      </p>
                     </li>
                   ))}
                 </ul>
               )}
             </TabsContent>
 
-            <TabsContent value="audit" className="mt-4">
-              {employeeAuditLogs.length === 0 ? (
-                <p className="text-sm text-[var(--color-text-secondary)]">No audit entries reference this employee yet.</p>
+            <TabsContent value="activity" className="mt-4">
+              {activityTimeline.length === 0 ? (
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  No activity recorded yet. Status changes, reminders, responses, and audit events will appear here.
+                </p>
               ) : (
-                <div className="overflow-x-auto border border-[var(--color-border-200)]">
-                  <table className="w-full text-sm">
-                    <thead className="bg-[var(--color-surface-200)] text-[var(--color-text-secondary)]">
-                      <tr>
-                        <th className="px-3 py-2 text-left">Record</th>
-                        <th className="px-3 py-2 text-left">Field</th>
-                        <th className="px-3 py-2 text-left">Change</th>
-                        <th className="px-3 py-2 text-left">When</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {employeeAuditLogs.map((log) => (
-                        <tr key={log.id} className="border-t border-[var(--color-border-200)]">
-                          <td className="px-3 py-2">
-                            {log.recordType} · {log.recordId}
-                          </td>
-                          <td className="px-3 py-2">{log.field ?? '-'}</td>
-                          <td className="px-3 py-2 text-xs text-[var(--color-text-secondary)]">
-                            {(log.oldValue ?? '').slice(0, 40)} → {(log.newValue ?? '').slice(0, 40)}
-                          </td>
-                          <td className="px-3 py-2 whitespace-nowrap">{formatDate(log.createdAt)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <ul className="space-y-2">
+                  {activityTimeline.map((item) => (
+                    <li key={item.id} className="border border-[var(--color-border-200)] p-3 rounded-[var(--radius-medium)] text-sm">
+                      <div className="flex flex-wrap justify-between gap-2">
+                        <span className="font-medium capitalize">{item.label}</span>
+                        <span className="text-xs text-[var(--color-text-muted)]">{formatRelativeTime(item.at)}</span>
+                      </div>
+                      {item.detail && <p className="text-xs text-[var(--color-text-secondary)] mt-1 truncate">{item.detail}</p>}
+                    </li>
+                  ))}
+                </ul>
               )}
             </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
+
+      <OutreachReminderModal
+        open={reminderOpen}
+        onOpenChange={setReminderOpen}
+        employeeName={`${employee.firstName} ${employee.lastName}`}
+        relatedLabel="Employee profile reminder"
+        defaultSubject="HR reminder — action required"
+        defaultBody="Please complete your pending HR check-ins and acknowledgements at your earliest convenience."
+        onSend={(payload) => {
+          const fullMessage = payload.internalNote
+            ? `${payload.subject}\n\n${payload.body}\n\n[Internal: ${payload.internalNote}]`
+            : `${payload.subject}\n\n${payload.body}`;
+          payload.channels.forEach((ch) => {
+            dataStore.sendNudge(employee.id, ch, fullMessage, {
+              type: 'AT_RISK_OUTREACH',
+              relatedLabel: payload.reason || 'Employee profile reminder',
+            });
+          });
+          toast.success(`Reminder logged via ${payload.channels.join(' & ')}.`);
+        }}
+      />
+
+      <ManualOutreachModal
+        open={manualOpen}
+        onOpenChange={setManualOpen}
+        employeeName={`${employee.firstName} ${employee.lastName}`}
+        relatedOptions={outreachRelatedOptions}
+        onSave={(payload) => {
+          const channel = payload.contactMethod === 'EMAIL' ? 'EMAIL' : payload.contactMethod === 'SMS' ? 'SMS' : 'MANUAL';
+          const message = [payload.notes, payload.outcome && `Outcome: ${payload.outcome}`, payload.followUpDate && `Follow-up: ${payload.followUpDate}`]
+            .filter(Boolean)
+            .join('\n');
+          const context: { type: 'MANUAL_OUTREACH'; relatedLabel?: string; reportId?: string; promptId?: string; policyId?: string } = {
+            type: 'MANUAL_OUTREACH',
+            relatedLabel: payload.relatedItem ?? 'Manual outreach',
+          };
+          if (payload.relatedItem?.startsWith('report:')) context.reportId = payload.relatedItem.slice(7);
+          if (payload.relatedItem?.startsWith('prompt:')) context.promptId = payload.relatedItem.slice(7);
+          if (payload.relatedItem?.startsWith('memo:')) context.policyId = payload.relatedItem.slice(5);
+          dataStore.sendNudge(employee.id, channel, message, context);
+          toast.success('Manual outreach logged.');
+        }}
+      />
+
+      <ReportBuilderDialog
+        open={reportOpen}
+        onOpenChange={setReportOpen}
+        kind="employee"
+        title={`Employee report — ${employee.firstName} ${employee.lastName}`}
+        preset={{ employeeId: employee.employeeId ?? employee.id, employeeName: `${employee.firstName} ${employee.lastName}` }}
+        onExport={(_, format) => {
+          exportEmployeeReport();
+          toast.success(`${format} employee report exported.`);
+        }}
+      />
     </div>
   );
 }
