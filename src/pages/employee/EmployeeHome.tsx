@@ -78,6 +78,13 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
     setFinancialFollowUp(null);
   }, [heroPrompt?.id]);
 
+  useEffect(() => {
+    if (heroPromptAlreadyAnswered) {
+      setFinancialFollowUp(null);
+      setIncidentStep('question');
+    }
+  }, [heroPromptAlreadyAnswered]);
+
   const isFullyCaughtUp = pendingPromptsForEmployee.length === 0 && unreadPolicies.length === 0;
   /** No mandatory check-in card: show the lighter dashboard (with or without memos to sign). */
   const showRelaxedDashboard = !showCheckInGate && pendingPromptsForEmployee.length === 0;
