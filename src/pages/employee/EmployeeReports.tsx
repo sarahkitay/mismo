@@ -139,7 +139,10 @@ export function EmployeeReports({ dataStore, onNavigate }: EmployeeReportsProps)
                     </div>
                     
                     <h3 className="font-semibold text-[var(--mismo-text)] text-lg">{employeeIncidentReportHeadline(report)}</h3>
-                    {report.description?.trim() ? (
+                    {report.description?.trim() &&
+                    !report.description.trim().startsWith('Financial follow-up:') &&
+                    report.description.trim() !==
+                      'Employee answered Yes on the mandatory incident query. Complete the secure intake form to provide details.' ? (
                       <p className="text-[var(--mismo-text-secondary)] mt-1">{truncateText(report.description, 150)}</p>
                     ) : (
                       <p className="text-sm text-[var(--mismo-text-secondary)] mt-1 italic">No description on file yet.</p>
