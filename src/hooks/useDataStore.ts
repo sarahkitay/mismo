@@ -370,52 +370,160 @@ export function useDataStore() {
     if (session) setSession({ ...session, role });
   }, [previewUserId, session]);
   
-  // Submit prompt response
+  // Submit prompt response (returns created response for linking cases)
   const submitPromptResponse = useCallback((
     deliveryId: string,
     answer: PromptAnswer,
     notes?: string
-  ) => {
+  ): PromptResponse | undefined => {
     const delivery = deliveries.find(d => d.id === deliveryId);
-    if (!delivery) return;
+    if (!delivery) return undefined;
     
     const now = new Date();
+    const responseId = `response-${Date.now()}`;
     
-    // Create response
     const newResponse: PromptResponse = {
-      id: `response-${Date.now()}`,
+      id: responseId,
       orgId: delivery.orgId,
       promptId: delivery.promptId,
       promptDeliveryId: deliveryId,
       userId: delivery.userId,
       answer,
       submittedAt: now,
+      finalizedAt: now,
       notes,
+      needsReview: answer === 'HAS_ISSUE',
       createdAt: now,
       updatedAt: now,
     };
     
     setResponses(prev => [...prev, newResponse]);
     
-    // Update delivery status
     setDeliveries(prev => prev.map(d => 
       d.id === deliveryId 
         ? { ...d, status: 'COMPLETED', completedAt: now, updatedAt: now }
         : d
     ));
     
-    // Add activity event
     const newActivity: ActivityEvent = {
       id: `activity-${Date.now()}`,
       orgId: delivery.orgId,
       type: 'PROMPT_RESPONSE',
       actorUserId: delivery.userId,
-      metadata: { promptId: delivery.promptId, answer },
+      metadata: { promptId: delivery.promptId, answer, responseId, deliveryId },
       createdAt: now,
     };
     
     setActivities(prev => [newActivity, ...prev]);
+
+    setAuditLogs((prev) => [
+      {
+        id: `audit-${Date.now()}`,
+        orgId: mockOrg.id,
+        recordType: 'PROMPT_RESPONSE',
+        recordId: responseId,
+        field: 'answer',
+        oldValue: '',
+        newValue: answer,
+        actorUserId: delivery.userId,
+        createdAt: now,
+        reason: notes,
+      },
+      ...prev,
+    ]);
+
+    return newResponse;
   }, [deliveries]);
+
+  const beginIncidentCaseFromPrompt = useCallback(
+    (userId: string, delivery: PromptDelivery, response: PromptResponse) => {
+      const now = new Date();
+      const prompt = prompts.find((p) => p.id === delivery.promptId);
+      const seq =
+        reports.filter((r) => r.caseType !== 'WAGE_HOUR' && r.orgId === effectiveOrgId).length + 1;
+      const refNum = `IR-${now.getFullYear()}-${String(seq).padStart(4, '0')}`;
+      const severity = prompt?.severityOnHasIssue ?? 'HIGH';
+      const newReport: Report = {
+        id: `report-${Date.now()}`,
+        orgId: effectiveOrgId,
+        createdByUserId: userId,
+        isAnonymous: false,
+        sourcePromptId: delivery.promptId,
+        sourcePromptResponseId: response.id,
+        reportSourceType: 'EMPLOYEE_PROMPT_RESPONSE',
+        caseType: 'WORKPLACE_INVESTIGATION',
+        referenceNumber: refNum,
+        category: 'OTHER',
+        severity,
+        summary: 'Incident query — concern indicated',
+        description:
+          response.notes?.trim() ||
+          'Employee answered Yes on the mandatory incident query. Complete the secure intake form to provide details.',
+        status: 'NEW',
+        needsExtendedIncidentIntake: true,
+        messages: [],
+        responseChecklist: createIndustryChecklistForReport(),
+        handlingLedger: [
+          {
+            id: `ledger-${Date.now()}`,
+            type: 'NOTE',
+            text: 'Case opened from incident prompt Yes response.',
+            createdAt: now,
+            createdBy: userId,
+          },
+        ],
+        createdAt: now,
+        updatedAt: now,
+      };
+      setReports((prev) => [newReport, ...prev]);
+      setActivities((prev) => [
+        {
+          id: `activity-${Date.now()}`,
+          orgId: mockOrg.id,
+          type: 'REPORT_CREATED',
+          actorUserId: userId,
+          metadata: {
+            reportId: newReport.id,
+            source: 'EMPLOYEE_PROMPT_RESPONSE',
+            promptResponseId: response.id,
+            referenceNumber: refNum,
+          },
+          createdAt: now,
+        },
+        ...prev,
+      ]);
+      setAuditLogs((prev) => [
+        {
+          id: `audit-${Date.now()}`,
+          orgId: mockOrg.id,
+          recordType: 'REPORT',
+          recordId: newReport.id,
+          field: 'caseType',
+          oldValue: '',
+          newValue: 'WORKPLACE_INVESTIGATION',
+          actorUserId: userId,
+          createdAt: now,
+          reason: `Linked prompt response ${response.id}`,
+        },
+        ...prev,
+      ]);
+      return newReport;
+    },
+    [prompts, reports, effectiveOrgId]
+  );
+
+  /** Finalize incident prompt Yes: log response, open case shell, alert HR queue */
+  const submitIncidentPromptYes = useCallback(
+    (deliveryId: string, notes?: string) => {
+      const delivery = deliveries.find((d) => d.id === deliveryId);
+      if (!delivery) return undefined;
+      const response = submitPromptResponse(deliveryId, 'HAS_ISSUE', notes);
+      if (!response) return undefined;
+      const report = beginIncidentCaseFromPrompt(delivery.userId, delivery, response);
+      return { response, report };
+    },
+    [deliveries, submitPromptResponse, beginIncidentCaseFromPrompt]
+  );
   
   // Create report
   const createReport = useCallback((reportData: Omit<Report, 'id' | 'orgId' | 'createdAt' | 'updatedAt' | 'status'>) => {
@@ -780,6 +888,33 @@ export function useDataStore() {
     };
     
     setActivities(prev => [newActivity, ...prev]);
+
+    setAuditLogs((prev) => [
+      {
+        id: `audit-${Date.now()}-inv`,
+        orgId: mockOrg.id,
+        recordType: 'INVESTIGATION',
+        recordId: newInvestigation.id,
+        field: 'status',
+        oldValue: '',
+        newValue: 'OPEN',
+        actorUserId: currentUser.id,
+        createdAt: now,
+        reason: `Investigation created from report ${reportId}`,
+      },
+      {
+        id: `audit-${Date.now()}-report`,
+        orgId: mockOrg.id,
+        recordType: 'REPORT',
+        recordId: reportId,
+        field: 'investigationId',
+        oldValue: '',
+        newValue: newInvestigation.id,
+        actorUserId: currentUser.id,
+        createdAt: now,
+      },
+      ...prev,
+    ]);
     
     return newInvestigation;
   }, [reports, investigations, currentUser.id]);
@@ -945,6 +1080,51 @@ export function useDataStore() {
       );
     },
     []
+  );
+
+  const submitEmployeeInvestigationResponse = useCallback(
+    (investigationId: string, requestId: string, responseText: string) => {
+      const inv = investigations.find((i) => i.id === investigationId);
+      const req = inv?.responseRequests?.find((r) => r.id === requestId);
+      if (!inv || !req || req.partyUserId !== currentUser.id) return false;
+      const trimmed = responseText.trim();
+      if (!trimmed) return false;
+      const now = new Date();
+      updateInvestigationResponseRequest(investigationId, requestId, {
+        status: 'SUBMITTED',
+        submittedAt: now,
+        viewedAt: req.viewedAt ?? now,
+        responseText: trimmed,
+      });
+      setActivities((prev) => [
+        {
+          id: `activity-${Date.now()}`,
+          orgId: mockOrg.id,
+          type: 'INVESTIGATION_UPDATED',
+          actorUserId: currentUser.id,
+          metadata: { investigationId, requestId, action: 'EMPLOYEE_RESPONSE_SUBMITTED' },
+          createdAt: now,
+        },
+        ...prev,
+      ]);
+      setAuditLogs((prev) => [
+        {
+          id: `audit-${Date.now()}`,
+          orgId: mockOrg.id,
+          recordType: 'INVESTIGATION',
+          recordId: investigationId,
+          field: 'responseRequest',
+          oldValue: req.status,
+          newValue: 'SUBMITTED',
+          actorUserId: currentUser.id,
+          createdAt: now,
+          reason: `Employee response on request ${requestId}`,
+        },
+        ...prev,
+      ]);
+      return true;
+    },
+    [investigations, currentUser.id, updateInvestigationResponseRequest]
   );
 
   const updateInvestigationAnalysis = useCallback(
@@ -2046,6 +2226,8 @@ export function useDataStore() {
     // Actions
     switchRole,
     submitPromptResponse,
+    submitIncidentPromptYes,
+    beginIncidentCaseFromPrompt,
     createReport,
     recordWageHourScreeningNo,
     beginWageHourCase,
@@ -2063,6 +2245,7 @@ export function useDataStore() {
     addInvestigationEvidence,
     addInvestigationResponseRequest,
     updateInvestigationResponseRequest,
+    submitEmployeeInvestigationResponse,
     updateInvestigationAnalysis,
     addCorrectiveAction,
     updateCorrectiveAction,

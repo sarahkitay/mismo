@@ -30,10 +30,13 @@ const contactMethods: { value: ContactMethod; label: string }[] = [
 ];
 
 export function NewReport({ dataStore, onNavigate, initialParams }: NewReportProps) {
-  const { currentUser, createReport, orgSettings } = dataStore;
+  const { currentUser, createReport, orgSettings, responses } = dataStore;
 
   const promptId = initialParams?.promptId;
   const deliveryId = initialParams?.deliveryId;
+  const linkedPromptResponse = deliveryId
+    ? responses.find((r) => r.promptDeliveryId === deliveryId)
+    : undefined;
 
   const [description, setDescription] = useState('');
   const [peopleInvolved, setPeopleInvolved] = useState('');
@@ -51,9 +54,9 @@ export function NewReport({ dataStore, onNavigate, initialParams }: NewReportPro
         createdByUserId: isAnonymous ? undefined : currentUser.id,
         isAnonymous,
         sourcePromptId: promptId || undefined,
-        sourcePromptResponseId: deliveryId || undefined,
+        sourcePromptResponseId: linkedPromptResponse?.id,
+        reportSourceType: promptId ? 'EMPLOYEE_PROMPT_RESPONSE' : 'SELF_REPORTED',
         caseType: 'WORKPLACE_INVESTIGATION',
-        reportSourceType: 'SELF_REPORTED',
         category: 'OTHER',
         severity: 'LOW',
         summary: 'Workplace concern report',

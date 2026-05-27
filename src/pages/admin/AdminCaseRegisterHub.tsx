@@ -470,7 +470,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                   onClick={() => {
                     selectedRows.forEach((id) => {
                       const r = reports.find((report) => report.id === id);
-                      if (r && !r.investigationId && r.status !== 'NEW') createInvestigation(id, dataStore.currentUser.id);
+                      if (r && !r.investigationId) createInvestigation(id, dataStore.currentUser.id);
                     });
                     setSelectedRows([]);
                     toast.success('Investigations created for selected reports.');

@@ -43,6 +43,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
     pendingPromptsForEmployee,
     employeeReports,
     submitPromptResponse,
+    submitIncidentPromptYes,
     policies,
     policyAcknowledgements,
     organizationName,
@@ -81,17 +82,28 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
       ? 'Financial follow-up: employee indicated a pay, compensation, or benefits-related concern.'
       : 'Financial follow-up: no pay, compensation, or benefits-related concern indicated.';
     const { deliveryId, answer, promptIdForReport } = financialFollowUp;
-    submitPromptResponse(deliveryId, answer, note);
     setFinancialFollowUp(null);
     setIncidentStep('question');
+
+    if (answer === 'HAS_ISSUE' && isIncidentGate) {
+      const result = submitIncidentPromptYes(deliveryId, note);
+      if (result) {
+        toast.success(
+          'Thank you. Your response is recorded and a secure case has been opened. Complete the brief intake form next.',
+          { duration: 7000 }
+        );
+        onNavigate(`incident-intake/${result.report.id}`);
+      }
+      return;
+    }
+
+    submitPromptResponse(deliveryId, answer, note);
     if (answer === 'HAS_ISSUE' && promptIdForReport) {
       toast.info(
         'HR is alerted on the admin dashboard and by email (simulated). You will receive a receipt with next steps and a link to your incident portal to complete documentation.',
         { duration: 7000 }
       );
       onNavigate('report-new', { promptId: promptIdForReport, deliveryId });
-    } else if (answer === 'HAS_ISSUE' && isIncidentGate) {
-      toast.success('Thank you for sharing this. Your response has been recorded.');
     } else if (answer === 'NO_ISSUE' && isIncidentGate) {
       toast.success('Your response has been recorded. No further action is needed for this check-in.');
     } else {
@@ -146,9 +158,15 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
       setFinancialFollowUp({ deliveryId, answer: 'HAS_ISSUE', incidentRestoreStep: 'yes_confirm' });
       return;
     }
-    submitPromptResponse(deliveryId, 'HAS_ISSUE');
+    const result = submitIncidentPromptYes(deliveryId);
     setIncidentStep('question');
-    toast.success('Thank you for sharing this. Your response has been recorded for today.');
+    if (result) {
+      toast.success(
+        'Thank you. Your response is recorded and HR has been notified. Complete the secure intake form to add details.',
+        { duration: 7000 }
+      );
+      onNavigate(`incident-intake/${result.report.id}`);
+    }
   };
   
   const pendingIntakes = employeeReports.filter((r) => !isEmployeeReportIntakeComplete(r));

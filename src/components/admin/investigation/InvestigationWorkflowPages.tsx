@@ -320,7 +320,8 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
   const progress = getModuleProgress(investigation)['interviews-notes'];
   const persons = getInvestigationPersons(investigation, ctx.owner);
   const [noteBody, setNoteBody] = useState('');
-  const [noteType, setNoteType] = useState<'INTERVIEW' | 'PRIVATE_HR' | 'LEGAL'>('INTERVIEW');
+  const [noteType, setNoteType] = useState<'INTERVIEW' | 'PRIVATE_HR' | 'LEGAL' | 'SHARED'>('INTERVIEW');
+  const [sharedNoteBody, setSharedNoteBody] = useState('');
   const [reqParty, setReqParty] = useState('');
   const [reqMethod, setReqMethod] = useState<ResponseRequestMethod>('IN_APP');
   const [reqMessage, setReqMessage] = useState('');
@@ -421,6 +422,34 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
         </ul>
       </InvestigationSubModule>
 
+      <InvestigationSubModule
+        title="Shared note to employee"
+        description="Employee-visible updates appear on their report portal. Internal notes never leave this workspace."
+      >
+        <Textarea
+          rows={3}
+          placeholder="Message the reporting employee will see in My Reports…"
+          value={sharedNoteBody}
+          onChange={(e) => setSharedNoteBody(e.target.value)}
+        />
+        <Button
+          className="mt-2"
+          variant="outline"
+          onClick={() => {
+            if (!sharedNoteBody.trim()) return;
+            dataStore.addInvestigationNote(investigation.id, {
+              visibility: 'EMPLOYEE',
+              body: sharedNoteBody.trim(),
+              noteType: 'SHARED',
+            });
+            setSharedNoteBody('');
+            toast.success('Shared note sent to employee portal.');
+          }}
+        >
+          Send shared note
+        </Button>
+      </InvestigationSubModule>
+
       <InvestigationSubModule title="Investigation notes center" description="Interview notes are auto-timestamped. Tag people and link evidence from other modules.">
         <Select value={noteType} onValueChange={(v) => setNoteType(v as typeof noteType)}>
           <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
@@ -436,15 +465,15 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
           onClick={() => {
             if (!noteBody.trim()) return;
             dataStore.addInvestigationNote(investigation.id, {
-              visibility: noteType === 'INTERVIEW' ? 'INTERNAL' : 'INTERNAL',
+              visibility: 'INTERNAL',
               body: noteBody.trim(),
-              noteType,
+              noteType: noteType === 'SHARED' ? 'PRIVATE_HR' : noteType,
             });
             setNoteBody('');
             toast.success('Note added with automatic timestamp and author log.');
           }}
         >
-          Add note
+          Add internal note
         </Button>
         <ul className="mt-4 space-y-2 max-h-64 overflow-y-auto">
           {(investigation.notes ?? [])
