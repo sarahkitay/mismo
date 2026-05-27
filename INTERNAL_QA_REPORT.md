@@ -1,8 +1,15 @@
 # Mismo HR System — Internal QA Report
 
-**Date:** 2026-05-27  
+**Date:** 2026-05-27 (re-audit after merge to `main`)  
 **Scope:** End-to-end HR lifecycle (employee prompts → cases → investigations → outcomes → reporting)  
-**Environment:** Vite dev build, `localStorage` persistence (`mismo_app_v2`, `mismo_session`)
+**Production URLs tested:**
+- https://mismo-theta.vercel.app/ (primary)
+- https://mismo-git-main-sarah-kitays-projects.vercel.app/ (main branch preview)
+- https://mismo-i17f8kfxx-sarah-kitays-projects.vercel.app/ (deployment preview)
+
+**Environment:** Vite static deploy on Vercel, `localStorage` persistence (`mismo_app_v2`, `mismo_session`)
+
+**Baseline:** Production previously matched `main` without incident-Yes→case wiring; fixes merged to `main` at `adc6193`+.
 
 ---
 

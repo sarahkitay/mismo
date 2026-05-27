@@ -15,9 +15,14 @@ export function employeeIncidentReportHeadline(report: Pick<Report, 'summary' | 
     }
     return 'Wage & hour concern';
   }
-  const d = report.description?.trim();
-  if (d) return d.length > 96 ? `${d.slice(0, 93)}…` : d;
   const s = report.summary?.trim();
+  if (s && s !== 'Incident query — concern indicated') {
+    return s.length > 96 ? `${s.slice(0, 93)}…` : s;
+  }
+  const d = report.description?.trim();
+  if (d && !d.startsWith('Financial follow-up:')) {
+    return d.length > 96 ? `${d.slice(0, 93)}…` : d;
+  }
   if (s) return s.length > 96 ? `${s.slice(0, 93)}…` : s;
   return 'Incident report';
 }

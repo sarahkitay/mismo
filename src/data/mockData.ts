@@ -349,8 +349,8 @@ export const mockPromptDeliveries: PromptDelivery[] = [
     promptId: 'prompt-1',
     userId: 'user-emp-1',
     status: 'PENDING',
-    deliveredAt: new Date('2024-02-20'),
-    dueAt: new Date('2024-02-22T17:00:00'),
+    deliveredAt: new Date('2026-05-20'),
+    dueAt: new Date('2026-05-27T17:00:00'),
     createdAt: new Date(),
     updatedAt: new Date(),
   },
@@ -712,12 +712,36 @@ export const mockInvestigations: Investigation[] = [
     pickedUpAt: new Date('2024-02-22'),
     employeePreferredContact: 'IN_APP_MESSAGE',
     subjectUserIds: [],
-    notes: [],
     outcomeSummary:
       'Following review, we will schedule retraining for the team lead and document expectations in writing. If you have additional concerns, reply through this portal.',
     outcomeRequiresSignature: true,
     outcomeSentAt: new Date('2024-02-23'),
     outcomeEmployeeAgreed: null,
+    responseRequests: [
+      {
+        id: 'req-outcome-pending',
+        partyUserId: 'user-emp-1',
+        partyRole: 'REPORTING_PARTY',
+        method: 'IN_APP',
+        status: 'SENT',
+        sentAt: new Date('2024-02-23'),
+        message:
+          'Please confirm whether the retraining plan described in your outcome letter works for your schedule, or share any concerns.',
+        createdAt: new Date('2024-02-23'),
+        createdByUserId: 'user-admin-1',
+      },
+    ],
+    notes: [
+      {
+        id: 'inv-note-shared-demo',
+        visibility: 'EMPLOYEE',
+        body: 'HR has sent your outcome letter. Please review and respond to any open requests below.',
+        createdAt: new Date('2024-02-23'),
+        createdByUserId: 'user-admin-1',
+        noteType: 'SHARED',
+        sentAt: new Date('2024-02-23'),
+      },
+    ],
   },
 ];
 

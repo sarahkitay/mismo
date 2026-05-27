@@ -443,6 +443,25 @@ export function useDataStore() {
         reports.filter((r) => r.caseType !== 'WAGE_HOUR' && r.orgId === effectiveOrgId).length + 1;
       const refNum = `IR-${now.getFullYear()}-${String(seq).padStart(4, '0')}`;
       const severity = prompt?.severityOnHasIssue ?? 'HIGH';
+      const screeningNote = response.notes?.trim();
+      const ledger: Report['handlingLedger'] = [
+        {
+          id: `ledger-${Date.now()}`,
+          type: 'NOTE',
+          text: 'Case opened from incident prompt Yes response.',
+          createdAt: now,
+          createdBy: userId,
+        },
+      ];
+      if (screeningNote?.startsWith('Financial follow-up:')) {
+        ledger.push({
+          id: `ledger-${Date.now()}-fin`,
+          type: 'NOTE',
+          text: screeningNote,
+          createdAt: now,
+          createdBy: userId,
+        });
+      }
       const newReport: Report = {
         id: `report-${Date.now()}`,
         orgId: effectiveOrgId,
@@ -457,21 +476,12 @@ export function useDataStore() {
         severity,
         summary: 'Incident query — concern indicated',
         description:
-          response.notes?.trim() ||
           'Employee answered Yes on the mandatory incident query. Complete the secure intake form to provide details.',
         status: 'NEW',
         needsExtendedIncidentIntake: true,
         messages: [],
         responseChecklist: createIndustryChecklistForReport(),
-        handlingLedger: [
-          {
-            id: `ledger-${Date.now()}`,
-            type: 'NOTE',
-            text: 'Case opened from incident prompt Yes response.',
-            createdAt: now,
-            createdBy: userId,
-          },
-        ],
+        handlingLedger: ledger,
         createdAt: now,
         updatedAt: now,
       };
