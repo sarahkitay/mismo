@@ -47,6 +47,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
     policies,
     policyAcknowledgements,
     organizationName,
+    responses,
   } = dataStore;
   const unreadPolicies = policies.filter(
     (p) =>
@@ -55,7 +56,13 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
       !policyAcknowledgements.some((a) => a.policyId === p.id && a.userId === currentUser.id)
   );
   const heroPrompt = pendingPromptsForEmployee[0];
-  const showCheckInGate = Boolean(heroPrompt);
+  const heroPromptAlreadyAnswered = Boolean(
+    heroPrompt &&
+      responses.some(
+        (r) => r.promptDeliveryId === heroPrompt.id && r.userId === currentUser.id && r.finalizedAt
+      )
+  );
+  const showCheckInGate = Boolean(heroPrompt) && !heroPromptAlreadyAnswered;
   const isIncidentGate = Boolean(heroPrompt?.prompt.type === 'INCIDENT');
   const wantsFinancialFollowUp = Boolean(heroPrompt?.prompt.includeFinancialQuestion);
   const [incidentStep, setIncidentStep] = useState<'question' | 'yes_confirm'>('question');
