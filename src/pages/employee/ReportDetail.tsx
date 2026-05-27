@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Icons } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
   employeeIncidentReportHeadline,
@@ -21,7 +23,16 @@ interface ReportDetailProps {
 }
 
 export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailProps) {
-  const { employeeReports, users, reportStatusEvents, investigations, employeeAcknowledgeInvestigationOutcome } = dataStore;
+  const {
+    employeeReports,
+    users,
+    reportStatusEvents,
+    investigations,
+    employeeAcknowledgeInvestigationOutcome,
+    submitEmployeeInvestigationResponse,
+    updateInvestigationResponseRequest,
+  } = dataStore;
+  const [responseDrafts, setResponseDrafts] = useState<Record<string, string>>({});
   
   const report = employeeReports.find(r => r.id === reportId);
   
@@ -132,6 +143,76 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
           </CardContent>
         </Card>
       )}
+
+      {investigation &&
+        (investigation.responseRequests ?? []).filter(
+          (r) => r.partyUserId === report.createdByUserId && r.status !== 'SUBMITTED'
+        ).length > 0 && (
+          <Card className="mismo-card border-2 border-[var(--color-primary-700)]/30">
+            <CardContent className="p-6 space-y-4">
+              <h3 className="text-lg font-semibold text-[var(--mismo-text)]">Action requested by HR</h3>
+              <p className="text-sm text-[var(--mismo-text-secondary)]">
+                Your investigator asked for a response. Replies here are attached to your case and visible to authorized HR staff only.
+              </p>
+              {(investigation.responseRequests ?? [])
+                .filter((r) => r.partyUserId === report.createdByUserId)
+                .map((req) => (
+                  <div key={req.id} className="border border-[var(--color-border-200)] rounded-md p-4 space-y-3">
+                    {req.message && (
+                      <p className="text-sm text-[var(--mismo-text)] whitespace-pre-wrap">{req.message}</p>
+                    )}
+                    {req.status === 'SUBMITTED' ? (
+                      <p className="text-xs text-emerald-800">
+                        Submitted {req.submittedAt ? formatRelativeTime(req.submittedAt) : ''}. Thank you.
+                      </p>
+                    ) : (
+                      <>
+                        {req.status === 'SENT' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              updateInvestigationResponseRequest(investigation.id, req.id, {
+                                status: 'VIEWED',
+                                viewedAt: new Date(),
+                              })
+                            }
+                          >
+                            Mark as read
+                          </Button>
+                        )}
+                        <Textarea
+                          rows={4}
+                          placeholder="Type your response…"
+                          value={responseDrafts[req.id] ?? ''}
+                          onChange={(e) =>
+                            setResponseDrafts((prev) => ({ ...prev, [req.id]: e.target.value }))
+                          }
+                        />
+                        <Button
+                          className="bg-[var(--mismo-blue)] hover:bg-blue-600"
+                          onClick={() => {
+                            const text = responseDrafts[req.id] ?? '';
+                            if (!text.trim()) {
+                              toast.error('Please enter a response before submitting.');
+                              return;
+                            }
+                            const ok = submitEmployeeInvestigationResponse(investigation.id, req.id, text);
+                            if (ok) {
+                              toast.success('Your response has been submitted to HR.');
+                              setResponseDrafts((prev) => ({ ...prev, [req.id]: '' }));
+                            }
+                          }}
+                        >
+                          Submit response
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                ))}
+            </CardContent>
+          </Card>
+        )}
 
       {investigation &&
         (investigation.notes ?? []).filter((n) => n.visibility === 'EMPLOYEE').length > 0 && (

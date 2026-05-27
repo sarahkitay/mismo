@@ -241,6 +241,8 @@ export interface InvestigationResponseRequest {
   viewedAt?: Date;
   submittedAt?: Date;
   message?: string;
+  /** Employee's written response when submitted in-app */
+  responseText?: string;
   createdAt: Date;
   createdByUserId: string;
 }
@@ -498,6 +500,8 @@ export interface PromptResponse {
   needsReview?: boolean;
   reviewedByUserId?: string;
   reviewedAt?: Date;
+  /** Set when the employee completes the final submit step; response is treated as locked for editing */
+  finalizedAt?: Date;
 }
 
 // Report
