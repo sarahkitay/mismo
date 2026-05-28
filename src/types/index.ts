@@ -468,7 +468,13 @@ export interface Prompt {
   routeToPayroll?: boolean;
   /** When true, employees see a pay/compensation screening question after the main check-in answer, before the response is saved */
   includeFinancialQuestion?: boolean;
+  /** One-time employee onboarding screen (shown once per employee, not redelivered daily) */
+  onboardingKind?: 'INCIDENT' | 'WAGE_HOUR';
 }
+
+export type EmployeeOnboardingKind = 'INCIDENT' | 'WAGE_HOUR';
+
+export type EmployeeOnboardingExposure = Partial<Record<EmployeeOnboardingKind, boolean>>;
 
 // Prompt Delivery
 export interface PromptDelivery {

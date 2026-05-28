@@ -1,7 +1,9 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type {
   User,
   UserRole,
+  EmployeeOnboardingExposure,
+  EmployeeOnboardingKind,
   Report,
   ReportStatus,
   Prompt,
@@ -44,6 +46,11 @@ import {
   inferReportSourceType,
 } from '@/lib/investigationWorkflow';
 import { allocateCaseReferenceNumber } from '@/lib/caseReference';
+import {
+  computePendingOnboardingSteps,
+  isOnboardingPrompt,
+  ONBOARDING_PROMPT_IDS,
+} from '@/lib/employeeOnboarding';
 import {
   mockUsers,
   mockReports,
@@ -199,7 +206,9 @@ export function useDataStore() {
   );
   const [session, setSessionState] = useState<Session | null>(readSession);
   const [previewUserId, setPreviewUserId] = useState<string | null>(null);
-  const lastDailyDeliveryDateRef = useRef<string | null>(null);
+  const [onboardingExposure, setOnboardingExposure] = useState<Record<string, EmployeeOnboardingExposure>>(
+    persisted?.onboardingExposure ?? {}
+  );
 
   const setSession = useCallback((s: Session | null) => {
     setSessionState(s);
@@ -242,18 +251,40 @@ export function useDataStore() {
 
   useEffect(() => {
     setCurrentRole((prev) => (prev === 'MANAGER' ? 'HR' : prev));
-    setPrompts((prev) =>
-      prev.map((prompt) =>
+    setPrompts((prev) => {
+      const hasWage = prev.some((p) => p.id === ONBOARDING_PROMPT_IDS.WAGE_HOUR);
+      const next = prev.map((prompt) =>
         prompt.id === 'prompt-1'
           ? {
               ...prompt,
               title: 'Incident Query',
               description:
-                'Mandatory employment-rights incident screen shown at logon (EQC-style). Employee may answer Yes or No only; Yes requires confirmation before logging.',
+                'Mandatory employment-rights incident screen shown once at logon (EQC-style). Employee may answer Yes or No only; Yes requires confirmation before logging.',
+              onboardingKind: 'INCIDENT' as const,
+              includeFinancialQuestion: false,
             }
           : prompt
-      )
-    );
+      );
+      if (!hasWage) {
+        next.push({
+          id: ONBOARDING_PROMPT_IDS.WAGE_HOUR,
+          orgId: mockOrg.id,
+          type: 'CUSTOM',
+          title: 'Wage & Hour Query',
+          description: 'One-time wage and hour screening at logon.',
+          schedule: { cadence: 'ONCE', startAt: new Date('2024-01-01') },
+          targeting: { audience: 'ALL' },
+          severityOnHasIssue: 'MEDIUM',
+          allowAnonymousReports: false,
+          status: 'ACTIVE',
+          createdBy: 'user-admin-1',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          onboardingKind: 'WAGE_HOUR',
+        });
+      }
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -274,6 +305,7 @@ export function useDataStore() {
         announcements,
         auditLogs,
         wageHourAcknowledgements,
+        onboardingExposure,
         currentRole,
       })
     );
@@ -282,6 +314,7 @@ export function useDataStore() {
     announcements,
     auditLogs,
     currentRole,
+    onboardingExposure,
     deliveries,
     investigations,
     nudges,
@@ -295,37 +328,39 @@ export function useDataStore() {
     wageHourAcknowledgements,
   ]);
 
-  // Ensure employee has a daily prompt when they open the app (new day = new prompt)
+  /** One-time onboarding deliveries (incident + wage/hour) — never recreated daily */
   useEffect(() => {
     if (!session || session.role !== 'EMPLOYEE') return;
     const orgId = session.orgId;
     const userId = session.userId;
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
-    const dayKey = startOfToday.toDateString();
-    if (lastDailyDeliveryDateRef.current === dayKey) return;
-    const orgDeliveries = deliveries.filter((d) => d.orgId === orgId);
-    const hasPendingDueToday = orgDeliveries.some(
-      (d) => d.userId === userId && d.status === 'PENDING' && d.dueAt && d.dueAt <= endOfToday
-    );
-    if (hasPendingDueToday) return;
-    const firstPrompt = prompts.find((p) => p.orgId === orgId && p.status === 'ACTIVE') ?? prompts.find((p) => p.orgId === orgId);
-    if (!firstPrompt) return;
-    const newDelivery: PromptDelivery = {
-      id: `delivery-daily-${userId}-${startOfToday.getTime()}`,
-      orgId,
-      promptId: firstPrompt.id,
-      userId,
-      status: 'PENDING',
-      deliveredAt: new Date(),
-      dueAt: endOfToday,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    setDeliveries((prev) => [...prev, newDelivery]);
-    lastDailyDeliveryDateRef.current = dayKey;
-  }, [session, deliveries, prompts]);
+    const onboardingPrompts = prompts.filter((p) => p.orgId === orgId && p.onboardingKind);
+    if (!onboardingPrompts.length) return;
+
+    setDeliveries((prev) => {
+      let changed = false;
+      const next = [...prev];
+      for (const prompt of onboardingPrompts) {
+        const alreadyHas = next.some((d) => d.userId === userId && d.promptId === prompt.id);
+        if (alreadyHas) continue;
+        const alreadyAnswered = responses.some(
+          (r) => r.userId === userId && r.promptId === prompt.id && r.finalizedAt
+        );
+        if (alreadyAnswered) continue;
+        next.push({
+          id: `delivery-onboarding-${prompt.id}-${userId}`,
+          orgId,
+          promptId: prompt.id,
+          userId,
+          status: 'PENDING',
+          deliveredAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [session, prompts, responses]);
 
   // Org-scoped data when session exists (each company sees only their data)
   const effectiveOrgId = session?.orgId ?? mockOrg.id;
@@ -2171,18 +2206,40 @@ export function useDataStore() {
     e.setHours(23, 59, 59, 999);
     return e;
   })();
+  const pendingOnboardingSteps =
+    effectiveCurrentRole === 'EMPLOYEE'
+      ? computePendingOnboardingSteps({
+          userId: currentUser.id,
+          prompts: effectivePrompts,
+          responses: effectiveResponses,
+          deliveries: effectiveDeliveries,
+          reports: effectiveReports,
+          wageHourAcknowledgements: wageHourAcknowledgements.filter((a) => a.orgId === effectiveOrgId),
+          exposure: onboardingExposure[currentUser.id],
+        })
+      : [];
+
   const pendingPromptsForEmployee =
     effectiveCurrentRole === 'EMPLOYEE'
       ? effectiveDeliveries
-          .filter(
-            (d) =>
-              d.userId === currentUser.id &&
-              d.status === 'PENDING' &&
-              d.dueAt &&
-              d.dueAt <= endOfToday
-          )
+          .filter((d) => {
+            const prompt = effectivePrompts.find((p) => p.id === d.promptId);
+            if (prompt && isOnboardingPrompt(prompt)) return false;
+            return d.userId === currentUser.id && d.status === 'PENDING' && d.dueAt && d.dueAt <= endOfToday;
+          })
           .map((d) => ({ ...d, prompt: effectivePrompts.find((p) => p.id === d.promptId)! }))
       : [];
+
+  const markOnboardingExposed = useCallback(
+    (kind: EmployeeOnboardingKind) => {
+      const userId = currentUser.id;
+      setOnboardingExposure((prev) => ({
+        ...prev,
+        [userId]: { ...prev[userId], [kind]: true },
+      }));
+    },
+    [currentUser.id]
+  );
   const employeeReports =
     effectiveCurrentRole === 'EMPLOYEE' ? effectiveReports.filter((r) => r.createdByUserId === currentUser.id) : [];
 
@@ -2269,6 +2326,8 @@ export function useDataStore() {
     // Derived data
     dashboardCounts: dashboardCountsWithAction,
     pendingPromptsForEmployee,
+    pendingOnboardingSteps,
+    markOnboardingExposed,
     employeeReports,
     atRiskEmployees,
     

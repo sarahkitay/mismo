@@ -16,6 +16,7 @@ import { EmployeeResources } from '@/pages/employee/EmployeeResources';
 import { EmployeeSettings } from '@/pages/employee/EmployeeSettings';
 import { WageHourReporting } from '@/pages/employee/WageHourReporting';
 import { EmployeeWageHourIntake } from '@/pages/employee/EmployeeWageHourIntake';
+import { EmployeeOnboardingFlow } from '@/pages/employee/EmployeeOnboardingFlow';
 
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { AdminInvestigations } from '@/pages/admin/AdminInvestigations';
@@ -51,7 +52,7 @@ function isStaffRole(role: DataStore['currentRole']) {
 }
 
 export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
-  const { currentRole, switchRole, session, previewUserId, setPreviewUserId, pendingPromptsForEmployee } = dataStore;
+  const { currentRole, switchRole, session, previewUserId, setPreviewUserId, pendingPromptsForEmployee, pendingOnboardingSteps } = dataStore;
 
   const [activePage, setActivePage] = useState(() => {
     const parsed = parseAppLocation(
@@ -135,6 +136,16 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
   }, [currentRole]);
 
   const handleNavigate = (page: string, params?: Record<string, string>) => {
+    const intakeRoute =
+      page.startsWith('incident-intake/') || page.startsWith('wage-hour-intake/') || page === 'wage-hour-report';
+    if (currentRole === 'EMPLOYEE' && pendingOnboardingSteps.length > 0 && !intakeRoute) {
+      setSidebarOpen(false);
+      setActivePage('home');
+      setPageParams({});
+      window.history.replaceState({}, '', '/employee/dashboard');
+      window.scrollTo(0, 0);
+      return;
+    }
     if (currentRole === 'EMPLOYEE' && pendingPromptsForEmployee.length > 0 && page !== 'home') {
       setSidebarOpen(false);
       setActivePage('home');
@@ -189,9 +200,10 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
     return () => window.removeEventListener('popstate', onPop);
   }, [currentRole, switchRole, session?.role]);
 
-  /** EQC-style: mandatory check-ins due today must be completed on Home before other employee routes. */
+  /** Optional scheduled check-ins (non-onboarding) redirect to home when due */
   useEffect(() => {
     if (currentRole !== 'EMPLOYEE') return;
+    if (pendingOnboardingSteps.length > 0) return;
     if (pendingPromptsForEmployee.length === 0) return;
     if (activePage === 'home') return;
     setActivePage('home');
@@ -199,7 +211,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
     if (window.location.pathname !== '/employee/dashboard') {
       window.history.replaceState({}, '', '/employee/dashboard');
     }
-  }, [currentRole, pendingPromptsForEmployee.length, activePage]);
+  }, [currentRole, pendingOnboardingSteps.length, pendingPromptsForEmployee.length, activePage]);
 
   useEffect(() => {
     const root = document.querySelector('main');
@@ -325,6 +337,29 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
         );
     }
   };
+
+  const showEmployeeOnboarding =
+    currentRole === 'EMPLOYEE' &&
+    !previewUserId &&
+    pendingOnboardingSteps.length > 0 &&
+    !activePage.startsWith('incident-intake/') &&
+    !activePage.startsWith('wage-hour-intake/');
+
+  if (showEmployeeOnboarding) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Toaster position="top-right" richColors />
+        <EmployeeOnboardingFlow
+          dataStore={dataStore}
+          onComplete={() => {
+            setActivePage('home');
+            window.history.replaceState({}, '', '/employee/dashboard');
+          }}
+          onNavigate={handleNavigate}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--mismo-bg)]">
