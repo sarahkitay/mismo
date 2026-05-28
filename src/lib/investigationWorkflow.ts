@@ -79,49 +79,63 @@ export const CONTACT_METHOD_LABELS: Record<string, string> = {
   IN_PERSON: 'In person',
 };
 
-/** Eight-page guided investigation workflow + supporting sections */
-export type InvestigationTab =
-  | 'overview'
-  | 'intake-triage'
-  | 'information-gathering'
-  | 'interviews-notes'
-  | 'evidence-analysis'
-  | 'findings-outcome'
-  | 'resolution-actions'
-  | 'follow-up-monitoring'
-  | 'closure-audit'
-  | 'persons'
-  | 'linked-reports';
+/** Simplified 3-page investigation workflow */
+export type InvestigationTab = 'page-1' | 'page-2' | 'page-3';
 
-export const INVESTIGATION_TABS: { id: InvestigationTab; label: string; step?: number }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'intake-triage', label: 'Intake & Triage', step: 1 },
-  { id: 'information-gathering', label: 'Information Gathering', step: 2 },
-  { id: 'interviews-notes', label: 'Interviews & Notes', step: 3 },
-  { id: 'evidence-analysis', label: 'Evidence & Analysis', step: 4 },
-  { id: 'findings-outcome', label: 'Findings & Outcome', step: 5 },
-  { id: 'resolution-actions', label: 'Resolution & Actions', step: 6 },
-  { id: 'follow-up-monitoring', label: 'Follow-Up & Monitoring', step: 7 },
-  { id: 'closure-audit', label: 'Closure & Audit Export', step: 8 },
-  { id: 'persons', label: 'Persons Involved' },
-  { id: 'linked-reports', label: 'Linked Reports' },
+export const INVESTIGATION_PAGES: { id: InvestigationTab; label: string; step: number; description: string }[] = [
+  {
+    id: 'page-1',
+    step: 1,
+    label: 'Intake & assignment',
+    description: 'Automatic report data, case ID, admin assignment, employee form status, and initial contact.',
+  },
+  {
+    id: 'page-2',
+    step: 2,
+    label: 'Gather information',
+    description: 'Persons involved, witnesses, interviews, evidence, policies, and legal involvement.',
+  },
+  {
+    id: 'page-3',
+    step: 3,
+    label: 'Outcome & close',
+    description: 'Final findings, resolution, employee outcome letter, and export.',
+  },
 ];
 
+/** @deprecated Use INVESTIGATION_PAGES */
+export const INVESTIGATION_TABS = INVESTIGATION_PAGES.map((p) => ({
+  id: p.id,
+  label: p.label,
+  step: p.step,
+}));
+
 const LEGACY_TAB_MAP: Record<string, InvestigationTab> = {
-  intake: 'intake-triage',
-  communications: 'interviews-notes',
-  evidence: 'evidence-analysis',
-  notes: 'interviews-notes',
-  findings: 'findings-outcome',
-  resolution: 'resolution-actions',
-  audit: 'closure-audit',
+  overview: 'page-1',
+  intake: 'page-1',
+  'intake-triage': 'page-1',
+  'information-gathering': 'page-2',
+  'interviews-notes': 'page-2',
+  'evidence-analysis': 'page-2',
+  persons: 'page-2',
+  'linked-reports': 'page-1',
+  'findings-outcome': 'page-3',
+  'resolution-actions': 'page-3',
+  'follow-up-monitoring': 'page-3',
+  'closure-audit': 'page-3',
+  communications: 'page-2',
+  evidence: 'page-2',
+  notes: 'page-2',
+  findings: 'page-3',
+  resolution: 'page-3',
+  audit: 'page-3',
 };
 
 export function parseInvestigationTab(raw?: string): InvestigationTab {
-  if (!raw) return 'overview';
+  if (!raw) return 'page-1';
   if (LEGACY_TAB_MAP[raw]) return LEGACY_TAB_MAP[raw];
-  const found = INVESTIGATION_TABS.find((t) => t.id === raw);
-  return found?.id ?? 'overview';
+  if (raw === 'page-1' || raw === 'page-2' || raw === 'page-3') return raw;
+  return 'page-1';
 }
 
 export const EVIDENCE_GATHERING_PROMPTS = [
@@ -140,13 +154,21 @@ export interface CompletenessCheck {
   detail: string;
 }
 
-export function formatReportReference(reportId: string): string {
-  const num = reportId.replace(/^report-/, '').toUpperCase();
-  return num.startsWith('IR-') ? num : `IR-${num}`;
+export function formatReportReference(reportOrId: string | Pick<Report, 'id' | 'referenceNumber' | 'caseType'>): string {
+  if (typeof reportOrId === 'string') {
+    const num = reportOrId.replace(/^report-/, '').toUpperCase();
+    return num.startsWith('CAS-') || num.startsWith('WH-') || num.startsWith('IR-')
+      ? num.replace(/^IR-/, 'CAS-')
+      : `CAS-${num}`;
+  }
+  if (reportOrId.referenceNumber) return reportOrId.referenceNumber;
+  const num = reportOrId.id.replace(/^report-/, '').toUpperCase();
+  const prefix = reportOrId.caseType === 'WAGE_HOUR' ? 'WH' : 'CAS';
+  return `${prefix}-${num}`;
 }
 
-export function getInvestigationDisplayId(inv: Investigation): string {
-  return inv.referenceNumber ?? inv.id.toUpperCase();
+export function getInvestigationDisplayId(inv: Investigation, primaryReport?: Report): string {
+  return inv.referenceNumber ?? primaryReport?.referenceNumber ?? inv.id.toUpperCase();
 }
 
 export function getInvestigationTypeLabel(inv: Investigation): string {
@@ -390,6 +412,20 @@ export function getModuleProgress(inv: Investigation): Record<string, { percent:
     'closure-audit': {
       percent: inv.status === 'CLOSED' ? 100 : inv.outcomeSentAt ? 50 : 0,
       status: inv.status === 'CLOSED' ? 'complete' : 'not_started',
+    },
+    'page-1': {
+      percent: inv.workflowPagesCompleted?.intake ? 100 : inv.ownerId && inv.pickedUpAt ? 75 : inv.ownerId ? 40 : 10,
+      status: inv.workflowPagesCompleted?.intake ? 'complete' : inv.ownerId ? 'in_progress' : 'not_started',
+    },
+    'page-2': {
+      percent: inv.workflowPagesCompleted?.gathering
+        ? 100
+        : Math.min(90, evidence.length * 20 + (inv.persons?.length ?? 0) * 15),
+      status: inv.workflowPagesCompleted?.gathering ? 'complete' : evidence.length ? 'in_progress' : 'not_started',
+    },
+    'page-3': {
+      percent: inv.workflowPagesCompleted?.outcome ? 100 : inv.outcomeSentAt ? 75 : inv.outcomeClassification ? 40 : 0,
+      status: inv.workflowPagesCompleted?.outcome ? 'complete' : inv.outcomeSentAt ? 'in_progress' : 'not_started',
     },
   };
 }

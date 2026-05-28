@@ -68,11 +68,12 @@ Mismo is **ready for a guided client demo** on the production deployment after m
 - Table, filters, bulk actions, CSV export  
 - Employee → profile; investigation links
 
-### 6. Investigation (guided modules)
-- Intake & Triage → … → Closure & Audit Export (not one giant checklist)  
-- Source types, linked report round-trip, evidence upload, response requests  
-- Shared notes → employee portal; internal notes stay internal  
-- Outcome stage with employee acknowledgement
+### 6. Investigation (3-page workflow — `cursor/investigation-three-page-bb68`)
+- **Page 1 — Intake & assignment:** Unified case ID (`CAS-YYYY-####` / `WH-YYYY-####`) matches report + EI form; auto reporter/source/date; admin assign; read-only employee submission; initial contact notes  
+- **Page 2 — Gather:** Persons table (search + roles + profile links); interviews/requests; evidence; policy/memo read status at complaint date; legal involvement flag  
+- **Page 3 — Outcome:** Findings, resolution, outcome letter, export/close  
+- Legacy 8-tab URLs redirect to pages; industry checklist on report detail collapsed by default (investigation is primary path)  
+- Wage & hour prompt: spec copy, YES confirm (BACK/SUBMIT), admin alert on submit
 
 ### 7–11. Wage/hour, memos, analytics, access, audit
 - See prior sections; audit entries on prompt response, case create, investigation create, wage screening, exports (activity log)
@@ -89,6 +90,7 @@ Mismo is **ready for a guided client demo** on the production deployment after m
 6. **Case titles** — summary-first headlines; financial screening stays on prompt response / ledger  
 7. **Scenario F seed** — pending request on `inv-outcome-demo`  
 8. **Convert NEW cases** to investigation from register  
+9. **3-page investigation + unified case ID** — prompt/self-report allocates `CAS-*`/`WH-*` once; investigation inherits same ID; EI form shows reference  
 
 ---
 

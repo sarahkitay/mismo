@@ -23,7 +23,7 @@ export function AdminInvestigationDetail({
   onNavigate,
   initialTab,
 }: AdminInvestigationDetailProps) {
-  const [activeTab, setActiveTab] = useState<InvestigationTab>(() => parseTab(initialTab));
+  const [activeTab, setActiveTab] = useState<InvestigationTab>(() => parseTab(initialTab) || 'page-1');
 
   useEffect(() => {
     setActiveTab(parseTab(initialTab));

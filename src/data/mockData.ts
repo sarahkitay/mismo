@@ -436,6 +436,7 @@ export const mockReports: Report[] = [
   {
     id: 'report-1',
     orgId: ORG_ID,
+    referenceNumber: 'CAS-2026-0001',
     createdByUserId: 'user-emp-2',
     isAnonymous: false,
     sourcePromptId: 'prompt-1',
@@ -452,6 +453,8 @@ export const mockReports: Report[] = [
     investigationId: 'inv-1',
     preferredContactMethod: 'EMAIL',
     reportSourceType: 'EMPLOYEE_PROMPT_RESPONSE',
+    needsExtendedIncidentIntake: true,
+    incidentIntakeCompletedAt: new Date('2024-02-22'),
     createdAt: new Date('2024-02-21'),
     updatedAt: new Date(),
   },
@@ -583,7 +586,7 @@ export const mockInvestigations: Investigation[] = [
   {
     id: 'inv-1',
     orgId: ORG_ID,
-    referenceNumber: 'INV-2026-1042',
+    referenceNumber: 'CAS-2026-0001',
     status: 'OPEN',
     ownerId: 'user-admin-2',
     linkedReportIds: ['report-1'],

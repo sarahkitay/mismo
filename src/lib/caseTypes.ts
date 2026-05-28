@@ -31,10 +31,13 @@ export const WAGE_HOUR_RESOLUTION_LABELS: Record<WageHourPreferredResolution, st
 };
 
 export const WAGE_HOUR_SCREENING_QUESTION =
-  'After reviewing your recent paycheck, compensation, hours, classification, overtime, deductions, or benefits, do you have a concern, question, discrepancy, or dispute you would like reviewed?';
+  'After reviewing your most recent paycheck, do you have an issue, question, and/or dispute regarding the amount of your pay, your deductions, your hours, your overtime, your classification, and/or how your benefits are calculated?';
 
 export const WAGE_HOUR_RETALIATION_NOTE =
-  'You will not be retaliated against for reporting a concern regarding wages, hours, classification, or compensation practices. Retaliation is strictly prohibited.';
+  'Note: You will not be retaliated against for reporting an actual or potential violation of your employment rights. Retaliation is against the law and will not be tolerated by this company.';
+
+export const WAGE_HOUR_YES_CONFIRMATION_BODY =
+  'We are prepared to fully investigate any and all acts and circumstances surrounding your response. However, if you selected "YES" by mistake, please go back to the prior screen and submit your intended response. If your intended response is "YES" please submit now.';
 
 export const WAGE_HOUR_CONFIRMATION_MESSAGE =
   'Your concern has been securely submitted and routed for review. Retaliation for reporting wage or compensation concerns is prohibited.';
@@ -42,8 +45,8 @@ export const WAGE_HOUR_CONFIRMATION_MESSAGE =
 export function formatCaseReference(report: { id: string; referenceNumber?: string; caseType?: CaseType }): string {
   if (report.referenceNumber) return report.referenceNumber;
   const num = report.id.replace(/^report-/, '').toUpperCase();
-  const prefix = report.caseType === 'WAGE_HOUR' ? 'WH' : 'IR';
-  return num.startsWith(`${prefix}-`) ? num : `${prefix}-${num}`;
+  const prefix = report.caseType === 'WAGE_HOUR' ? 'WH' : 'CAS';
+  return num.startsWith(`${prefix}-`) || num.startsWith('IR-') ? num.replace(/^IR-/, 'CAS-') : `${prefix}-${num}`;
 }
 
 export function getReportStatusLabel(status: string): string {

@@ -644,10 +644,21 @@ export interface Investigation {
   findingsRationale?: string;
   policyAnalysisNotes?: string;
   linkedPolicyIds?: string[];
+  /** Page 2 — counsel or legal team involvement */
+  legalInvolved?: boolean;
+  legalInvolvementNotes?: string;
   correctiveActions?: InvestigationCorrectiveAction[];
   followUps?: InvestigationFollowUp[];
   finalFindingsReport?: string;
   nonRetaliationSentAt?: Date;
+  /** Simplified 3-page workflow progress */
+  workflowPagesCompleted?: {
+    intake?: boolean;
+    gathering?: boolean;
+    outcome?: boolean;
+  };
+  /** Page 1 — initial contact / triage notes */
+  initialContactNotes?: string;
 }
 
 // Report Status Event
