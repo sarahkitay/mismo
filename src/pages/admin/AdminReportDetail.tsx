@@ -30,7 +30,10 @@ function getSlaLabel(report: { createdAt: Date; updatedAt: Date; status: string 
   return { label: `Due in ${days} day${days !== 1 ? 's' : ''}`, overdue: false };
 }
 import { exportCaseCsv, exportCasePdf } from '@/lib/evidenceExport';
-import { formatReportReference, getInvestigationDisplayId } from '@/lib/investigationWorkflow';
+import { getInvestigationDisplayId, REPORT_SOURCE_LABELS } from '@/lib/investigationWorkflow';
+import { formatCaseReference } from '@/lib/caseTypes';
+import { isIncidentIntakeComplete, isWageHourIntakeComplete } from '@/lib/utils';
+import { EmployeeIntakeReadOnly } from '@/components/admin/EmployeeIntakeReadOnly';
 
 interface AdminReportDetailProps {
   dataStore: DataStore;
@@ -55,6 +58,8 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
   const [employeeOutcomeDraft, setEmployeeOutcomeDraft] = useState(report?.employeeResponseOutcome ?? '');
   const [ginaNotesDraft, setGinaNotesDraft] = useState(report?.ginaBuildNotes ?? '');
   const [checklistSectionIndex, setChecklistSectionIndex] = useState(0);
+  const [showAdvancedChecklist, setShowAdvancedChecklist] = useState(false);
+  const [showIntakeSubmission, setShowIntakeSubmission] = useState(false);
   const [evidenceNoteDraft, setEvidenceNoteDraft] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const evidenceFileInputRef = useRef<HTMLInputElement>(null);
@@ -92,7 +97,13 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
     return <div className="text-sm text-[var(--mismo-text-secondary)]">Report not found.</div>;
   }
 
-  const caseId = `#${report.id.replace('report-', '').toUpperCase()}`;
+  const caseId = formatCaseReference(report);
+  const sourcePrompt = report.sourcePromptId ? dataStore.prompts.find((p) => p.id === report.sourcePromptId) : undefined;
+  const sourceResponse = report.sourcePromptResponseId
+    ? dataStore.responses.find((r) => r.id === report.sourcePromptResponseId)
+    : undefined;
+  const intakeComplete =
+    report.caseType === 'WAGE_HOUR' ? isWageHourIntakeComplete(report) : isIncidentIntakeComplete(report);
   const reporterIdentity = report.isAnonymous ? 'Anonymous' : reporter ? 'Named' : 'Confidential';
   const reporterDisplay = report.isAnonymous ? 'Anonymous' : reporter ? `${reporter.firstName} ${reporter.lastName}` : 'Confidential';
   const sla = getSlaLabel(report);
@@ -105,16 +116,16 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
             <button
               type="button"
               className="text-[var(--mismo-blue)] hover:underline font-medium"
-              onClick={() => onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'overview' })}
+              onClick={() => onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'page-1' })}
             >
               {getInvestigationDisplayId(linkedInvestigation)}
             </button>
             <span aria-hidden>/</span>
-            <span className="text-[var(--color-text-primary)]">{formatReportReference(report.id)}</span>
+            <span className="text-[var(--color-text-primary)] font-mono">{caseId}</span>
           </nav>
           <Button
             variant="ghost"
-            onClick={() => onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'linked-reports' })}
+            onClick={() => onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'page-1' })}
           >
             <Icons.arrowLeft className="h-4 w-4 mr-2" />
             Back to investigation
@@ -132,10 +143,46 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
         <CardContent className="p-5 space-y-4">
           <div className="flex flex-col gap-1">
             <div className="flex items-baseline gap-2 flex-wrap">
-              <span className="text-sm font-medium text-[var(--color-text-muted)]">{caseId}</span>
+              <span className="text-sm font-mono font-semibold text-[var(--color-primary-900)]">{caseId}</span>
               <span className="text-[10px] text-[var(--color-text-muted)]">·</span>
               <span className="text-sm text-[var(--color-text-secondary)]">{getCategoryLabel(report.category)}</span>
             </div>
+            <p className="text-sm text-[var(--color-text-secondary)] mt-2">
+              Reported from:{' '}
+              <span className="font-medium text-[var(--color-text-primary)]">
+                {REPORT_SOURCE_LABELS[report.reportSourceType ?? 'SELF_REPORTED']}
+              </span>
+              {sourcePrompt && (
+                <>
+                  {' '}
+                  —{' '}
+                  <button
+                    type="button"
+                    className="text-[var(--mismo-blue)] hover:underline"
+                    onClick={() =>
+                      sourceResponse
+                        ? onNavigate('prompt-response-detail', { id: sourceResponse.id })
+                        : onNavigate('prompts')
+                    }
+                  >
+                    {sourcePrompt.title}
+                  </button>
+                </>
+              )}
+            </p>
+            <p className="text-sm mt-1 flex flex-wrap items-center gap-2">
+              <span>
+                Employee form:{' '}
+                <Badge className={intakeComplete ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'}>
+                  {intakeComplete ? 'Complete' : 'Pending'}
+                </Badge>
+              </span>
+              {(intakeComplete || report.description) && (
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowIntakeSubmission((v) => !v)}>
+                  {showIntakeSubmission ? 'Hide employee submission' : 'View employee submission'}
+                </Button>
+              )}
+            </p>
             <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">{report.summary}</h1>
           </div>
 
@@ -216,6 +263,10 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
         </CardContent>
       </Card>
 
+      {showIntakeSubmission && (
+        <EmployeeIntakeReadOnly report={report} organizationName={dataStore.organizationName} />
+      )}
+
       <Card className="mismo-card">
         <CardContent className="p-5 space-y-3">
           <h2 className="text-sm uppercase tracking-wide text-[var(--color-text-secondary)]">Response workflow</h2>
@@ -277,10 +328,44 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
 
       <Card className="mismo-card">
         <CardContent className="p-5 space-y-4">
-          <h2 className="text-sm uppercase tracking-wide text-[var(--color-text-secondary)]">Industry-standard HR report handling checklist</h2>
-          {checklistSections.length === 0 && legacyChecklistItems.length === 0 ? (
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-sm uppercase tracking-wide text-[var(--color-text-secondary)]">
+                Optional compliance checklist
+              </h2>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                Intake, case ID, and assignment are handled automatically on the investigation (Page 1). Expand this only
+                if you need the legacy section-by-section checklist.
+              </p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowAdvancedChecklist((v) => !v)}>
+              {showAdvancedChecklist ? 'Hide checklist' : 'Show checklist'}
+            </Button>
+          </div>
+          {!showAdvancedChecklist ? (
+            <p className="text-sm text-[var(--color-text-secondary)]">
+              {linkedInvestigation ? (
+                <>
+                  Continue in{' '}
+                  <button
+                    type="button"
+                    className="text-[var(--mismo-blue)] hover:underline"
+                    onClick={() =>
+                      onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'page-1' })
+                    }
+                  >
+                    investigation {getInvestigationDisplayId(linkedInvestigation)}
+                  </button>{' '}
+                  for the simplified 3-page workflow.
+                </>
+              ) : (
+                'Convert to an investigation to use the 3-page intake → gather → outcome flow.'
+              )}
+            </p>
+          ) : null}
+          {showAdvancedChecklist && checklistSections.length === 0 && legacyChecklistItems.length === 0 ? (
             <p className="text-sm text-[var(--color-text-secondary)]">No checklist items. Checklist is created for new cases.</p>
-          ) : (
+          ) : showAdvancedChecklist ? (
             <>
               {checklistSections.length > 0 && (
                 <div className="flex items-center gap-2 flex-wrap">
@@ -384,9 +469,9 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
                 </div>
               )}
             </>
-          )}
+          ) : null}
           {/* Single hidden file input for checklist item evidence */}
-          {checklistSections.length > 0 && (
+          {showAdvancedChecklist && checklistSections.length > 0 && (
             <input
               ref={evidenceFileInputRef}
               type="file"

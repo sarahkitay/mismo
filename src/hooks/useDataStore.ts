@@ -43,6 +43,7 @@ import {
   buildStageHistoryEntry,
   inferReportSourceType,
 } from '@/lib/investigationWorkflow';
+import { allocateCaseReferenceNumber } from '@/lib/caseReference';
 import {
   mockUsers,
   mockReports,
@@ -439,9 +440,8 @@ export function useDataStore() {
     (userId: string, delivery: PromptDelivery, response: PromptResponse) => {
       const now = new Date();
       const prompt = prompts.find((p) => p.id === delivery.promptId);
-      const seq =
-        reports.filter((r) => r.caseType !== 'WAGE_HOUR' && r.orgId === effectiveOrgId).length + 1;
-      const refNum = `IR-${now.getFullYear()}-${String(seq).padStart(4, '0')}`;
+      const refNum = allocateCaseReferenceNumber(reports, effectiveOrgId, 'WORKPLACE_INVESTIGATION');
+      const defaultAdmin = users.find((u) => u.role === 'HR' || u.role === 'ADMIN');
       const severity = prompt?.severityOnHasIssue ?? 'HIGH';
       const screeningNote = response.notes?.trim();
       const ledger: Report['handlingLedger'] = [
@@ -478,6 +478,7 @@ export function useDataStore() {
         description:
           'Employee answered Yes on the mandatory incident query. Complete the secure intake form to provide details.',
         status: 'NEW',
+        assignedTo: defaultAdmin?.id,
         needsExtendedIncidentIntake: true,
         messages: [],
         responseChecklist: createIndustryChecklistForReport(),
@@ -519,7 +520,7 @@ export function useDataStore() {
       ]);
       return newReport;
     },
-    [prompts, reports, effectiveOrgId]
+    [prompts, reports, effectiveOrgId, users]
   );
 
   /** Finalize incident prompt Yes: log response, open case shell, alert HR queue */
@@ -540,12 +541,19 @@ export function useDataStore() {
     const now = new Date();
     
     const needsExtended = Boolean(reportData.needsExtendedIncidentIntake);
+    const caseType = reportData.caseType ?? (reportData.category === 'WAGE_HOURS' ? 'WAGE_HOUR' : 'WORKPLACE_INVESTIGATION');
+    const refNum =
+      reportData.referenceNumber ??
+      allocateCaseReferenceNumber(reports, effectiveOrgId, caseType);
+    const defaultAdmin = users.find((u) => u.role === 'HR' || u.role === 'ADMIN');
     const newReport: Report = {
       ...reportData,
       id: `report-${Date.now()}`,
       orgId: effectiveOrgId,
-      caseType: reportData.caseType ?? (reportData.category === 'WAGE_HOURS' ? 'WAGE_HOUR' : 'WORKPLACE_INVESTIGATION'),
+      caseType,
+      referenceNumber: refNum,
       status: 'NEW',
+      assignedTo: reportData.assignedTo ?? defaultAdmin?.id,
       needsExtendedIncidentIntake: needsExtended,
       incidentIntakeCompletedAt: needsExtended ? undefined : now,
       messages: reportData.messages ?? [],
@@ -578,7 +586,7 @@ export function useDataStore() {
     setActivities(prev => [newActivity, ...prev]);
     
     return newReport;
-  }, [effectiveOrgId]);
+  }, [effectiveOrgId, reports, users]);
 
   const recordWageHourScreeningNo = useCallback(
     (userId: string) => {
@@ -622,16 +630,16 @@ export function useDataStore() {
   );
 
   const beginWageHourCase = useCallback(
-    (userId: string) => {
+    (userId: string, sourceType: Report['reportSourceType'] = 'SELF_REPORTED') => {
       const now = new Date();
-      const seq = reports.filter((r) => r.caseType === 'WAGE_HOUR').length + 1;
-      const refNum = `WH-${now.getFullYear()}-${String(seq).padStart(4, '0')}`;
+      const refNum = allocateCaseReferenceNumber(reports, effectiveOrgId, 'WAGE_HOUR');
+      const defaultAdmin = users.find((u) => u.role === 'HR' || u.role === 'ADMIN');
       const newReport: Report = {
         id: `report-${Date.now()}`,
         orgId: effectiveOrgId,
         createdByUserId: userId,
         isAnonymous: false,
-        reportSourceType: 'SELF_REPORTED',
+        reportSourceType: sourceType,
         caseType: 'WAGE_HOUR',
         referenceNumber: refNum,
         category: 'WAGE_HOURS',
@@ -639,6 +647,7 @@ export function useDataStore() {
         summary: 'Wage & Hour Concern',
         description: 'Protected wage and hour concern — complete intake to submit details.',
         status: 'PENDING_WAGE_HOUR_REVIEW',
+        assignedTo: defaultAdmin?.id,
         needsExtendedWageHourIntake: true,
         messages: [],
         responseChecklist: createIndustryChecklistForReport(),
@@ -661,7 +670,7 @@ export function useDataStore() {
           orgId: mockOrg.id,
           type: 'WAGE_HOUR_SCREENING',
           actorUserId: userId,
-          metadata: { hasConcern: true, reportId: newReport.id, referenceNumber: refNum },
+          metadata: { hasConcern: true, reportId: newReport.id, referenceNumber: refNum, alert: 'CLIENT_ADMIN' },
           createdAt: now,
         },
         ...prev,
@@ -682,7 +691,7 @@ export function useDataStore() {
       ]);
       return newReport;
     },
-    [effectiveOrgId, reports]
+    [effectiveOrgId, reports, users]
   );
 
   const completeWageHourIntake = useCallback(
@@ -840,7 +849,9 @@ export function useDataStore() {
     
     const now = new Date();
     
-    const refNum = `INV-${now.getFullYear()}-${String(investigations.filter((i) => i.orgId === mockOrg.id).length + 1).padStart(4, '0')}`;
+    const refNum =
+      report.referenceNumber ??
+      allocateCaseReferenceNumber(reports, report.orgId, report.caseType ?? 'WORKPLACE_INVESTIGATION');
     const prompt = report.sourcePromptId ? mockPrompts.find((p) => p.id === report.sourcePromptId) : undefined;
     const sourceType = inferReportSourceType(report, prompt);
     const priority: InvestigationPriority =
@@ -875,15 +886,21 @@ export function useDataStore() {
         report.createdByUserId && !report.isAnonymous ? [report.createdByUserId] : [],
       persons: [],
       notes: [],
+      workflowPagesCompleted: { intake: false, gathering: false, outcome: false },
     };
     
     setInvestigations(prev => [...prev, newInvestigation]);
     
-    // Update report with investigation link and ensure checklist exists for investigation workflow
     const checklist = (report.responseChecklist ?? []).length > 0 ? report.responseChecklist : createIndustryChecklistForReport();
     setReports(prev => prev.map(r => 
       r.id === reportId 
-        ? { ...r, investigationId: newInvestigation.id, responseChecklist: checklist, updatedAt: now }
+        ? {
+            ...r,
+            investigationId: newInvestigation.id,
+            referenceNumber: r.referenceNumber ?? refNum,
+            responseChecklist: checklist,
+            updatedAt: now,
+          }
         : r
     ));
     
@@ -1145,6 +1162,8 @@ export function useDataStore() {
         policyAnalysisNotes?: string;
         linkedPolicyIds?: string[];
         finalFindingsReport?: string;
+        legalInvolved?: boolean;
+        legalInvolvementNotes?: string;
       }
     ) => {
       const now = new Date();
@@ -1299,6 +1318,29 @@ export function useDataStore() {
       setActivities((prev) => [newActivity, ...prev]);
     },
     [currentUser.id]
+  );
+
+  const setInvestigationInitialContactNotes = useCallback((investigationId: string, notes: string) => {
+    const now = new Date();
+    setInvestigations((prev) =>
+      prev.map((inv) =>
+        inv.id === investigationId ? { ...inv, initialContactNotes: notes, lastUpdateAt: now, updatedAt: now } : inv
+      )
+    );
+  }, []);
+
+  const markInvestigationPageComplete = useCallback(
+    (investigationId: string, page: 'intake' | 'gathering' | 'outcome') => {
+      const now = new Date();
+      setInvestigations((prev) =>
+        prev.map((inv) => {
+          if (inv.id !== investigationId) return inv;
+          const completed = { ...(inv.workflowPagesCompleted ?? {}), [page]: true };
+          return { ...inv, workflowPagesCompleted: completed, lastUpdateAt: now, updatedAt: now };
+        })
+      );
+    },
+    []
   );
 
   const setInvestigationSubjectUsers = useCallback((investigationId: string, subjectUserIds: string[]) => {
@@ -2249,6 +2291,8 @@ export function useDataStore() {
     pickUpInvestigation,
     assignInvestigationOwner,
     advanceInvestigationStage,
+    setInvestigationInitialContactNotes,
+    markInvestigationPageComplete,
     setInvestigationSubjectUsers,
     setInvestigationPersons,
     updateInvestigationChecklist,

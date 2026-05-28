@@ -41,6 +41,7 @@ import {
   REPORT_SOURCE_LABELS,
 } from '@/lib/investigationWorkflow';
 import { formatDate, formatRelativeTime, getCategoryLabel, isIncidentIntakeComplete } from '@/lib/utils';
+import { EmployeeIntakeReadOnly } from '@/components/admin/EmployeeIntakeReadOnly';
 import { downloadCsv } from '@/lib/exportCsv';
 import { toast } from 'sonner';
 
@@ -111,37 +112,38 @@ export function IntakeTriageModule(ctx: WorkflowContext) {
   const progress = getModuleProgress(investigation)['intake-triage'];
   const promptCtx = getLinkedPromptContext(investigation, primaryReport, dataStore.prompts, dataStore.responses);
   const [pickupContact, setPickupContact] = useState<InvestigationEmployeeContactPreference>('IN_APP_MESSAGE');
+  const [showIntake, setShowIntake] = useState(true);
   const stage = investigation.stage ?? 'PENDING_REVIEW';
 
   return (
     <InvestigationModuleShell
-      title="Intake & Triage"
-      subtitle="Review the incident intake, classify the allegation, assign ownership, and confirm immediate risk factors before advancing the investigation."
+      title="Page 1 — Intake & assignment"
+      subtitle="Automatic report data, unified case ID, admin assignment, employee form status, and initial contact notes."
       completionPercent={progress.percent}
       status={progress.status}
     >
       {primaryReport && (
-        <InvestigationSubModule title="Incident intake record" badge={isIncidentIntakeComplete(primaryReport) ? 'Complete' : 'Incomplete'}>
+        <InvestigationSubModule title="Automatic intake from report" badge={isIncidentIntakeComplete(primaryReport) ? 'EI complete' : 'EI pending'}>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
             <div>
-              <p className="text-xs text-[var(--color-text-muted)]">Report ID</p>
-              <p className="font-medium">{formatReportReference(primaryReport.id)}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">Case file ID</p>
+              <p className="font-medium font-mono">{formatReportReference(primaryReport)}</p>
             </div>
             <div>
-              <p className="text-xs text-[var(--color-text-muted)]">Source type</p>
-              <p>{REPORT_SOURCE_LABELS[investigation.reportSourceType ?? 'SELF_REPORTED']}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">Reported from</p>
+              <p>{REPORT_SOURCE_LABELS[investigation.reportSourceType ?? primaryReport.reportSourceType ?? 'SELF_REPORTED']}</p>
             </div>
             <div>
               <p className="text-xs text-[var(--color-text-muted)]">Reporting party</p>
               <EmployeeLink user={reporter} onClick={() => reporter && openProfile(reporter.id)} />
             </div>
             <div>
-              <p className="text-xs text-[var(--color-text-muted)]">Allegation type</p>
-              <p>{getCategoryLabel(primaryReport.category)}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">Date / time reported</p>
+              <p>{formatDate(primaryReport.createdAt)}</p>
             </div>
             <div>
-              <p className="text-xs text-[var(--color-text-muted)]">Risk level</p>
-              <p>{investigation.riskLevel ?? primaryReport.severity}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">Allegation type</p>
+              <p>{getCategoryLabel(primaryReport.category)}</p>
             </div>
             <div>
               <p className="text-xs text-[var(--color-text-muted)]">Lead investigator</p>
@@ -151,18 +153,42 @@ export function IntakeTriageModule(ctx: WorkflowContext) {
           {promptCtx.prompt && (
             <div className="mt-3 p-3 bg-[var(--color-surface-100)] border border-[var(--color-border-200)] text-sm">
               <p className="font-medium">Linked prompt: {promptCtx.prompt.title}</p>
-              {promptCtx.response && <p className="text-[var(--color-text-secondary)]">Response: {promptCtx.response.answer}</p>}
+              {promptCtx.response && (
+                <p className="text-[var(--color-text-secondary)]">
+                  Employee answered: {promptCtx.response.answer}
+                  {promptCtx.response.finalizedAt && ` · Submitted ${formatDate(promptCtx.response.finalizedAt)}`}
+                </p>
+              )}
+              <Button
+                size="sm"
+                variant="link"
+                className="px-0 h-auto mt-1"
+                onClick={() =>
+                  promptCtx.response
+                    ? onNavigate('prompt-response-detail', { id: promptCtx.response.id })
+                    : onNavigate('prompts')
+                }
+              >
+                Open prompt response
+              </Button>
             </div>
           )}
-          <p className="text-sm whitespace-pre-wrap border-t border-[var(--color-border-200)] pt-3 mt-3">{primaryReport.description}</p>
-          <div className="flex flex-wrap gap-2 pt-2">
-            <Button size="sm" variant="outline" onClick={() => onNavigate('report-detail', { id: primaryReport.id, fromInvestigation: investigation.id })}>
-              View / edit intake form
+          <div className="flex flex-wrap gap-2 pt-3">
+            <Button size="sm" variant="outline" onClick={() => setShowIntake((v) => !v)}>
+              {showIntake ? 'Hide employee form' : 'View employee form'}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => ctx.onTabChange('persons')}>
-              Identify parties
+            <Button size="sm" variant="outline" onClick={() => onNavigate('report-detail', { id: primaryReport.id, fromInvestigation: investigation.id })}>
+              Open report record
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => ctx.onTabChange('page-2')}>
+              Add persons (Page 2)
             </Button>
           </div>
+          {showIntake && (
+            <div className="mt-3">
+              <EmployeeIntakeReadOnly report={primaryReport} organizationName={dataStore.organizationName} />
+            </div>
+          )}
         </InvestigationSubModule>
       )}
 
@@ -201,12 +227,22 @@ export function IntakeTriageModule(ctx: WorkflowContext) {
             onClick={() => {
               dataStore.pickUpInvestigation(investigation.id, pickupContact);
               toast.success('Case opened. Proceed to Information Gathering.');
-              ctx.onTabChange('information-gathering');
+              ctx.onTabChange('page-2');
+              dataStore.markInvestigationPageComplete(investigation.id, 'intake');
             }}
           >
             Open case &amp; begin investigation
           </Button>
         )}
+      </InvestigationSubModule>
+
+      <InvestigationSubModule title="Initial contact with employee" description="Document first outreach, scheduling, and triage thoughts. Internal only until you send a shared note.">
+        <Textarea
+          rows={4}
+          placeholder="Initial contact notes — call summary, meeting scheduled, interim safety steps…"
+          value={investigation.initialContactNotes ?? ''}
+          onChange={(e) => dataStore.setInvestigationInitialContactNotes(investigation.id, e.target.value)}
+        />
       </InvestigationSubModule>
 
       <AIGuidancePanel
@@ -221,12 +257,17 @@ export function IntakeTriageModule(ctx: WorkflowContext) {
 }
 
 export function InformationGatheringModule(ctx: WorkflowContext) {
-  const { investigation, dataStore } = ctx;
+  const { investigation, dataStore, primaryReport, users } = ctx;
   const progress = getModuleProgress(investigation)['information-gathering'];
   const evidence = getAllInvestigationEvidence(investigation);
   const fileRef = useRef<HTMLInputElement>(null);
   const [activePrompt, setActivePrompt] = useState(EVIDENCE_GATHERING_PROMPTS[0].id);
   const [uploadDesc, setUploadDesc] = useState('');
+  const complaintAt = primaryReport?.createdAt ?? investigation.openedAt;
+  const persons = getInvestigationPersons(investigation, ctx.owner).filter((p) => p.userId);
+  const policiesInEffect = dataStore.policies.filter(
+    (p) => p.status === 'PUBLISHED' && p.effectiveDate.getTime() <= complaintAt.getTime()
+  );
 
   const handleUpload = async (file: File, type: InvestigationEvidenceType, promptLabel?: string) => {
     const parsed = await readEvidenceFile(file);
@@ -246,11 +287,87 @@ export function InformationGatheringModule(ctx: WorkflowContext) {
 
   return (
     <InvestigationModuleShell
-      title="Information Gathering"
-      subtitle="Collect and preserve documentary evidence. All uploads are timestamped, attributed, and logged for chain-of-custody."
+      title="Page 2 — Gather information"
+      subtitle="Persons involved, interviews, evidence, company policies, and legal involvement."
       completionPercent={progress.percent}
       status={progress.status}
     >
+      <InvestigationSubModule
+        title="Company policies & memo acknowledgements"
+        description={`Published memos/policies effective on or before the complaint date (${formatDate(complaintAt)}). Select a person on this case to see what they had read.`}
+      >
+        {persons.length === 0 ? (
+          <p className="text-sm text-[var(--color-text-secondary)]">Add named employees on Page 2 (persons table) to review acknowledgement history.</p>
+        ) : (
+          <div className="space-y-4">
+            {persons.map((person) => {
+              const u = users.find((x) => x.id === person.userId);
+              if (!u) return null;
+              return (
+                <div key={person.id} className="border border-[var(--color-border-200)] p-3">
+                  <p className="font-medium text-sm">
+                    {u.firstName} {u.lastName}{' '}
+                    <span className="text-xs text-[var(--color-text-muted)]">({PERSON_ROLE_LABELS[person.role]})</span>
+                  </p>
+                  <ul className="mt-2 space-y-1 text-xs max-h-40 overflow-auto">
+                    {policiesInEffect.slice(0, 8).map((policy) => {
+                      const ack = dataStore.policyAcknowledgements.find(
+                        (a) => a.policyId === policy.id && a.userId === u.id
+                      );
+                      const readBeforeComplaint = ack && ack.acknowledgedAt.getTime() <= complaintAt.getTime();
+                      return (
+                        <li key={policy.id} className="flex justify-between gap-2">
+                          <span className="truncate">{policy.title}</span>
+                          <span className={readBeforeComplaint ? 'text-emerald-700 shrink-0' : 'text-amber-700 shrink-0'}>
+                            {ack
+                              ? readBeforeComplaint
+                                ? `Read ${formatDate(ack.acknowledgedAt)}`
+                                : `Read after complaint`
+                              : policy.acknowledgmentRequired
+                                ? 'Not acknowledged'
+                                : 'Optional'}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <Button size="sm" variant="link" className="px-0 h-auto mt-1" onClick={() => ctx.openProfile(u.id)}>
+                    Open full profile &amp; memo history
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className="mt-3 space-y-2">
+          <Label className="text-xs">Policies implicated (analysis)</Label>
+          <Textarea
+            rows={3}
+            placeholder="Which handbook sections or memos apply to this allegation?"
+            value={investigation.policyAnalysisNotes ?? ''}
+            onChange={(e) => dataStore.updateInvestigationAnalysis(investigation.id, { policyAnalysisNotes: e.target.value })}
+          />
+        </div>
+      </InvestigationSubModule>
+
+      <InvestigationSubModule title="Legal involvement" description="Flag when counsel or an outside investigator should participate.">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={Boolean(investigation.legalInvolved)}
+            onChange={(e) => dataStore.updateInvestigationAnalysis(investigation.id, { legalInvolved: e.target.checked })}
+          />
+          Legal / outside counsel involved in this matter
+        </label>
+        <Textarea
+          rows={2}
+          className="mt-2"
+          placeholder="Counsel contact, privilege notes, or escalation reason…"
+          value={investigation.legalInvolvementNotes ?? ''}
+          onChange={(e) => dataStore.updateInvestigationAnalysis(investigation.id, { legalInvolvementNotes: e.target.value })}
+        />
+      </InvestigationSubModule>
+
       <InvestigationSubModule
         title="Evidence collection"
         description="Use guided prompts to collect the right materials — screenshots, communications, policies, and statements."
@@ -590,8 +707,8 @@ export function FindingsOutcomeModule(ctx: WorkflowContext) {
 
   return (
     <InvestigationModuleShell
-      title="Findings & Outcome"
-      subtitle="Formal decision stage. Determine whether allegations are substantiated and document the investigation outcome."
+      title="Page 3 — Outcome & close"
+      subtitle="Finalize findings, record resolution, send the outcome letter, and export the investigation file."
       completionPercent={progress.percent}
       status={progress.status}
     >

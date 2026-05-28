@@ -1,11 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
-import type {
-  InvestigationEmployeeContactPreference,
-  InvestigationPerson,
-  InvestigationPersonRole,
-  User,
-} from '@/types';
+import type { InvestigationPerson, InvestigationPersonRole, User } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,25 +16,22 @@ import { Icons } from '@/lib/icons';
 import { formatDate, getCategoryLabel, getStatusColor } from '@/lib/utils';
 import {
   CONTACT_METHOD_LABELS,
-  formatReportReference,
   getEffectiveStage,
   getInvestigationAgeDays,
   getInvestigationDisplayId,
   getInvestigationPersons,
   getInvestigationTypeLabel,
   getModuleProgress,
-  getNextStageAction,
   getSlaStatus,
-  getStageProgressPercent,
   INVESTIGATION_STAGE_LABELS,
-  INVESTIGATION_STAGES,
-  INVESTIGATION_TABS,
+  INVESTIGATION_PAGES,
   PERSON_ROLE_LABELS,
   REPORT_SOURCE_LABELS,
   type InvestigationTab,
 } from '@/lib/investigationWorkflow';
+import { formatCaseReference } from '@/lib/caseTypes';
+import { toast } from 'sonner';
 import { InvestigationPersonDrawer } from '@/components/admin/investigation/InvestigationPersonDrawer';
-import { AIGuidancePanel } from '@/components/admin/investigation/InvestigationModuleShell';
 import {
   ClosureAuditModule,
   EvidenceAnalysisModule,
@@ -77,14 +69,12 @@ export function InvestigationWorkspace({
   onTabChange,
 }: InvestigationWorkspaceProps) {
   const investigation = dataStore.investigations.find((i) => i.id === investigationId);
-  const { users, reports, pickUpInvestigation, advanceInvestigationStage, setInvestigationPersons } = dataStore;
+  const { users, reports, setInvestigationPersons } = dataStore;
 
   const [personSearch, setPersonSearch] = useState('');
   const [personRoleFilter, setPersonRoleFilter] = useState<InvestigationPersonRole | 'ALL'>('ALL');
   const [reportSearch, setReportSearch] = useState('');
   const [drawerUserId, setDrawerUserId] = useState<string | null>(null);
-  const [pickupContact, setPickupContact] = useState<InvestigationEmployeeContactPreference>('IN_APP_MESSAGE');
-
   const linkedReports = useMemo(
     () => reports.filter((r) => investigation?.linkedReportIds.includes(r.id)),
     [reports, investigation?.linkedReportIds]
@@ -140,99 +130,15 @@ export function InvestigationWorkspace({
     return r.summary.toLowerCase().includes(q) || r.id.includes(q) || Boolean(emp && `${emp.firstName} ${emp.lastName}`.toLowerCase().includes(q));
   });
 
-  const workflowSteps: { id: InvestigationTab; label: string; percent: number }[] = INVESTIGATION_TABS.filter((t) => t.step).map((t) => ({
-    id: t.id,
-    label: t.label,
-    percent: moduleProgress[t.id]?.percent ?? 0,
+  const pageProgress = INVESTIGATION_PAGES.map((p) => ({
+    ...p,
+    percent: moduleProgress[p.id]?.percent ?? 0,
+    complete: investigation.workflowPagesCompleted?.[p.id === 'page-1' ? 'intake' : p.id === 'page-2' ? 'gathering' : 'outcome'],
   }));
 
-  const renderOverview = () => (
-    <div className="space-y-4">
-      <Card className="mismo-card border border-[var(--color-border-200)]">
-        <CardContent className="p-5">
-          <h2 className="text-lg font-semibold text-[var(--color-primary-900)]">Investigation command center</h2>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-2">{getNextStageAction(stage)}</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {(stage === 'PENDING_REVIEW' || stage === 'ASSIGNED') && !investigation.pickedUpAt ? (
-              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
-                <Select value={pickupContact} onValueChange={(v) => setPickupContact(v as InvestigationEmployeeContactPreference)}>
-                  <SelectTrigger className="w-[200px]"><SelectValue placeholder="Contact method" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="IN_APP_MESSAGE">Direct message</SelectItem>
-                    <SelectItem value="PHONE_CALL">Phone call</SelectItem>
-                    <SelectItem value="EMAIL">Email</SelectItem>
-                    <SelectItem value="IN_PERSON">In person</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button onClick={() => pickUpInvestigation(investigation.id, pickupContact)} className="bg-[var(--color-primary-900)]">
-                  Open case
-                </Button>
-              </div>
-            ) : null}
-            {stage !== 'CLOSED' && stage !== 'OUTCOME_PENDING' && investigation.pickedUpAt ? (
-              <Button variant="outline" onClick={() => {
-                const idx = INVESTIGATION_STAGES.indexOf(stage);
-                advanceInvestigationStage(investigation.id, INVESTIGATION_STAGES[Math.min(idx + 1, INVESTIGATION_STAGES.length - 1)]);
-              }}>
-                Advance workflow stage
-              </Button>
-            ) : null}
-            <Button variant="outline" onClick={() => onTabChange('intake-triage')}>Start intake &amp; triage</Button>
-          </div>
-        </CardContent>
-      </Card>
+  const unifiedCaseId = investigation.referenceNumber ?? (primaryReport ? formatCaseReference(primaryReport) : getInvestigationDisplayId(investigation));
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {workflowSteps.map((step) => (
-          <button
-            key={step.id}
-            type="button"
-            onClick={() => onTabChange(step.id)}
-            className="text-left border border-[var(--color-border-200)] p-4 hover:border-[var(--color-primary-900)] hover:bg-white transition-colors"
-          >
-            <p className="text-xs uppercase text-[var(--color-text-muted)]">Step {INVESTIGATION_TABS.find((t) => t.id === step.id)?.step}</p>
-            <p className="font-medium text-sm mt-1">{step.label}</p>
-            <div className="mt-2 h-1.5 bg-[var(--color-surface-200)]">
-              <div className="h-full bg-[var(--color-primary-900)]" style={{ width: `${step.percent}%` }} />
-            </div>
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">{step.percent}% complete</p>
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="mismo-card border border-[var(--color-border-200)]">
-          <CardContent className="p-4">
-            <p className="text-xs uppercase text-[var(--color-text-muted)]">Persons involved</p>
-            <p className="text-2xl font-bold mt-1">{persons.length}</p>
-            <Button size="sm" variant="link" className="px-0 mt-2" onClick={() => onTabChange('persons')}>Manage</Button>
-          </CardContent>
-        </Card>
-        <Card className="mismo-card border border-[var(--color-border-200)]">
-          <CardContent className="p-4">
-            <p className="text-xs uppercase text-[var(--color-text-muted)]">Evidence files</p>
-            <p className="text-2xl font-bold mt-1">{(investigation.evidenceRecords ?? []).length}</p>
-            <Button size="sm" variant="link" className="px-0 mt-2" onClick={() => onTabChange('information-gathering')}>Collect</Button>
-          </CardContent>
-        </Card>
-        <Card className="mismo-card border border-[var(--color-border-200)]">
-          <CardContent className="p-4">
-            <p className="text-xs uppercase text-[var(--color-text-muted)]">Linked reports</p>
-            <p className="text-2xl font-bold mt-1">{linkedReports.length}</p>
-            <Button size="sm" variant="link" className="px-0 mt-2" onClick={() => onTabChange('linked-reports')}>View</Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      <AIGuidancePanel
-        items={[
-          'Recommended next workflow step based on case stage.',
-          'Missing documentation and compliance risk flags.',
-          'Interview question suggestions and timeline summary.',
-        ]}
-      />
-    </div>
-  );
+  const openProfile = (userId: string) => setDrawerUserId(userId);
 
   const renderPersons = () => (
     <Card className="mismo-card border border-[var(--color-border-200)]">
@@ -320,7 +226,7 @@ export function InvestigationWorkspace({
             <tbody>
               {filteredLinkedReports.map((r) => (
                 <tr key={r.id} className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)]">
-                  <td className="px-3 py-2 font-medium">{formatReportReference(r.id)}</td>
+                  <td className="px-3 py-2 font-medium font-mono">{formatCaseReference(r)}</td>
                   <td className="px-3 py-2">{getCategoryLabel(r.category)}</td>
                   <td className="px-3 py-2">{REPORT_SOURCE_LABELS[r.reportSourceType ?? 'SELF_REPORTED']}</td>
                   <td className="px-3 py-2"><Badge className={getStatusColor(r.status)}>{r.status}</Badge></td>
@@ -337,20 +243,35 @@ export function InvestigationWorkspace({
     </Card>
   );
 
-  const openProfile = (userId: string) => setDrawerUserId(userId);
+  const renderPage1 = () => (
+    <div className="space-y-4">
+      <IntakeTriageModule {...workflowCtx} />
+      {renderLinkedReports()}
+    </div>
+  );
+
+  const renderPage2 = () => (
+    <div className="space-y-4">
+      {renderPersons()}
+      <InformationGatheringModule {...workflowCtx} />
+      <InterviewsNotesModule {...workflowCtx} />
+      <EvidenceAnalysisModule {...workflowCtx} />
+    </div>
+  );
+
+  const renderPage3 = () => (
+    <div className="space-y-4">
+      <FindingsOutcomeModule {...workflowCtx} />
+      <ResolutionActionsModule {...workflowCtx} />
+      <FollowUpMonitoringModule {...workflowCtx} />
+      <ClosureAuditModule {...workflowCtx} />
+    </div>
+  );
 
   const sectionMap: Record<InvestigationTab, () => ReactNode> = {
-    overview: renderOverview,
-    'intake-triage': () => <IntakeTriageModule {...workflowCtx} />,
-    'information-gathering': () => <InformationGatheringModule {...workflowCtx} />,
-    'interviews-notes': () => <InterviewsNotesModule {...workflowCtx} />,
-    'evidence-analysis': () => <EvidenceAnalysisModule {...workflowCtx} />,
-    'findings-outcome': () => <FindingsOutcomeModule {...workflowCtx} />,
-    'resolution-actions': () => <ResolutionActionsModule {...workflowCtx} />,
-    'follow-up-monitoring': () => <FollowUpMonitoringModule {...workflowCtx} />,
-    'closure-audit': () => <ClosureAuditModule {...workflowCtx} />,
-    persons: renderPersons,
-    'linked-reports': renderLinkedReports,
+    'page-1': renderPage1,
+    'page-2': renderPage2,
+    'page-3': renderPage3,
   };
 
   return (
@@ -371,8 +292,8 @@ export function InvestigationWorkspace({
         <CardContent className="p-5">
           <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-wider text-[var(--color-text-muted)]">Investigation case file</p>
-              <h1 className="text-2xl font-bold text-[var(--color-primary-900)] mt-1">{getInvestigationDisplayId(investigation)}</h1>
+              <p className="text-xs uppercase tracking-wider text-[var(--color-text-muted)]">Case file ID (report &amp; investigation)</p>
+              <h1 className="text-2xl font-bold text-[var(--color-primary-900)] mt-1 font-mono">{unifiedCaseId}</h1>
               <p className="text-base text-[var(--color-text-secondary)] mt-1">{getInvestigationTypeLabel(investigation)}</p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -385,33 +306,38 @@ export function InvestigationWorkspace({
             <div><p className="text-xs text-[var(--color-text-muted)]">Lead investigator</p><p className="font-medium">{owner ? `${owner.firstName} ${owner.lastName}` : 'Unassigned'}</p></div>
             <div><p className="text-xs text-[var(--color-text-muted)]">Opened</p><p>{formatDate(investigation.openedAt)}</p></div>
             <div><p className="text-xs text-[var(--color-text-muted)]">Source</p><p>{REPORT_SOURCE_LABELS[investigation.reportSourceType ?? 'SELF_REPORTED']}</p></div>
-            <div><p className="text-xs text-[var(--color-text-muted)]">Linked incident</p><p>{primaryReport ? formatReportReference(primaryReport.id) : '—'}</p></div>
+            <div><p className="text-xs text-[var(--color-text-muted)]">Reported from</p><p>{REPORT_SOURCE_LABELS[investigation.reportSourceType ?? primaryReport?.reportSourceType ?? 'SELF_REPORTED']}</p></div>
+            <div><p className="text-xs text-[var(--color-text-muted)]">EI form</p><p>{primaryReport ? (primaryReport.incidentIntakeCompletedAt || primaryReport.wageHourIntakeCompletedAt ? 'Complete' : 'Pending') : '—'}</p></div>
             <div><p className="text-xs text-[var(--color-text-muted)]">Preferred contact</p><p>{investigation.employeePreferredContact ? CONTACT_METHOD_LABELS[investigation.employeePreferredContact] : '—'}</p></div>
             <div><p className="text-xs text-[var(--color-text-muted)]">Risk</p><p>{investigation.riskLevel ?? '—'}</p></div>
           </div>
-          <div className="mt-5 overflow-x-auto">
-            <div className="flex gap-1 min-w-max">
-              {INVESTIGATION_STAGES.map((s, i) => {
-                const currentIdx = INVESTIGATION_STAGES.indexOf(stage);
-                const done = i < currentIdx;
-                const active = s === stage;
-                return (
-                  <div key={s} className={`px-2 py-1 text-[10px] sm:text-xs border ${active ? 'bg-[var(--color-primary-900)] text-white border-[var(--color-primary-900)]' : done ? 'bg-[var(--mismo-green-light)] text-emerald-800 border-emerald-200' : 'bg-[var(--color-surface-100)] text-[var(--color-text-muted)] border-[var(--color-border-200)]'}`}>
-                    {INVESTIGATION_STAGE_LABELS[s]}
-                  </div>
-                );
-              })}
-            </div>
-            <p className="text-xs text-[var(--color-text-muted)] mt-2">{getStageProgressPercent(investigation)}% workflow complete</p>
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {pageProgress.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => onTabChange(p.id)}
+                className={`text-left border p-3 transition-colors ${activeTab === p.id ? 'border-[var(--color-primary-900)] bg-blue-50' : 'border-[var(--color-border-200)] hover:border-[var(--color-primary-700)]'}`}
+              >
+                <p className="text-xs font-semibold text-[var(--color-text-muted)]">Page {p.step}</p>
+                <p className="font-medium text-sm mt-0.5">{p.label}</p>
+                <p className="text-[10px] text-[var(--color-text-secondary)] mt-1 line-clamp-2">{p.description}</p>
+                <div className="mt-2 h-1 bg-[var(--color-surface-200)]">
+                  <div className="h-full bg-[var(--color-primary-900)]" style={{ width: `${p.percent}%` }} />
+                </div>
+              </button>
+            ))}
           </div>
         </CardContent>
       </Card>
 
       <div className="flex flex-col lg:flex-row gap-6">
         <nav className="lg:w-56 shrink-0 lg:sticky lg:top-20 lg:self-start border border-[var(--color-border-200)] bg-[var(--color-surface-100)] p-2 h-fit max-h-[calc(100vh-6rem)] overflow-y-auto">
-          <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)] px-2 py-1">Investigation workflow</p>
-          {INVESTIGATION_TABS.map((t) => {
+          <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)] px-2 py-1">Investigation pages</p>
+          {INVESTIGATION_PAGES.map((t) => {
             const prog = moduleProgress[t.id];
+            const done =
+              investigation.workflowPagesCompleted?.[t.id === 'page-1' ? 'intake' : t.id === 'page-2' ? 'gathering' : 'outcome'];
             return (
               <button
                 key={t.id}
@@ -420,12 +346,31 @@ export function InvestigationWorkspace({
                 className={`w-full text-left px-3 py-2 text-sm rounded-none border-l-2 mb-0.5 ${activeTab === t.id ? 'border-[var(--color-primary-900)] bg-white font-medium text-[var(--color-primary-900)]' : 'border-transparent text-[var(--color-text-secondary)] hover:bg-white/80'}`}
               >
                 <span className="flex items-center justify-between gap-2">
-                  <span>{t.step ? `${t.step}. ` : ''}{t.label}</span>
-                  {prog && prog.percent > 0 && <span className="text-[10px] text-[var(--color-text-muted)]">{prog.percent}%</span>}
+                  <span>{t.step}. {t.label}</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)]">{done ? 'Done' : `${prog?.percent ?? 0}%`}</span>
                 </span>
               </button>
             );
           })}
+          <div className="px-2 py-3 border-t border-[var(--color-border-200)] mt-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                const idx = INVESTIGATION_PAGES.findIndex((p) => p.id === activeTab);
+                if (idx < INVESTIGATION_PAGES.length - 1) {
+                  const pageKey = activeTab === 'page-1' ? 'intake' : activeTab === 'page-2' ? 'gathering' : 'outcome';
+                  dataStore.markInvestigationPageComplete(investigation.id, pageKey);
+                  onTabChange(INVESTIGATION_PAGES[idx + 1].id);
+                  toast.success(`Page ${INVESTIGATION_PAGES[idx].step} marked complete.`);
+                }
+              }}
+              disabled={activeTab === 'page-3'}
+            >
+              Mark page complete &amp; continue
+            </Button>
+          </div>
         </nav>
         <div className="flex-1 min-w-0 pb-8">{sectionMap[activeTab]()}</div>
       </div>

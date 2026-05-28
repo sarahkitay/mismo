@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { employeeIncidentReportHeadline, isIncidentIntakeComplete } from '@/lib/utils';
+import { formatCaseReference } from '@/lib/caseTypes';
 import { toast } from 'sonner';
 
 interface EmployeeIncidentIntakeProps {
@@ -91,7 +92,9 @@ export function EmployeeIncidentIntake({ dataStore, reportId, onNavigate }: Empl
         <CardContent className="p-6">
           <p className="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Incident report reference</p>
           <p className="font-semibold text-[var(--mismo-text)] mt-1">{employeeIncidentReportHeadline(report)}</p>
-          <p className="text-xs text-[var(--mismo-text-secondary)] mt-1 font-mono">#{report.id.replace(/^report-/, '').toUpperCase()}</p>
+          <p className="text-xs text-[var(--mismo-text-secondary)] mt-1 font-mono">
+            Case reference: {formatCaseReference(report)} — use this ID in all correspondence with HR.
+          </p>
           <p className="text-xs text-[var(--mismo-text-secondary)] mt-2">Submitted {report.createdAt.toLocaleString()}</p>
         </CardContent>
       </Card>
