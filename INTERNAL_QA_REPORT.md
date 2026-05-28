@@ -91,6 +91,7 @@ Mismo is **ready for a guided client demo** on the production deployment after m
 7. **Scenario F seed** — pending request on `inv-outcome-demo`  
 8. **Convert NEW cases** to investigation from register  
 9. **3-page investigation + unified case ID** — prompt/self-report allocates `CAS-*`/`WH-*` once; investigation inherits same ID; EI form shows reference  
+10. **Dashboard & register feedback** — grouped response buckets (incident / wage-hour / memos / case register), status tiles on register, alphabetical prompt sort, dashboard metrics (resolved, avg resolution, active memos), memo list ID + active status, sidebar prompts link, activity route wired  
 
 ---
 

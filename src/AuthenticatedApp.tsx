@@ -35,6 +35,7 @@ import { AdminPromptResponses } from '@/pages/admin/AdminPromptResponses';
 import { AdminCaseRegister } from '@/pages/admin/AdminCaseRegister';
 import { AdminPromptResponseDetail } from '@/pages/admin/AdminPromptResponseDetail';
 import { AdminCompliance } from '@/pages/admin/AdminCompliance';
+import { AdminActivity } from '@/pages/admin/AdminActivity';
 import { ManagerDashboard } from '@/pages/manager/ManagerDashboard';
 import { ClientDashboard } from '@/pages/client/ClientDashboard';
 import { buildAppUrl, parseAppLocation, type AppRole } from '@/lib/appUrl';
@@ -312,6 +313,8 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
         return <ManagerDashboard dataStore={dataStore} onNavigate={handleNavigate} />;
       case 'client-dashboard':
         return <ClientDashboard dataStore={dataStore} />;
+      case 'activity':
+        return <AdminActivity dataStore={dataStore} />;
       case 'help':
         return <HelpSupport dataStore={dataStore} onNavigate={handleNavigate} />;
       default:

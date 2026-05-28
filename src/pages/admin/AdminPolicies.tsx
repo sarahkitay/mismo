@@ -4,6 +4,7 @@ import type { Policy } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
 import { defaultDateRange, inDateRange, type DateRangeState } from '@/lib/dateFilters';
 import { formatDate, getMemoCategoryDisplay } from '@/lib/utils';
@@ -212,6 +213,7 @@ export function AdminPolicies({ dataStore, onNavigate, initialFilters }: AdminPo
             <table className="w-full text-sm">
               <thead className="bg-[var(--color-surface-200)] text-[var(--color-text-secondary)]">
                 <tr>
+                  <th className="px-3 py-2 text-left">Memo ID</th>
                   <th className="px-3 py-2 text-left">Title</th>
                   <th className="px-3 py-2 text-left">Category</th>
                   <th className="px-3 py-2 text-left">Publish</th>
@@ -325,11 +327,16 @@ function MemoTableRow({
       className={`border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer ${archived ? 'opacity-80' : ''}`}
       onClick={() => onNavigate('policy-detail', { id: memo.id })}
     >
+      <td className="px-3 py-2 font-mono text-xs">{memo.id.replace(/^policy-/, 'MEM-').toUpperCase()}</td>
       <td className="px-3 py-2 font-medium max-w-[200px] truncate">{memo.title}</td>
       <td className="px-3 py-2 text-xs">{cat}</td>
       <td className="px-3 py-2 whitespace-nowrap">{formatDate(memo.effectiveDate)}</td>
       <td className="px-3 py-2 whitespace-nowrap">{memo.completionDueDate ? formatDate(memo.completionDueDate) : '-'}</td>
-      <td className="px-3 py-2">{memo.status}</td>
+      <td className="px-3 py-2">
+        <Badge className={memo.status === 'PUBLISHED' ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-100 text-slate-700'}>
+          {memo.status === 'PUBLISHED' ? 'Active' : memo.status}
+        </Badge>
+      </td>
       <td className="px-3 py-2">{memo.acknowledgmentRequired ? 'Yes' : 'No'}</td>
       <td className="px-3 py-2">{understood}</td>
       <td className="px-3 py-2">{clarification}</td>

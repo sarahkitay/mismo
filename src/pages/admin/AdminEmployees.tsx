@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { formatRelativeTime, formatPercent, formatDate, getInitials } from '@/lib/utils';
+import { compareByLastFirstName } from '@/lib/sortUsers';
 import type { User } from '@/types';
 import { mockDepartments } from '@/data/mockData';
 import { toast } from 'sonner';
@@ -121,7 +122,8 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
     }
   }, [importHeaders.length]);
 
-  const filteredEmployees = directoryUsers.filter((emp) => {
+  const filteredEmployees = directoryUsers
+    .filter((emp) => {
     const engagement = getEmployeeEngagement(emp.id);
     const matchesFilter =
       filter === 'ALL' ||
@@ -140,7 +142,8 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
     const matchesDepartment = departmentFilter === 'ALL' || emp.departmentId === departmentFilter;
     const matchesRole = roleFilter === 'ALL' || emp.role === roleFilter;
     return matchesFilter && matchesSearch && matchesDepartment && matchesRole;
-  });
+  })
+    .sort(compareByLastFirstName);
 
   const getDepartmentName = (deptId?: string) => {
     if (!deptId) return 'Unassigned';

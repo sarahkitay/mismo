@@ -15,7 +15,11 @@ import {
   isIncidentIntakeComplete,
   getEffectiveInvestigationPhase,
   investigationWorkflowLabel,
+  getSeverityColor,
+  getStatusColor,
 } from '@/lib/utils';
+import { compareByLastFirstName } from '@/lib/sortUsers';
+import { Badge } from '@/components/ui/badge';
 import { CASE_TYPE_LABELS, formatCaseReference, getReportStatusLabel, inferCaseType } from '@/lib/caseTypes';
 import { Icons } from '@/lib/icons';
 import { toast } from 'sonner';
@@ -56,7 +60,12 @@ export type CaseRegisterBucket =
   | 'NEW_CRITICAL'
   | 'NEEDS_RESPONSE';
 
-function deriveBucket(filters: Record<string, string>): CaseRegisterBucket {
+function deriveBucket(filters: Record<string, string>, hubPage: 'prompt-responses' | 'case-register'): CaseRegisterBucket {
+  if (filters.channel === 'register' || filters.channel === 'wage_hour') {
+    if (filters.critical === '1') return 'NEW_CRITICAL';
+    if (filters.needs_info === '1') return 'NEEDS_RESPONSE';
+    return 'CASE_REGISTER';
+  }
   if (filters.critical === '1') return 'NEW_CRITICAL';
   if (filters.needs_info === '1') return 'NEEDS_RESPONSE';
   if (filters.answer === 'HAS_ISSUE') return 'PROMPT_YES';
@@ -69,13 +78,16 @@ function deriveBucket(filters: Record<string, string>): CaseRegisterBucket {
     filters.unassigned === '1' ||
     filters.new24h === '1' ||
     filters.new7d === '1' ||
-    filters.over_sla === '1'
+    filters.over_sla === '1' ||
+    hubPage === 'case-register'
   ) {
     return 'CASE_REGISTER';
   }
   if (filters.view === 'prompts') return 'PROMPT_ALL';
   return 'PROMPT_ALL';
 }
+
+type PromptChannel = 'incident' | 'wage_hour' | 'memo' | 'register';
 
 interface AdminCaseRegisterHubProps {
   dataStore: DataStore;
@@ -89,7 +101,15 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
   const filters = initialFilters ?? {};
   const { reports, users, investigations, deliveries, responses, prompts, assignReport, updateReportStatus, createInvestigation } = dataStore;
 
-  const bucket = deriveBucket(filters);
+  const bucket = deriveBucket(filters, hubPage);
+  const promptChannel: PromptChannel =
+    filters.channel === 'wage_hour' || filters.channel === 'memo' || filters.channel === 'register'
+      ? (filters.channel as PromptChannel)
+      : filters.channel === 'incident'
+        ? 'incident'
+        : hubPage === 'case-register'
+          ? 'register'
+          : 'incident';
   const needsReviewOnly = filters.needs_review === '1';
   const filterKey = JSON.stringify(filters);
 
@@ -121,7 +141,8 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
   const tileNew24h = filters.new24h === '1';
   const tileNew7d = filters.new7d === '1';
   const tileOverSla = filters.over_sla === '1';
-  const caseTypeFilter = filters.caseType ?? 'ALL';
+  const caseTypeFilter =
+    filters.caseType ?? (promptChannel === 'wage_hour' ? 'WAGE_HOUR' : 'ALL');
 
   const registerReports = useMemo(
     () => reports.filter((r) => !isUnderOpenInvestigation(r, investigations)),
@@ -150,53 +171,78 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
   }, [registerReports]);
 
   const unansweredCount = deliveries.filter((d) => d.status === 'PENDING').length;
-  const yesCount = responses.filter((r) => r.answer === 'HAS_ISSUE').length;
   const yesNeedingReviewCount = useMemo(
     () => responses.filter((r) => r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false).length,
     [responses]
   );
-  const noCount = responses.filter((r) => r.answer === 'NO_ISSUE').length;
+  const promptIdsForChannel = useMemo(() => {
+    if (promptChannel === 'incident') {
+      return new Set(prompts.filter((p) => p.type === 'INCIDENT').map((p) => p.id));
+    }
+    if (promptChannel === 'wage_hour') {
+      return new Set(
+        prompts.filter((p) => p.includeFinancialQuestion || p.title.toLowerCase().includes('wage')).map((p) => p.id)
+      );
+    }
+    return new Set(prompts.map((p) => p.id));
+  }, [prompts, promptChannel]);
 
   const promptRows = useMemo(() => {
     if (bucket === 'CASE_REGISTER' || bucket === 'NEW_CRITICAL' || bucket === 'NEEDS_RESPONSE') return [];
+    if (promptChannel === 'memo' || promptChannel === 'register') return [];
     const q = promptQuery.trim().toLowerCase();
+    const sortRows = <T extends { userId?: string; userName: string; date: Date }>(rows: T[]) =>
+      [...rows].sort((a, b) => {
+        const ua = a.userId ? users.find((u) => u.id === a.userId) : undefined;
+        const ub = b.userId ? users.find((u) => u.id === b.userId) : undefined;
+        if (ua && ub) {
+          const byName = compareByLastFirstName(ua, ub);
+          if (byName !== 0) return byName;
+        }
+        return b.date.getTime() - a.date.getTime();
+      });
+
     if (bucket === 'PROMPT_UNANSWERED') {
-      return deliveries
-        .filter((d) => d.status === 'PENDING' && inDateRange(d.deliveredAt, range))
-        .map((d) => {
-          const u = users.find((user) => user.id === d.userId);
+      return sortRows(
+        deliveries
+          .filter((d) => d.status === 'PENDING' && inDateRange(d.deliveredAt, range) && promptIdsForChannel.has(d.promptId))
+          .map((d) => {
+            const u = users.find((user) => user.id === d.userId);
+            return {
+              id: d.id,
+              userId: d.userId,
+              promptTitle: prompts.find((p) => p.id === d.promptId)?.title ?? 'Prompt',
+              userName: u ? `${u.firstName} ${u.lastName}` : 'Employee',
+              answer: 'UNANSWERED' as const,
+              date: d.deliveredAt,
+            };
+          })
+          .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
+      );
+    }
+    const ansFilter = bucket === 'PROMPT_YES' ? 'HAS_ISSUE' : bucket === 'PROMPT_NO' ? 'NO_ISSUE' : null;
+    return sortRows(
+      responses
+        .filter((r) => inDateRange(r.createdAt, range) && promptIdsForChannel.has(r.promptId))
+        .filter((r) => ansFilter === null || r.answer === ansFilter)
+        .filter((r) => {
+          if (!needsReviewOnly || bucket !== 'PROMPT_YES') return true;
+          return r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false;
+        })
+        .map((r) => {
+          const u = users.find((user) => user.id === r.userId);
           return {
-            id: d.id,
-            promptTitle: prompts.find((p) => p.id === d.promptId)?.title ?? 'Prompt',
+            id: r.id,
+            userId: r.userId,
+            promptTitle: prompts.find((p) => p.id === r.promptId)?.title ?? 'Prompt',
             userName: u ? `${u.firstName} ${u.lastName}` : 'Employee',
-            answer: 'UNANSWERED' as const,
-            date: d.deliveredAt,
+            answer: r.answer,
+            date: r.submittedAt,
           };
         })
         .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
-        .sort((a, b) => b.date.getTime() - a.date.getTime());
-    }
-    const ansFilter = bucket === 'PROMPT_YES' ? 'HAS_ISSUE' : bucket === 'PROMPT_NO' ? 'NO_ISSUE' : null;
-    return responses
-      .filter((r) => inDateRange(r.createdAt, range))
-      .filter((r) => ansFilter === null || r.answer === ansFilter)
-      .filter((r) => {
-        if (!needsReviewOnly || bucket !== 'PROMPT_YES') return true;
-        return r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false;
-      })
-      .map((r) => {
-        const u = users.find((user) => user.id === r.userId);
-        return {
-          id: r.id,
-          promptTitle: prompts.find((p) => p.id === r.promptId)?.title ?? 'Prompt',
-          userName: u ? `${u.firstName} ${u.lastName}` : 'Employee',
-          answer: r.answer,
-          date: r.submittedAt,
-        };
-      })
-      .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
-      .sort((a, b) => b.date.getTime() - a.date.getTime());
-  }, [bucket, deliveries, responses, prompts, users, range, promptQuery, needsReviewOnly]);
+    );
+  }, [bucket, deliveries, responses, prompts, users, range, promptQuery, needsReviewOnly, promptChannel, promptIdsForChannel]);
 
   const filteredRegisterReports = useMemo(() => {
     const ms24h = 24 * 60 * 60 * 1000;
@@ -253,15 +299,25 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
   ]);
 
   const applyTile = (params: Record<string, string>) => {
-    onNavigate('case-register', { view: 'register', register: '1', ...params });
+    goRegister(params);
   };
-  const clearTile = () => onNavigate('case-register', { view: 'register', register: '1' });
-  const goPrompt = (params: Record<string, string>) => onNavigate('prompt-responses', { view: 'prompts', ...params });
+  const clearTile = () => goRegister({});
+  const goPrompt = (params: Record<string, string>) =>
+    onNavigate('prompt-responses', { view: 'prompts', channel: promptChannel === 'register' ? 'incident' : promptChannel, ...params });
+  const goRegister = (params: Record<string, string>) =>
+    onNavigate('case-register', { view: 'register', register: '1', channel: 'register', ...params });
 
   const showCaseTable =
-    bucket === 'CASE_REGISTER' || bucket === 'NEW_CRITICAL' || bucket === 'NEEDS_RESPONSE';
+    promptChannel === 'register' ||
+    promptChannel === 'wage_hour' ||
+    bucket === 'CASE_REGISTER' ||
+    bucket === 'NEW_CRITICAL' ||
+    bucket === 'NEEDS_RESPONSE';
   const showPromptList =
-    bucket === 'PROMPT_ALL' || bucket === 'PROMPT_YES' || bucket === 'PROMPT_NO' || bucket === 'PROMPT_UNANSWERED';
+    promptChannel !== 'register' &&
+    promptChannel !== 'memo' &&
+    promptChannel !== 'wage_hour' &&
+    (bucket === 'PROMPT_ALL' || bucket === 'PROMPT_YES' || bucket === 'PROMPT_NO' || bucket === 'PROMPT_UNANSWERED');
 
   const toggleRow = (id: string) => {
     setSelectedRows((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
@@ -298,49 +354,72 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <BucketBtn
-          active={bucket === 'PROMPT_YES' && !needsReviewOnly}
-          onClick={() => goPrompt({ answer: 'HAS_ISSUE', rangePreset: filters.rangePreset ?? 'ALL' })}
-        >
-          Yes ({yesCount})
-        </BucketBtn>
-        <BucketBtn
-          active={bucket === 'PROMPT_YES' && needsReviewOnly}
-          onClick={() => goPrompt({ answer: 'HAS_ISSUE', needs_review: '1', rangePreset: 'ALL' })}
-        >
-          Yes · needs review ({yesNeedingReviewCount})
-        </BucketBtn>
-        <BucketBtn
-          active={bucket === 'PROMPT_NO'}
-          onClick={() => goPrompt({ answer: 'NO_ISSUE', rangePreset: filters.rangePreset ?? 'ALL' })}
-        >
-          No ({noCount})
-        </BucketBtn>
-        <BucketBtn
-          active={bucket === 'PROMPT_UNANSWERED'}
-          onClick={() => goPrompt({ bucket: 'UNANSWERED', rangePreset: filters.rangePreset ?? 'ALL' })}
-        >
-          Unanswered ({unansweredCount})
-        </BucketBtn>
-        <BucketBtn active={bucket === 'PROMPT_ALL'} onClick={() => goPrompt({ rangePreset: filters.rangePreset ?? 'ALL' })}>
-          All check-ins
-        </BucketBtn>
-        <BucketBtn active={bucket === 'CASE_REGISTER'} onClick={() => onNavigate('case-register', { view: 'register', register: '1' })}>
-          Case register
-        </BucketBtn>
-        <BucketBtn active={bucket === 'NEW_CRITICAL'} onClick={() => onNavigate('case-register', { view: 'register', register: '1', critical: '1' })}>
-          New critical
-        </BucketBtn>
-        <BucketBtn active={bucket === 'NEEDS_RESPONSE'} onClick={() => onNavigate('case-register', { view: 'register', register: '1', needs_info: '1' })}>
-          Needs clarification
-        </BucketBtn>
-        <BucketBtn active={false} onClick={() => onNavigate('policies', { memoQueue: 'pending_ack' })}>
-          Memo tasks pending →
-        </BucketBtn>
-        <BucketBtn active={false} onClick={() => onNavigate('policies', { memoQueue: 'clarification' })}>
-          Memos need clarification →
-        </BucketBtn>
+      <div className="space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)] mb-2">Issue responses (incident query)</p>
+          <div className="flex flex-wrap gap-2">
+            <BucketBtn
+              active={promptChannel === 'incident' && bucket === 'PROMPT_YES' && !needsReviewOnly}
+              onClick={() => goPrompt({ channel: 'incident', answer: 'HAS_ISSUE', rangePreset: filters.rangePreset ?? 'ALL' })}
+            >
+              Yes ({responses.filter((r) => r.answer === 'HAS_ISSUE' && prompts.find((p) => p.id === r.promptId)?.type === 'INCIDENT').length})
+            </BucketBtn>
+            <BucketBtn
+              active={promptChannel === 'incident' && bucket === 'PROMPT_YES' && needsReviewOnly}
+              onClick={() => goPrompt({ channel: 'incident', answer: 'HAS_ISSUE', needs_review: '1', rangePreset: 'ALL' })}
+            >
+              Yes · needs review ({yesNeedingReviewCount})
+            </BucketBtn>
+            <BucketBtn
+              active={promptChannel === 'incident' && bucket === 'PROMPT_NO'}
+              onClick={() => goPrompt({ channel: 'incident', answer: 'NO_ISSUE', rangePreset: filters.rangePreset ?? 'ALL' })}
+            >
+              No ({responses.filter((r) => r.answer === 'NO_ISSUE' && prompts.find((p) => p.id === r.promptId)?.type === 'INCIDENT').length})
+            </BucketBtn>
+            <BucketBtn
+              active={promptChannel === 'incident' && bucket === 'PROMPT_UNANSWERED'}
+              onClick={() => goPrompt({ channel: 'incident', bucket: 'UNANSWERED', rangePreset: filters.rangePreset ?? 'ALL' })}
+            >
+              Unanswered ({unansweredCount})
+            </BucketBtn>
+          </div>
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)] mb-2">Wage &amp; hour responses</p>
+          <div className="flex flex-wrap gap-2">
+            <BucketBtn
+              active={promptChannel === 'wage_hour'}
+              onClick={() => goRegister({ caseType: 'WAGE_HOUR' })}
+            >
+              Wage &amp; hour cases ({registerReports.filter((r) => inferCaseType(r.category, r.caseType) === 'WAGE_HOUR').length})
+            </BucketBtn>
+          </div>
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)] mb-2">Memos</p>
+          <div className="flex flex-wrap gap-2">
+            <BucketBtn active={false} onClick={() => onNavigate('policies', { memoQueue: 'pending_ack' })}>
+              Pending acknowledgement →
+            </BucketBtn>
+            <BucketBtn active={false} onClick={() => onNavigate('policies', { memoQueue: 'clarification' })}>
+              Need clarification →
+            </BucketBtn>
+          </div>
+        </div>
+        <div>
+          <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)] mb-2">Case register</p>
+          <div className="flex flex-wrap gap-2">
+            <BucketBtn active={promptChannel === 'register' && bucket === 'CASE_REGISTER'} onClick={() => goRegister({})}>
+              All open cases ({registerReports.filter((r) => isOpenReport(r)).length})
+            </BucketBtn>
+            <BucketBtn active={bucket === 'NEW_CRITICAL'} onClick={() => goRegister({ critical: '1' })}>
+              New critical
+            </BucketBtn>
+            <BucketBtn active={bucket === 'NEEDS_RESPONSE'} onClick={() => goRegister({ needs_info: '1' })}>
+              Needs clarification
+            </BucketBtn>
+          </div>
+        </div>
       </div>
 
       {showCaseTable && (
@@ -397,6 +476,15 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                 <option value="NEEDS_INFO">NEEDS INFO</option>
                 <option value="RESOLVED">RESOLVED</option>
                 <option value="CLOSED">CLOSED</option>
+              </select>
+              <select
+                className="border border-[var(--color-border-200)] px-3 py-2 bg-white text-sm"
+                value={caseTypeFilter}
+                onChange={(e) => goRegister({ caseType: e.target.value })}
+              >
+                <option value="ALL">All case types</option>
+                <option value="WORKPLACE_INVESTIGATION">Workplace</option>
+                <option value="WAGE_HOUR">Wage &amp; hour</option>
               </select>
               <select
                 className="border border-[var(--color-border-200)] px-3 py-2 bg-white text-sm"
@@ -532,7 +620,19 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                         <td className="px-3 py-2 text-xs">{CASE_TYPE_LABELS[inferCaseType(report.category, report.caseType)]}</td>
                         <td className="px-3 py-2 text-[var(--color-text-secondary)] whitespace-nowrap">{formatDate(report.createdAt)}</td>
                         <td className="px-3 py-2 text-[var(--color-text-secondary)]">
-                          {report.isAnonymous ? 'Anonymous' : reporter ? `${reporter.firstName} ${reporter.lastName}` : '-'}
+                          {report.isAnonymous ? (
+                            'Anonymous'
+                          ) : reporter ? (
+                            <button
+                              type="button"
+                              className="text-[var(--mismo-blue)] hover:underline"
+                              onClick={() => onNavigate('employee-detail', { id: reporter.id })}
+                            >
+                              {reporter.firstName} {reporter.lastName}
+                            </button>
+                          ) : (
+                            '-'
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <span className={isIncidentIntakeComplete(report) ? 'text-emerald-700' : 'text-amber-700'}>
@@ -554,10 +654,10 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                         </td>
                         <td className="px-3 py-2">{getCategoryLabel(report.category)}</td>
                         <td className="px-3 py-2">
-                          <span className="px-2 py-1 text-xs border border-[var(--color-border-200)] text-[var(--color-text-secondary)]">{report.severity}</span>
+                          <Badge className={getSeverityColor(report.severity)}>{report.severity}</Badge>
                         </td>
                         <td className="px-3 py-2">
-                          <span className="px-2 py-1 text-xs border border-[var(--color-border-200)] text-[var(--color-text-secondary)]">{getReportStatusLabel(report.status)}</span>
+                          <Badge className={getStatusColor(report.status)}>{getReportStatusLabel(report.status)}</Badge>
                         </td>
                         <td className="px-3 py-2">{assignee ? `${assignee.firstName} ${assignee.lastName}` : 'Unassigned'}</td>
                         <td className="px-3 py-2 text-[var(--color-text-secondary)]">{formatRelativeTime(report.updatedAt)}</td>
@@ -621,17 +721,36 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
         <Card className="mismo-card border border-[var(--color-border-200)]">
           <CardContent className="p-0">
             {promptRows.map((row) => (
-              <button
+              <div
                 key={row.id}
-                type="button"
-                className="interactive-control w-full border-b border-[var(--color-border-200)] px-4 py-3 text-left hover:bg-[var(--color-surface-200)]"
-                onClick={() => onNavigate('prompt-response-detail', { id: row.id, type: row.answer })}
+                className="interactive-control w-full border-b border-[var(--color-border-200)] px-4 py-3 flex flex-wrap items-center justify-between gap-2 hover:bg-[var(--color-surface-200)]"
               >
-                <p className="font-medium text-[var(--mismo-text)]">{row.promptTitle}</p>
-                <p className="text-sm text-[var(--mismo-text-secondary)]">
-                  {row.userName} · {row.answer} · {formatDate(row.date)}
-                </p>
-              </button>
+                <button
+                  type="button"
+                  className="text-left flex-1 min-w-0"
+                  onClick={() =>
+                    row.answer === 'UNANSWERED'
+                      ? row.userId && onNavigate('employee-detail', { id: row.userId })
+                      : onNavigate('prompt-response-detail', { id: row.id, type: row.answer })
+                  }
+                >
+                  <p className="font-medium text-[var(--mismo-text)]">{row.promptTitle}</p>
+                  <p className="text-sm text-[var(--mismo-text-secondary)]">
+                    {row.answer} · {formatDate(row.date)}
+                  </p>
+                </button>
+                {row.userId ? (
+                  <button
+                    type="button"
+                    className="text-sm text-[var(--mismo-blue)] hover:underline shrink-0"
+                    onClick={() => onNavigate('employee-detail', { id: row.userId! })}
+                  >
+                    {row.userName}
+                  </button>
+                ) : (
+                  <span className="text-sm text-[var(--mismo-text-secondary)]">{row.userName}</span>
+                )}
+              </div>
             ))}
             {promptRows.length === 0 && <p className="p-6 text-sm text-[var(--mismo-text-secondary)]">No check-ins match the current filters.</p>}
           </CardContent>
