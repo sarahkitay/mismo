@@ -3,6 +3,7 @@ import type { DataStore } from '@/hooks/useDataStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
+import { toast } from 'sonner';
 import { Icons } from '@/lib/icons';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
@@ -47,7 +48,7 @@ function ActionLine({
 
 export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
   const dc = dataStore.dashboardCounts;
-  const { policies, policyAcknowledgements, responses, deliveries, investigations, activities, users } = dataStore;
+  const { policies, policyAcknowledgements, responses, deliveries, investigations, activities, users, reports } = dataStore;
 
   const chartData = useMemo(() => {
     const yesCount = responses.filter((r) => r.answer === 'HAS_ISSUE').length;
@@ -102,6 +103,14 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
     const invRate = investigations.length ? investigations.filter((i) => i.status === 'CLOSED').length / investigations.length : 1;
     return (policyRate * 0.28 + promptRate * 0.26 + invRate * 0.3 + 0.16) * 100;
   }, [users, policies, policyAcknowledgements, deliveries, responses, investigations]);
+
+  const totalYesResponses = responses.filter((r) => r.answer === 'HAS_ISSUE').length;
+  const resolvedReports = reports.filter((r) => ['RESOLVED', 'CLOSED'].includes(r.status));
+  const avgResolutionDays = resolvedReports.length
+    ? resolvedReports.reduce((sum, r) => sum + (r.updatedAt.getTime() - r.createdAt.getTime()) / (1000 * 60 * 60 * 24), 0) /
+      resolvedReports.length
+    : 0;
+  const activeMemosCount = policies.filter((p) => p.status === 'PUBLISHED').length;
 
   const upcomingMemoDeadlines = policies
     .filter((p) => p.status === 'PUBLISHED' && p.completionDueDate)
@@ -174,6 +183,11 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
                       count={dc.memoAcknowledgementsPending}
                       onClick={() => onNavigate('policies', { memoQueue: 'pending_ack' })}
                     />
+                    <ActionLine
+                      label="Memos needing clarification"
+                      count={dc.memosNeedingClarification}
+                      onClick={() => onNavigate('policies', { memoQueue: 'clarification' })}
+                    />
                   </div>
                 )}
                 <Button
@@ -213,29 +227,43 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
         {[
           {
-            label: 'Yes responses',
-            count: responses.filter((r) => r.answer === 'HAS_ISSUE').length,
-            helper: 'Check-in answers where staff chose Yes; review first.',
+            label: 'Total yes answers',
+            count: totalYesResponses,
+            helper: 'All-time check-in answers where staff chose Yes.',
             action: 'Review yes responses',
-            onClick: () => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', view: 'prompts', rangePreset: 'ALL' }),
+            onClick: () => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', view: 'prompts', channel: 'incident', rangePreset: 'ALL' }),
             accent: 'text-[var(--color-alert-600)]',
           },
           {
             label: 'Open investigations',
             count: dc.activeInvestigations,
-            helper: 'Formal investigations in progress on the register.',
+            helper: 'Includes Yes responses under active review and formal investigations.',
             action: 'View investigations',
             onClick: () => onNavigate('investigations', { status: 'OPEN' }),
           },
           {
-            label: 'Memo responses pending',
-            count: dc.memoAcknowledgementsPending,
-            helper: 'Published memos awaiting employee acknowledgement.',
-            action: 'View memo responses',
-            onClick: () => onNavigate('policies', { memoQueue: 'pending_ack' }),
+            label: 'Resolved cases',
+            count: resolvedReports.length,
+            helper: 'Reports marked resolved or closed.',
+            action: 'View resolved',
+            onClick: () => onNavigate('case-register', { view: 'register', register: '1', status: 'RESOLVED,CLOSED' }),
+          },
+          {
+            label: 'Avg resolution (days)',
+            count: `${avgResolutionDays.toFixed(1)}`,
+            helper: 'Days from open to resolved/closed (resolved cases only).',
+            action: 'Open analytics',
+            onClick: () => onNavigate('analytics'),
+          },
+          {
+            label: 'Active memos',
+            count: activeMemosCount,
+            helper: 'Published memos currently live in the employee portal.',
+            action: 'Manage memos',
+            onClick: () => onNavigate('policies'),
           },
           {
             label: 'At-risk employees',
@@ -248,11 +276,32 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
           <Card key={card.label} className="mismo-card h-full hover:border-[var(--color-primary-700)] transition-colors">
             <CardContent className="p-5 flex h-full flex-col">
               <p className="text-[12px] uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">{card.label}</p>
-              <p className={`font-command text-4xl font-medium tabular-nums mt-2 ${card.accent ?? ''}`}>{card.count}</p>
+              <p className={`font-command text-4xl font-medium tabular-nums mt-2 ${'accent' in card ? card.accent ?? '' : ''}`}>{card.count}</p>
               <p className="text-xs text-[var(--color-text-secondary)] mt-2 flex-1">{card.helper}</p>
-              <Button variant="outline" className="mt-4 w-full border-[var(--color-primary-900)] text-[var(--color-primary-900)]" onClick={card.onClick}>
-                {card.action} →
-              </Button>
+              <div className="mt-4 flex flex-col gap-2">
+                <Button variant="outline" className="w-full border-[var(--color-primary-900)] text-[var(--color-primary-900)]" onClick={card.onClick}>
+                  {card.action} →
+                </Button>
+                {card.label === 'At-risk employees' && dc.atRiskEmployees > 0 && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full text-xs"
+                      onClick={() => {
+                        const emails = users
+                          .filter((u) => u.role === 'EMPLOYEE' && dataStore.getEmployeeEngagement(u.id)?.isAtRisk)
+                          .map((u) => u.email)
+                          .join(', ');
+                        void navigator.clipboard.writeText(emails);
+                        toast.success('At-risk employee emails copied.');
+                      }}
+                    >
+                      Copy emails
+                    </Button>
+                  </>
+                )}
+              </div>
             </CardContent>
           </Card>
         ))}

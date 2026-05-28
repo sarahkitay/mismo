@@ -13,7 +13,7 @@ export function AdminCaseRegister({ dataStore, onNavigate, initialFilters }: Adm
       dataStore={dataStore}
       onNavigate={onNavigate}
       hubPage="case-register"
-      initialFilters={{ view: 'register', register: '1', ...initialFilters }}
+      initialFilters={{ view: 'register', register: '1', channel: 'register', ...initialFilters }}
     />
   );
 }

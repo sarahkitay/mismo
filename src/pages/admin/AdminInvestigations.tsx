@@ -85,12 +85,18 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
         (tileFromUrl === 'awaiting_doc' && inv.status === 'OPEN' && linked.some((r) => ['ASSIGNED', 'IN_REVIEW', 'TRIAGED', 'NEW'].includes(r.status))) ||
         (tileFromUrl === 'ready_to_close' && inv.status === 'OPEN' && linked.length > 0 && linked.every((r) => ['RESOLVED', 'CLOSED'].includes(r.status)));
       
-      const matchesSearch = searchQuery === '' || 
-        inv.linkedReportIds.some(reportId => {
-          const report = reports.find(r => r.id === reportId);
-          return report && (
-            report.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            report.description.toLowerCase().includes(searchQuery.toLowerCase())
+      const q = searchQuery.toLowerCase();
+      const matchesSearch =
+        searchQuery === '' ||
+        (inv.referenceNumber?.toLowerCase().includes(q) ?? false) ||
+        inv.id.toLowerCase().includes(q) ||
+        inv.linkedReportIds.some((reportId) => {
+          const report = reports.find((r) => r.id === reportId);
+          return (
+            report &&
+            (report.summary.toLowerCase().includes(q) ||
+              report.description.toLowerCase().includes(q) ||
+              (report.referenceNumber?.toLowerCase().includes(q) ?? false))
           );
         });
       

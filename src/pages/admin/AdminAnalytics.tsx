@@ -222,7 +222,7 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
           </CardContent>
         </Card>
         </button>
-        <button type="button" className="text-left" onClick={() => onNavigate('users', { filter: 'at_risk' })}>
+        <button type="button" className="text-left" onClick={() => onNavigate('users', { atRisk: 'true' })}>
         <Card className="metric-card mismo-card hover:border-[var(--mismo-blue)] transition-colors h-full">
           <CardContent className="p-5">
             <p className="text-sm text-[var(--mismo-text-secondary)]">At-risk employees</p>
@@ -355,7 +355,9 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
 
       <Card className="metric-card mismo-card border border-[var(--color-border-200)]">
         <CardContent className="p-5">
-          <h3 className="mismo-heading text-2xl text-[var(--color-primary-900)]">Gina C. Performance Metrics</h3>
+          <h3 className="mismo-heading text-2xl text-[var(--color-primary-900)]">
+            {dataStore.currentUser.firstName} {dataStore.currentUser.lastName} — performance
+          </h3>
           <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">Personalized admin metrics for this reporting window</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
             <div className="border border-[var(--color-border-200)] p-4 bg-[var(--color-surface-100)]">
