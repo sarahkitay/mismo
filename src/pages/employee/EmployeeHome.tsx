@@ -1,36 +1,9 @@
-import { useEffect, useState } from 'react';
-import type { PromptAnswer } from '@/types';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Icons } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { employeeIncidentReportHeadline, formatDate, formatRelativeTime, getStatusColor, isEmployeeReportIntakeComplete } from '@/lib/utils';
+import { employeeIncidentReportHeadline, formatRelativeTime, getStatusColor, isEmployeeReportIntakeComplete } from '@/lib/utils';
 import { ReportConcernSection } from '@/components/employee/ReportConcernSection';
-import { toast } from 'sonner';
-
-/** EQC-style mandatory incident query copy (shown for prompts with type INCIDENT). */
-const EQC_INCIDENT_QUESTION =
-  "Have you experienced or witnessed an incident or occurrence which you perceive to be a violation of your or your co-worker's employment rights that you have not reported prior to this question.";
-
-const EQC_RETALIATION_NOTE =
-  'You will not be retaliated against for sharing a concern in good faith. Retaliation is against the law and is not tolerated by this company.';
-
-const EQC_CONFIRMATION_BODY =
-  'Thank you for letting us know. Your response will be reviewed by the appropriate HR contact. If this was selected by mistake, you can go back and update your answer before submitting.';
-
-/** Shown after the main check-in when the prompt has `includeFinancialQuestion`. */
-const FINANCIAL_SCREENING_QUESTION =
-  'Are you aware of any issue related to pay, bonuses, reimbursements, benefits, or other compensation that you believe may be incorrect, withheld without proper explanation, or inconsistent with company policy or applicable law?';
-
-const FINANCIAL_SCREENING_NOTE =
-  'This question is included because your organization turned on the optional financial screening for this check-in. Your answer is stored with your check-in response.';
-
-function formatEqcHeaderDate(d: Date): string {
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  return `${mm}.${dd}.${yyyy}`;
-}
 
 interface EmployeeHomeProps {
   dataStore: DataStore;
@@ -38,151 +11,16 @@ interface EmployeeHomeProps {
 }
 
 export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
-  const {
-    currentUser,
-    pendingPromptsForEmployee,
-    employeeReports,
-    submitPromptResponse,
-    submitIncidentPromptYes,
-    policies,
-    policyAcknowledgements,
-    organizationName,
-    responses,
-  } = dataStore;
+  const { currentUser, pendingPromptsForEmployee, employeeReports, policies, policyAcknowledgements } = dataStore;
   const unreadPolicies = policies.filter(
     (p) =>
       p.status === 'PUBLISHED' &&
       p.acknowledgmentRequired &&
       !policyAcknowledgements.some((a) => a.policyId === p.id && a.userId === currentUser.id)
   );
-  const heroPrompt = pendingPromptsForEmployee[0];
-  const heroPromptAlreadyAnswered = Boolean(
-    heroPrompt &&
-      responses.some(
-        (r) => r.promptDeliveryId === heroPrompt.id && r.userId === currentUser.id && r.finalizedAt
-      )
-  );
-  const showCheckInGate = Boolean(heroPrompt) && !heroPromptAlreadyAnswered;
-  const isIncidentGate = Boolean(heroPrompt?.prompt.type === 'INCIDENT');
-  const wantsFinancialFollowUp = Boolean(heroPrompt?.prompt.includeFinancialQuestion);
-  const [incidentStep, setIncidentStep] = useState<'question' | 'yes_confirm'>('question');
-  type FinancialFollowUp = {
-    deliveryId: string;
-    answer: PromptAnswer;
-    promptIdForReport?: string;
-    incidentRestoreStep?: 'question' | 'yes_confirm';
-  };
-  const [financialFollowUp, setFinancialFollowUp] = useState<FinancialFollowUp | null>(null);
-  useEffect(() => {
-    setIncidentStep('question');
-    setFinancialFollowUp(null);
-  }, [heroPrompt?.id]);
-
-  useEffect(() => {
-    if (heroPromptAlreadyAnswered) {
-      setFinancialFollowUp(null);
-      setIncidentStep('question');
-    }
-  }, [heroPromptAlreadyAnswered]);
-
   const isFullyCaughtUp = pendingPromptsForEmployee.length === 0 && unreadPolicies.length === 0;
-  /** No mandatory check-in card: show the lighter dashboard (with or without memos to sign). */
-  const showRelaxedDashboard = !showCheckInGate && pendingPromptsForEmployee.length === 0;
-  const eqcHeaderDate = formatEqcHeaderDate(new Date());
+  const showRelaxedDashboard = pendingPromptsForEmployee.length === 0;
 
-  const submitFinancialAndClose = (hasPayConcern: boolean) => {
-    if (!financialFollowUp) return;
-    const note = hasPayConcern
-      ? 'Financial follow-up: employee indicated a pay, compensation, or benefits-related concern.'
-      : 'Financial follow-up: no pay, compensation, or benefits-related concern indicated.';
-    const { deliveryId, answer, promptIdForReport } = financialFollowUp;
-    setFinancialFollowUp(null);
-    setIncidentStep('question');
-
-    if (answer === 'HAS_ISSUE' && isIncidentGate) {
-      const result = submitIncidentPromptYes(deliveryId, note);
-      if (result) {
-        toast.success(
-          'Thank you. Your response is recorded and a secure case has been opened. Complete the brief intake form next.',
-          { duration: 7000 }
-        );
-        onNavigate(`incident-intake/${result.report.id}`);
-      }
-      return;
-    }
-
-    submitPromptResponse(deliveryId, answer, note);
-    if (answer === 'HAS_ISSUE' && promptIdForReport) {
-      toast.info(
-        'HR is alerted on the admin dashboard and by email (simulated). You will receive a receipt with next steps and a link to your incident portal to complete documentation.',
-        { duration: 7000 }
-      );
-      onNavigate('report-new', { promptId: promptIdForReport, deliveryId });
-    } else if (answer === 'NO_ISSUE' && isIncidentGate) {
-      toast.success('Your response has been recorded. No further action is needed for this check-in.');
-    } else {
-      toast.success('Response recorded in compliance log.');
-    }
-  };
-
-  const cancelFinancialFollowUp = () => {
-    if (financialFollowUp?.incidentRestoreStep) {
-      setIncidentStep(financialFollowUp.incidentRestoreStep);
-    }
-    setFinancialFollowUp(null);
-  };
-
-  const handleNoIssues = (deliveryId: string) => {
-    if (wantsFinancialFollowUp) {
-      setFinancialFollowUp({
-        deliveryId,
-        answer: 'NO_ISSUE',
-        incidentRestoreStep: isIncidentGate ? incidentStep : undefined,
-      });
-      return;
-    }
-    submitPromptResponse(deliveryId, 'NO_ISSUE');
-    toast.success(
-      isIncidentGate
-        ? 'Your response has been recorded. No further action is needed for this check-in.'
-        : 'Your response has been recorded.'
-    );
-  };
-
-  /** Non–incident prompts: log issue and open optional detailed report flow. */
-  const handleHaveIssueWithReport = (deliveryId: string, promptId: string) => {
-    if (wantsFinancialFollowUp) {
-      setFinancialFollowUp({ deliveryId, answer: 'HAS_ISSUE', promptIdForReport: promptId });
-      return;
-    }
-    submitPromptResponse(deliveryId, 'HAS_ISSUE');
-    toast.info(
-      'HR is alerted on the admin dashboard and by email (simulated). You will receive a receipt with next steps and a link to your incident portal to complete documentation.',
-      { duration: 7000 }
-    );
-    onNavigate('report-new', { promptId, deliveryId });
-  };
-
-  const handleIncidentYesContinue = () => {
-    setIncidentStep('yes_confirm');
-  };
-
-  const handleIncidentYesSubmit = (deliveryId: string) => {
-    if (wantsFinancialFollowUp) {
-      setFinancialFollowUp({ deliveryId, answer: 'HAS_ISSUE', incidentRestoreStep: 'yes_confirm' });
-      return;
-    }
-    const result = submitIncidentPromptYes(deliveryId);
-    setIncidentStep('question');
-    if (result) {
-      toast.success(
-        'Thank you. Your response is recorded and HR has been notified. Complete the secure intake form to add details.',
-        { duration: 7000 }
-      );
-      onNavigate(`incident-intake/${result.report.id}`);
-    }
-  };
-  
   const pendingIntakes = employeeReports.filter((r) => !isEmployeeReportIntakeComplete(r));
   
   return (
@@ -219,156 +57,8 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
           </CardContent>
         </Card>
       )}
-      {showCheckInGate && (
-        <Card className="mismo-card border-2 border-[var(--color-primary-700)] shadow-[var(--shadow-2)]">
-          <CardContent className="p-8 md:p-10">
-            <div className="max-w-3xl">
-              {financialFollowUp ? (
-                <>
-                  <p className="text-xs tracking-[0.08em] uppercase text-[var(--color-text-secondary)]">
-                    {isIncidentGate ? 'Check-in required before you continue' : 'Compliance Check-In Required'}
-                  </p>
-                  <h2 className="mismo-heading text-2xl md:text-3xl mt-3 text-[var(--color-primary-900)]">Pay and compensation screening</h2>
-                  <p className="text-base md:text-lg text-[var(--color-text-primary)] mt-5 leading-relaxed">{FINANCIAL_SCREENING_QUESTION}</p>
-                  <p className="text-sm text-[var(--color-text-secondary)] mt-4 leading-relaxed border-l-2 border-[var(--color-primary-500)] pl-4">
-                    {FINANCIAL_SCREENING_NOTE}
-                  </p>
-                  {heroPrompt?.dueAt && (
-                    <p className="text-sm text-[var(--color-text-secondary)] mt-4 flex items-center gap-1.5">
-                      <Icons.clock className="h-4 w-4 shrink-0" />
-                      Due by {formatDate(heroPrompt.dueAt)}
-                    </p>
-                  )}
-                  <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Button
-                      variant="outline"
-                      className="h-14 text-base border-[var(--color-emerald-600)] text-[var(--color-emerald-600)] shadow-[var(--shadow-1)] enterprise-interactive"
-                      onClick={() => submitFinancialAndClose(false)}
-                    >
-                      No concern
-                    </Button>
-                    <Button
-                      className="h-14 text-base bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)] shadow-[var(--shadow-2)] enterprise-interactive"
-                      onClick={() => submitFinancialAndClose(true)}
-                    >
-                      Yes, I have a concern
-                    </Button>
-                  </div>
-                  <div className="mt-6">
-                    <Button type="button" variant="ghost" className="text-[var(--mismo-blue)]" onClick={cancelFinancialFollowUp}>
-                      Back to previous step
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <>
-              <p className="text-xs tracking-[0.08em] uppercase text-[var(--color-text-secondary)]">
-                {isIncidentGate ? 'Check-in required before you continue' : 'Compliance Check-In Required'}
-              </p>
 
-              {isIncidentGate ? (
-                <>
-                  <p className="text-sm text-[var(--color-text-secondary)] mt-2 tabular-nums">
-                    {eqcHeaderDate}
-                    <span className="mx-2 text-[var(--color-border-200)]">·</span>
-                    {organizationName}
-                  </p>
-                  <h2 className="mismo-heading text-2xl md:text-3xl mt-3 text-[var(--color-primary-900)]">Incident Query</h2>
-
-                  {incidentStep === 'question' ? (
-                    <>
-                      <p className="text-base md:text-lg text-[var(--color-text-primary)] mt-5 leading-relaxed">{EQC_INCIDENT_QUESTION}</p>
-                      <p className="text-sm text-[var(--color-text-secondary)] mt-4 leading-relaxed border-l-2 border-[var(--color-primary-500)] pl-4">
-                        <span className="font-medium text-[var(--color-text-primary)]">Note: </span>
-                        {EQC_RETALIATION_NOTE}
-                      </p>
-                      {heroPrompt.dueAt && (
-                        <p className="text-sm text-[var(--color-text-secondary)] mt-4 flex items-center gap-1.5">
-                          <Icons.clock className="h-4 w-4 shrink-0" />
-                          Due by {formatDate(heroPrompt.dueAt)}
-                        </p>
-                      )}
-                      <p className="text-sm font-medium text-[var(--color-text-primary)] mt-6">
-                        A response is required to continue using the application.
-                      </p>
-                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Button
-                          variant="outline"
-                          className="h-14 text-base border-[var(--color-emerald-600)] text-[var(--color-emerald-600)] shadow-[var(--shadow-1)] enterprise-interactive"
-                          onClick={() => handleNoIssues(heroPrompt.id)}
-                        >
-                          NO
-                        </Button>
-                        <Button
-                          className="h-14 text-base bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)] shadow-[var(--shadow-2)] enterprise-interactive"
-                          onClick={handleIncidentYesContinue}
-                        >
-                          YES
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-base md:text-lg text-[var(--color-text-primary)] mt-5 leading-relaxed">{EQC_CONFIRMATION_BODY}</p>
-                      <p className="text-sm text-[var(--color-text-secondary)] mt-4 leading-relaxed border-l-2 border-[var(--color-primary-500)] pl-4">
-                        <span className="font-medium text-[var(--color-text-primary)]">Note: </span>
-                        {EQC_RETALIATION_NOTE}
-                      </p>
-                      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Button
-                          variant="outline"
-                          className="h-14 text-base enterprise-interactive"
-                          onClick={() => setIncidentStep('question')}
-                        >
-                          Go back to previous screen
-                        </Button>
-                        <Button
-                          className="h-14 text-base bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)] shadow-[var(--shadow-2)] enterprise-interactive"
-                          onClick={() => handleIncidentYesSubmit(heroPrompt.id)}
-                        >
-                          Submit
-                        </Button>
-                      </div>
-                    </>
-                  )}
-
-                </>
-              ) : (
-                <>
-                  <h2 className="mismo-heading text-3xl md:text-4xl mt-2 text-[var(--color-primary-900)]">{heroPrompt.prompt.title}</h2>
-                  <p className="text-base md:text-lg text-[var(--color-text-secondary)] mt-3 leading-relaxed">{heroPrompt.prompt.description}</p>
-                  {heroPrompt.dueAt && (
-                    <p className="text-sm text-[var(--color-text-secondary)] mt-3 flex items-center gap-1.5">
-                      <Icons.clock className="h-4 w-4" />
-                      Due by {formatDate(heroPrompt.dueAt)}
-                    </p>
-                  )}
-                  <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Button
-                      variant="outline"
-                      className="h-14 text-base border-[var(--color-emerald-600)] text-[var(--color-emerald-600)] shadow-[var(--shadow-1)] enterprise-interactive"
-                      onClick={() => handleNoIssues(heroPrompt.id)}
-                    >
-                      No issues to report
-                    </Button>
-                    <Button
-                      className="h-14 text-base bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)] shadow-[var(--shadow-2)] enterprise-interactive"
-                      onClick={() => handleHaveIssueWithReport(heroPrompt.id, heroPrompt.prompt.id)}
-                    >
-                      I have an issue
-                      <Icons.arrowRight className="h-4 w-4 ml-2" />
-                    </Button>
-                  </div>
-                </>
-              )}
-                </>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!showCheckInGate && showRelaxedDashboard && (
+      {showRelaxedDashboard && (
         <>
               <Card className="mismo-card border border-[var(--color-emerald-600)]/35 bg-gradient-to-br from-[var(--mismo-green-light)]/40 to-[var(--color-surface-100)] shadow-[var(--shadow-1)] dashboard-header">
                 <CardContent className="p-8 md:p-10">
