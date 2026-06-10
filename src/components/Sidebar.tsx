@@ -22,7 +22,7 @@ const adminNavItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   {
     id: 'prompt-responses',
-    label: 'Prompt responses',
+    label: 'Check-in queries',
     icon: 'reports',
     badgeKey: 'yesResponsesNeedingReview',
   },
@@ -126,7 +126,7 @@ function SidebarContent({
               )}
             >
               <Icons.shield className="h-4 w-4 flex-shrink-0" />
-              <span className="flex-1 text-left">Workplace concern</span>
+              <span className="flex-1 text-left">Report workplace concern</span>
             </button>
             <button
               type="button"
@@ -139,7 +139,7 @@ function SidebarContent({
               )}
             >
               <Icons.reports className="h-4 w-4 flex-shrink-0" />
-              <span className="flex-1 text-left">Wage &amp; hour</span>
+              <span className="flex-1 text-left">Report wage &amp; hour concern</span>
             </button>
           </div>
         )}

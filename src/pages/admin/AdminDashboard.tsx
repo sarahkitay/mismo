@@ -48,7 +48,35 @@ function ActionLine({
 
 export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
   const dc = dataStore.dashboardCounts;
-  const { policies, policyAcknowledgements, responses, deliveries, investigations, activities, users, reports } = dataStore;
+  const { policies, policyAcknowledgements, responses, deliveries, investigations, activities, users, reports, prompts } = dataStore;
+
+  const recentCheckInQueries = useMemo(() => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const rows = [
+      ...responses
+        .filter((r) => r.submittedAt >= startOfToday)
+        .map((r) => ({
+          id: r.id,
+          kind: 'response' as const,
+          userId: r.userId,
+          answer: r.answer,
+          date: r.submittedAt,
+          promptTitle: prompts.find((p) => p.id === r.promptId)?.title ?? 'Check-in',
+        })),
+      ...deliveries
+        .filter((d) => d.status === 'PENDING' && d.deliveredAt >= startOfToday)
+        .map((d) => ({
+          id: d.id,
+          kind: 'pending' as const,
+          userId: d.userId,
+          answer: 'UNANSWERED' as const,
+          date: d.deliveredAt,
+          promptTitle: prompts.find((p) => p.id === d.promptId)?.title ?? 'Check-in',
+        })),
+    ];
+    return rows.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 8);
+  }, [responses, deliveries, prompts]);
 
   const chartData = useMemo(() => {
     const yesCount = responses.filter((r) => r.answer === 'HAS_ISSUE').length;
@@ -306,6 +334,91 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
           </Card>
         ))}
       </div>
+
+      <Card className="mismo-card border border-[var(--color-border-200)]">
+        <CardContent className="p-0">
+          <div className="px-5 py-4 border-b border-[var(--color-border-200)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="font-command text-xl font-bold text-[var(--color-primary-900)]">Today&apos;s employee check-in queries</h2>
+              <p className="text-sm text-[var(--color-text-secondary)]">
+                Incident and compliance prompts submitted today — same register HR and admin use for triage.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => onNavigate('prompt-responses', { view: 'prompts', channel: 'incident' })}>
+              Open check-in register →
+            </Button>
+          </div>
+          {recentCheckInQueries.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--color-surface-200)] text-[var(--color-text-secondary)]">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Employee</th>
+                    <th className="px-4 py-2 text-left">Prompt</th>
+                    <th className="px-4 py-2 text-left">Time</th>
+                    <th className="px-4 py-2 text-left">Answer</th>
+                    <th className="px-4 py-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentCheckInQueries.map((row) => {
+                    const emp = users.find((u) => u.id === row.userId);
+                    const linkedCase = row.kind === 'response' ? reports.find((r) => r.sourcePromptResponseId === row.id) : undefined;
+                    const openRow = () => {
+                      if (row.kind === 'pending' && row.userId) {
+                        onNavigate('employee-detail', { id: row.userId });
+                        return;
+                      }
+                      if (row.kind === 'response') {
+                        onNavigate('prompt-response-detail', { id: row.id, type: row.answer });
+                      }
+                    };
+                    return (
+                      <tr
+                        key={`${row.kind}-${row.id}`}
+                        className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer"
+                        onClick={openRow}
+                      >
+                        <td className="px-4 py-2">
+                          {emp ? `${emp.firstName} ${emp.lastName}` : 'Employee'}
+                        </td>
+                        <td className="px-4 py-2">{row.promptTitle}</td>
+                        <td className="px-4 py-2 whitespace-nowrap">{formatRelativeTime(row.date)}</td>
+                        <td className="px-4 py-2">
+                          {row.answer === 'HAS_ISSUE' ? 'Yes' : row.answer === 'NO_ISSUE' ? 'No' : 'Unanswered'}
+                          {linkedCase ? (
+                            <span className="text-[var(--color-text-muted)]">
+                              {' '}
+                              ·{' '}
+                              <button
+                                type="button"
+                                className="text-[var(--mismo-blue)] hover:underline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onNavigate('report-detail', { id: linkedCase.id });
+                                }}
+                              >
+                                {linkedCase.referenceNumber ?? linkedCase.id}
+                              </button>
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                          <Button size="sm" variant="outline" onClick={openRow}>
+                            View
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="px-5 py-6 text-sm text-[var(--color-text-secondary)]">No check-in queries recorded yet today.</p>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {[
