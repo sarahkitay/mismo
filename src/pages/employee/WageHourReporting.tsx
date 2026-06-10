@@ -7,8 +7,8 @@ import {
   WAGE_HOUR_RETALIATION_NOTE,
   WAGE_HOUR_SCREENING_QUESTION,
   WAGE_HOUR_YES_CONFIRMATION_BODY,
+  formatCaseReference,
 } from '@/lib/caseTypes';
-import { formatCaseReference } from '@/lib/caseTypes';
 import { toast } from 'sonner';
 
 interface WageHourReportingProps {
@@ -55,12 +55,15 @@ export function WageHourReporting({ dataStore, onNavigate }: WageHourReportingPr
           Back to Home
         </Button>
         <Card className="mismo-card border border-[var(--color-border-200)]">
-          <CardContent className="p-6 space-y-3">
+          <CardContent className="p-4 sm:p-6 space-y-3">
             <p className="font-semibold text-[var(--mismo-text)]">Response recorded</p>
             <p className="text-sm text-[var(--mismo-text-secondary)] leading-relaxed">
               Thank you. Your acknowledgement has been securely logged with a timestamp. No wage &amp; hour case was created.
             </p>
-            <Button className="mt-2 bg-[var(--mismo-blue)]" onClick={() => onNavigate('home')}>
+            <p className="text-sm text-[var(--mismo-text-secondary)]">
+              If your situation changes, you can return to <strong>Wage &amp; hour</strong> from your dashboard or sidebar at any time.
+            </p>
+            <Button className="mt-2 min-h-[44px] bg-[var(--mismo-blue)]" onClick={() => onNavigate('home')}>
               Return to dashboard
             </Button>
           </CardContent>
@@ -70,20 +73,21 @@ export function WageHourReporting({ dataStore, onNavigate }: WageHourReportingPr
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-3xl pb-6">
       <Button variant="ghost" className="px-0" onClick={() => onNavigate('home')}>
         <Icons.arrowLeft className="h-4 w-4 mr-2" />
         Back to Home
       </Button>
 
       <Card className="mismo-card border-2 border-emerald-700/30 shadow-[var(--shadow-2)]">
-        <CardContent className="p-8 md:p-10">
+        <CardContent className="p-4 sm:p-8 md:p-10">
           <p className="text-sm text-[var(--color-text-secondary)] tabular-nums">
             {formatEqcHeaderDate(new Date())}
             <span className="mx-2">·</span>
             {organizationName}
           </p>
-          <h1 className="text-2xl md:text-3xl font-semibold text-[var(--color-primary-900)] mt-2">Wage &amp; Hour Query</h1>
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800 mt-3">Protected reporting</p>
+          <h1 className="text-2xl md:text-3xl font-semibold text-[var(--color-primary-900)] mt-1">Wage &amp; Hour Query</h1>
 
           {step === 'screening' ? (
             <>
@@ -93,21 +97,24 @@ export function WageHourReporting({ dataStore, onNavigate }: WageHourReportingPr
               <p className="text-sm text-[var(--color-text-secondary)] mt-4 leading-relaxed border-l-2 border-emerald-600 pl-4">
                 {WAGE_HOUR_RETALIATION_NOTE}
               </p>
-              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <Button
                   variant="outline"
-                  className="h-14 text-base border-[var(--color-emerald-600)] text-[var(--color-emerald-700)]"
+                  className="min-h-[44px] h-14 text-base border-[var(--color-emerald-600)] text-[var(--color-emerald-700)]"
                   onClick={handleNo}
                 >
-                  NO
+                  No, I do not
                 </Button>
                 <Button
-                  className="h-14 text-base bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)]"
+                  className="min-h-[44px] h-14 text-base bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)]"
                   onClick={handleYesContinue}
                 >
-                  YES
+                  Yes, I have a concern
                 </Button>
               </div>
+              <p className="text-xs text-[var(--color-text-muted)] mt-4">
+                If you selected &quot;Yes&quot; by mistake, you can go back before submitting the intake form. Once submitted, changes are version-tracked for compliance.
+              </p>
             </>
           ) : (
             <>
@@ -117,15 +124,15 @@ export function WageHourReporting({ dataStore, onNavigate }: WageHourReportingPr
               <p className="text-sm text-[var(--color-text-secondary)] mt-4 leading-relaxed border-l-2 border-emerald-600 pl-4">
                 {WAGE_HOUR_RETALIATION_NOTE}
               </p>
-              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Button variant="outline" className="h-14 text-base" onClick={() => setStep('screening')}>
-                  BACK
+              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <Button variant="outline" className="min-h-[44px] h-14 text-base" onClick={() => setStep('screening')}>
+                  Back
                 </Button>
                 <Button
-                  className="h-14 text-base bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)]"
+                  className="min-h-[44px] h-14 text-base bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)]"
                   onClick={handleYesSubmit}
                 >
-                  SUBMIT
+                  Submit &amp; continue
                 </Button>
               </div>
             </>

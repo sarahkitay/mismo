@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Toaster } from '@/components/ui/sonner';
@@ -50,6 +50,17 @@ function isStaffRole(role: DataStore['currentRole']) {
   return role === 'HR' || role === 'MANAGER' || role === 'ADMIN' || role === 'SUPER_ADMIN';
 }
 
+/** Protected employee routes that must stay reachable (including on reload). */
+function isEmployeeProtectedRoute(page: string): boolean {
+  return (
+    page === 'report-new' ||
+    page === 'wage-hour-report' ||
+    page.startsWith('wage-hour-intake/') ||
+    page.startsWith('incident-intake/') ||
+    page.startsWith('report-detail/')
+  );
+}
+
 export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
   const { currentRole, switchRole, session, previewUserId, setPreviewUserId, pendingPromptsForEmployee } = dataStore;
 
@@ -63,6 +74,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
   });
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const skipRoleNavOnMount = useRef(true);
   const [pageParams, setPageParams] = useState<Record<string, string>>(() => {
     const parsed = parseAppLocation(
       typeof window !== 'undefined' ? window.location.pathname : '/admin/dashboard',
@@ -119,6 +131,11 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
   }, []);
 
   useEffect(() => {
+    // Only sync default URL when the user switches role — preserve deep links on reload.
+    if (skipRoleNavOnMount.current) {
+      skipRoleNavOnMount.current = false;
+      return;
+    }
     let nextPage = 'dashboard';
     if (currentRole === 'EMPLOYEE') {
       nextPage = 'home';
@@ -128,14 +145,20 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       nextPage = 'dashboard';
     }
     setActivePage(nextPage);
+    setPageParams({});
     const nextPath = buildAppUrl(nextPage, currentRole as AppRole, {});
     if (window.location.pathname.split('?')[0] !== nextPath.split('?')[0]) {
-      window.history.pushState({}, '', nextPath);
+      window.history.replaceState({}, '', nextPath);
     }
   }, [currentRole]);
 
   const handleNavigate = (page: string, params?: Record<string, string>) => {
-    if (currentRole === 'EMPLOYEE' && pendingPromptsForEmployee.length > 0 && page !== 'home') {
+    if (
+      currentRole === 'EMPLOYEE' &&
+      pendingPromptsForEmployee.length > 0 &&
+      page !== 'home' &&
+      !isEmployeeProtectedRoute(page)
+    ) {
       setSidebarOpen(false);
       setActivePage('home');
       setPageParams({});
@@ -194,6 +217,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
     if (currentRole !== 'EMPLOYEE') return;
     if (pendingPromptsForEmployee.length === 0) return;
     if (activePage === 'home') return;
+    if (isEmployeeProtectedRoute(activePage)) return;
     setActivePage('home');
     setPageParams({});
     if (window.location.pathname !== '/employee/dashboard') {
@@ -237,6 +261,8 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
         return <EmployeeResources dataStore={dataStore} />;
       case 'settings':
         return <EmployeeSettings dataStore={dataStore} />;
+      case 'help':
+        return <HelpSupport dataStore={dataStore} onNavigate={handleNavigate} />;
       default:
         if (activePage.startsWith('wage-hour-intake/')) {
           const wageHourReportId = activePage.split('wage-hour-intake/')[1];
@@ -249,9 +275,6 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
         if (activePage.startsWith('report-detail/')) {
           const reportId = activePage.split('report-detail/')[1];
           return <EmployeeReportDetail dataStore={dataStore} reportId={reportId} onNavigate={handleNavigate} />;
-        }
-        if (activePage === 'help') {
-          return <HelpSupport dataStore={dataStore} onNavigate={handleNavigate} />;
         }
         return <EmployeeHome dataStore={dataStore} onNavigate={handleNavigate} />;
     }
@@ -362,7 +385,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
           previewUserId ? 'pt-24 lg:pl-64 min-h-screen relative z-0 pointer-events-auto' : 'pt-16 lg:pl-64 min-h-screen relative z-0 pointer-events-auto'
         }
       >
-        <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto relative z-0">
+        <div className="p-3 sm:p-4 lg:p-6 max-w-7xl mx-auto relative z-0 pb-safe">
           {currentRole === 'EMPLOYEE' ? renderEmployeeContent() : renderAdminContent()}
         </div>
       </main>

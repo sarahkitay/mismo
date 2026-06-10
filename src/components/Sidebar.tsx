@@ -119,7 +119,7 @@ function SidebarContent({
               type="button"
               onClick={() => onNavigate('report-new')}
               className={cn(
-                'w-full flex items-center gap-2.5 px-3 py-2 text-sm font-semibold transition-colors border',
+                'w-full flex items-center gap-2.5 px-3 py-3 min-h-[44px] text-sm font-semibold transition-colors border rounded-sm',
                 activePage === 'report-new'
                   ? 'bg-[var(--color-alert-600)] text-white border-white/20'
                   : 'bg-[var(--color-primary-700)] text-white border-white/10 hover:bg-[var(--color-alert-600)]'
@@ -132,10 +132,10 @@ function SidebarContent({
               type="button"
               onClick={() => onNavigate('wage-hour-report')}
               className={cn(
-                'w-full flex items-center gap-2.5 px-3 py-2 text-sm font-semibold transition-colors border',
+                'w-full flex items-center gap-2.5 px-3 py-3 min-h-[44px] text-sm font-semibold transition-colors border rounded-sm',
                 activePage === 'wage-hour-report' || activePage.startsWith('wage-hour-intake/')
-                  ? 'bg-emerald-700 text-white border-white/20'
-                  : 'bg-emerald-900/80 text-white border-white/10 hover:bg-emerald-700'
+                  ? 'bg-emerald-600 text-white border-white/20'
+                  : 'bg-emerald-800 text-white border-white/10 hover:bg-emerald-600'
               )}
             >
               <Icons.reports className="h-4 w-4 flex-shrink-0" />
@@ -161,13 +161,13 @@ function SidebarContent({
               type="button"
               onClick={() => goNav(item)}
               className={cn(
-                'w-full flex items-center gap-2.5 px-3 py-1.5 text-sm font-medium transition-colors border border-transparent',
+                'w-full flex items-center gap-2.5 px-3 py-2.5 min-h-[44px] text-sm font-medium transition-colors border border-transparent rounded-sm',
                 isActive
                   ? 'bg-[var(--color-primary-500)] text-white border-white/20'
-                  : 'text-white/70 hover:bg-[var(--color-primary-700)] hover:text-white'
+                  : 'text-white/90 hover:bg-[var(--color-primary-700)] hover:text-white'
               )}
             >
-              <Icon className={cn('h-4.5 w-4.5 flex-shrink-0', isActive ? 'text-white' : 'text-white/55')} />
+              <Icon className={cn('h-4 w-4 flex-shrink-0', isActive ? 'text-white' : 'text-white/70')} />
               <span className="flex-1 text-left">{item.label}</span>
               {badgeCount !== undefined && badgeCount > 0 && (
                 <span className="min-w-4 h-4 px-1 rounded-none text-[10px] font-semibold flex items-center justify-center bg-[var(--color-alert-600)] text-white">
@@ -226,8 +226,11 @@ export function Sidebar({ dataStore, activePage, onNavigate, isOpen, onClose }: 
           }
         }}
       >
-        <SheetContent side="left" className="w-64 p-0">
-          <div className="pt-16">
+        <SheetContent
+          side="left"
+          className="w-[min(100vw,18rem)] p-0 border-[var(--color-primary-700)] bg-[var(--color-primary-900)] [&>button]:text-white [&>button]:hover:bg-white/10 [&>button]:opacity-90"
+        >
+          <div className="h-full overflow-y-auto pt-14 pb-6">
             <SidebarContent
               dataStore={dataStore}
               activePage={activePage}

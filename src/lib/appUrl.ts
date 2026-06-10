@@ -109,7 +109,11 @@ export function parseAppLocation(
   const intakeMatch = pathname.match(/^\/employee\/my-reports\/([^/]+)\/intake$/);
   if (intakeMatch) return merge({ role: 'EMPLOYEE', page: `incident-intake/${intakeMatch[1]}`, params: {} });
   if (pathname.startsWith('/employee/my-reports/')) {
-    return merge({ role: 'EMPLOYEE', page: `report-detail/${pathname.split('/employee/my-reports/')[1]}`, params: {} });
+    const rest = pathname.split('/employee/my-reports/')[1]?.split('?')[0] ?? '';
+    const reportId = rest.split('/')[0];
+    if (reportId) {
+      return merge({ role: 'EMPLOYEE', page: `report-detail/${reportId}`, params: {} });
+    }
   }
 
   if (pathname === '/admin/dashboard') return merge({ role: 'HR', page: 'dashboard', params: {} });
