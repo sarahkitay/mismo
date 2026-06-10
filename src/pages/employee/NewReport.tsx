@@ -76,7 +76,7 @@ export function NewReport({ dataStore, onNavigate, initialParams }: NewReportPro
   };
 
   return (
-    <div className="space-y-6 w-full min-h-[calc(100vh-7rem)]">
+    <div className="space-y-6 w-full max-w-2xl mx-auto pb-6">
       <div className="form-header">
         <button
           type="button"
@@ -177,10 +177,10 @@ export function NewReport({ dataStore, onNavigate, initialParams }: NewReportPro
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3 pt-4">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => onNavigate('home')} disabled={isSubmitting}>
+              <Button type="button" variant="outline" className="flex-1 min-h-[44px]" onClick={() => onNavigate('home')} disabled={isSubmitting}>
                 Cancel
               </Button>
-              <Button type="submit" className="flex-1 bg-[var(--mismo-blue)] hover:bg-blue-600" disabled={isSubmitting}>
+              <Button type="submit" className="flex-1 min-h-[44px] bg-[var(--mismo-blue)] hover:bg-blue-600" disabled={isSubmitting}>
                 {isSubmitting ? (
                   <>
                     <Icons.refresh className="h-4 w-4 mr-2 animate-spin" />

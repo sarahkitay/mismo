@@ -25,9 +25,17 @@ export function employeeIncidentReportHeadline(report: Pick<Report, 'summary' | 
 }
 
 // Format date to relative time
-export function formatRelativeTime(date: Date): string {
+export function coerceDate(value: Date | string | number | undefined | null): Date {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (value === undefined || value === null) return new Date(0);
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? new Date(0) : d;
+}
+
+export function formatRelativeTime(date: Date | string): string {
+  const d = coerceDate(date);
   const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
+  const diffMs = now.getTime() - d.getTime();
   const diffSecs = Math.floor(diffMs / 1000);
   const diffMins = Math.floor(diffSecs / 60);
   const diffHours = Math.floor(diffMins / 60);
@@ -38,7 +46,7 @@ export function formatRelativeTime(date: Date): string {
   if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
   if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
   
-  return formatDate(date);
+  return formatDate(d);
 }
 
 // Format date

@@ -57,33 +57,34 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="lg:hidden"
+            className="lg:hidden text-white hover:text-white hover:bg-white/10"
             onClick={onMenuClick}
+            aria-label="Open menu"
           >
             <Icons.menu className="h-5 w-5" />
           </Button>
-          <div className="flex items-center gap-3">
-            <div>
-              <span className="text-2xl font-bold text-white">Mismo</span>
-              <p className="text-[10px] leading-none text-white/70">Proactive Risk Infrastructure</p>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="min-w-0">
+              <span className="text-xl sm:text-2xl font-bold text-white">Mismo</span>
+              <p className="hidden sm:block text-[10px] leading-none text-white/70 truncate">Proactive Risk Infrastructure</p>
             </div>
           </div>
         </div>
         
         {/* Right: Role switcher + User */}
-        <div className="flex items-center gap-4">
-          {!isEmployee && (
-            <>
-              <button
-                type="button"
-                onClick={handleExportData}
-                className="hidden md:inline text-xs text-white/80 hover:text-white"
-              >
-                Export Data
-              </button>
-            </>
-          )}
-          <Badge className="hidden md:inline-flex bg-[var(--color-emerald-600)] text-white border-0">
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+            {!isEmployee && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleExportData}
+                  className="hidden md:inline text-xs text-white/80 hover:text-white"
+                >
+                  Export Data
+                </button>
+              </>
+            )}
+            <Badge className="hidden sm:inline-flex bg-[var(--color-emerald-600)] text-white border-0 text-[10px] sm:text-xs">
             {currentRole === 'SUPER_ADMIN'
               ? 'Super Admin'
               : currentRole === 'HR' || currentRole === 'MANAGER' || currentRole === 'ADMIN'
@@ -132,14 +133,30 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
             </DropdownMenu>
           )}
           {isEmployee && logout && (
-            <Button variant="ghost" size="sm" className="text-white/90 hover:text-white" onClick={() => logout()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="sm:hidden text-white hover:text-white hover:bg-white/10 shrink-0"
+              onClick={() => logout()}
+              aria-label="Sign out"
+            >
+              <Icons.logout className="h-5 w-5" />
+            </Button>
+          )}
+          {isEmployee && logout && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="hidden sm:inline-flex text-white/90 hover:text-white hover:bg-white/10"
+              onClick={() => logout()}
+            >
               Sign out
             </Button>
           )}
           
           {/* User Avatar */}
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:block text-right">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="hidden md:block text-right">
               <p className="text-sm font-medium text-white">
                 {currentUser.firstName} {currentUser.lastName}
               </p>

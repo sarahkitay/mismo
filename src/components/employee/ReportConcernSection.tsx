@@ -18,9 +18,9 @@ export function ReportConcernSection({ onNavigate, compact }: ReportConcernSecti
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
         <Card
-          className="mismo-card border-2 border-[var(--color-border-200)] hover:border-[var(--color-primary-700)] transition-colors cursor-pointer group"
+          className="mismo-card border-2 border-[var(--color-border-200)] hover:border-[var(--color-primary-700)] active:scale-[0.99] transition-all cursor-pointer group touch-manipulation"
           onClick={() => onNavigate('report-new')}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -51,7 +51,7 @@ export function ReportConcernSection({ onNavigate, compact }: ReportConcernSecti
         </Card>
 
         <Card
-          className="mismo-card border-2 border-[var(--color-border-200)] hover:border-emerald-700/40 transition-colors cursor-pointer group"
+          className="mismo-card border-2 border-[var(--color-border-200)] hover:border-emerald-700/40 active:scale-[0.99] transition-all cursor-pointer group touch-manipulation"
           onClick={() => onNavigate('wage-hour-report')}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
