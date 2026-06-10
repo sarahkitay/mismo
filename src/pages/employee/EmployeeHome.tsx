@@ -95,8 +95,13 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
   }, [heroPromptAlreadyAnswered]);
 
   const isFullyCaughtUp = pendingPromptsForEmployee.length === 0 && unreadPolicies.length === 0;
-  /** Dashboard sections below the check-in card (including when check-in was deferred for today). */
-  const showRelaxedDashboard = !showCheckInGate;
+  /** Full dashboard only after today's check-in prompts are completed (both steps when financial screening is on). */
+  const showRelaxedDashboard = !showCheckInGate && pendingPromptsForEmployee.length === 0 && !financialFollowUp;
+  const checkInStepLabel = financialFollowUp
+    ? 'Question 2 of 2'
+    : wantsFinancialFollowUp && showCheckInGate
+      ? 'Question 1 of 2'
+      : null;
   const eqcHeaderDate = formatEqcHeaderDate(new Date());
 
   const submitFinancialAndClose = (hasPayConcern: boolean) => {
@@ -213,38 +218,6 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
   
   return (
     <div className="space-y-6 relative z-[1]">
-      <ReportConcernSection onNavigate={onNavigate} />
-
-      {pendingIntakes.length > 0 && (
-        <Card className="mismo-card border-2 border-amber-400/60 bg-amber-50/90">
-          <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <p className="font-semibold text-[var(--mismo-text)]">Action needed on your report</p>
-              <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
-                {pendingIntakes.length === 1
-                  ? 'Complete your pending intake form to finish submitting your concern.'
-                  : `You have ${pendingIntakes.length} reports waiting on intake completion.`}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2 shrink-0">
-              {pendingIntakes.slice(0, 2).map((r) => {
-                const label = employeeIncidentReportHeadline(r);
-                const short = label.length > 28 ? `${label.slice(0, 28)}…` : label;
-                return (
-                <Button key={r.id} variant="default" className="bg-[var(--mismo-blue)] hover:bg-blue-600" onClick={() => onNavigate(r.caseType === 'WAGE_HOUR' ? `wage-hour-intake/${r.id}` : `incident-intake/${r.id}`)}>
-                  Open form: {short}
-                </Button>
-                );
-              })}
-              {pendingIntakes.length > 2 && (
-                <Button variant="outline" onClick={() => onNavigate('reports')}>
-                  View all
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
       {showDeferredCheckInBanner && heroPrompt && (
         <Card className="mismo-card border-2 border-[var(--color-primary-700)]/40 bg-[var(--mismo-blue-light)]/30">
           <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -309,7 +282,10 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                 </>
               ) : (
                 <>
-              <p className="text-xs tracking-[0.08em] uppercase text-[var(--color-text-secondary)]">
+              {checkInStepLabel && (
+                <p className="text-sm font-medium text-[var(--color-primary-700)] mt-2">{checkInStepLabel}</p>
+              )}
+              <p className="text-xs tracking-[0.08em] uppercase text-[var(--color-text-secondary)] mt-2">
                 {isIncidentGate ? 'Check-in required before you continue' : 'Compliance Check-In Required'}
               </p>
 
@@ -456,8 +432,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                         </p>
                       ) : pendingPromptsForEmployee.length > 0 ? (
                         <p className="text-base text-[var(--color-text-secondary)] mt-3 leading-relaxed max-w-2xl mx-auto md:mx-0">
-                          You still have today&apos;s check-in to finish. Use the banner above when you&apos;re ready, or browse My Reports,
-                          Resources, and Settings in the meantime.
+                          Complete today&apos;s check-in above to unlock your dashboard. My Reports, Resources, and Settings stay available in the sidebar.
                         </p>
                       ) : (
                         <p className="text-base text-[var(--color-text-secondary)] mt-3 leading-relaxed max-w-2xl mx-auto md:mx-0">
@@ -524,16 +499,25 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                     </p>
                     <div className="mt-3 space-y-2">
                       {unreadPolicies.slice(0, 5).map((policy) => (
-                        <Button
+                        <Card
                           key={policy.id}
-                          variant="outline"
-                          className="w-full justify-start"
+                          className="mismo-card border border-[var(--color-border-200)] cursor-pointer hover:border-[var(--mismo-blue)] transition-colors"
                           onClick={() => onNavigate('resources')}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onNavigate('resources');
+                            }
+                          }}
                         >
-                          <Icons.bookOpen className="h-4 w-4 mr-2" />
-                          {policy.title}
-                          <span className="ml-2 text-xs text-[var(--mismo-amber)]">Action needed</span>
-                        </Button>
+                          <CardContent className="p-3 flex items-center gap-2">
+                            <Icons.bookOpen className="h-4 w-4 text-[var(--mismo-blue)] shrink-0" />
+                            <span className="flex-1 text-left text-sm font-medium">{policy.title}</span>
+                            <span className="text-xs text-[var(--mismo-amber)]">Action needed</span>
+                          </CardContent>
+                        </Card>
                       ))}
                     </div>
                   </CardContent>
@@ -650,6 +634,54 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
               </div>
         </>
       )}
+
+      {pendingIntakes.length > 0 && (
+        <Card
+          className="mismo-card border-2 border-amber-400/60 bg-amber-50/90 cursor-pointer hover:border-amber-500 transition-colors touch-manipulation"
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            const first = pendingIntakes[0];
+            onNavigate(first.caseType === 'WAGE_HOUR' ? `wage-hour-intake/${first.id}` : `incident-intake/${first.id}`);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              const first = pendingIntakes[0];
+              onNavigate(first.caseType === 'WAGE_HOUR' ? `wage-hour-intake/${first.id}` : `incident-intake/${first.id}`);
+            }
+          }}
+        >
+          <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <p className="font-semibold text-[var(--mismo-text)]">Action needed on your report</p>
+              <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
+                {pendingIntakes.length === 1
+                  ? 'Complete your pending intake form to finish submitting your concern.'
+                  : `You have ${pendingIntakes.length} reports waiting on intake completion.`}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+              {pendingIntakes.slice(0, 2).map((r) => {
+                const label = employeeIncidentReportHeadline(r);
+                const short = label.length > 28 ? `${label.slice(0, 28)}…` : label;
+                return (
+                <Button key={r.id} variant="default" className="bg-[var(--mismo-blue)] hover:bg-blue-600 min-h-[44px]" onClick={() => onNavigate(r.caseType === 'WAGE_HOUR' ? `wage-hour-intake/${r.id}` : `incident-intake/${r.id}`)}>
+                  Open form: {short}
+                </Button>
+                );
+              })}
+              {pendingIntakes.length > 2 && (
+                <Button variant="outline" className="min-h-[44px]" onClick={() => onNavigate('reports')}>
+                  View all
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <ReportConcernSection onNavigate={onNavigate} />
     </div>
   );
 }

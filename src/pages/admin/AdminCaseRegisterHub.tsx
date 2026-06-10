@@ -51,6 +51,28 @@ function isUnderOpenInvestigation(report: Report, investigations: { id: string; 
   return inv?.status === 'OPEN';
 }
 
+function linkedReportForPromptRow(
+  row: { id: string; answer: string; userId?: string },
+  reports: Report[]
+): Report | undefined {
+  if (row.answer === 'UNANSWERED') return undefined;
+  return (
+    reports.find((r) => r.sourcePromptResponseId === row.id) ??
+    reports.find((r) => r.createdByUserId === row.userId && r.reportSourceType === 'EMPLOYEE_PROMPT_RESPONSE')
+  );
+}
+
+function promptResponseForReport(report: Report, responses: DataStore['responses']) {
+  if (!report.sourcePromptResponseId) return undefined;
+  return responses.find((r) => r.id === report.sourcePromptResponseId);
+}
+
+function answerLabel(answer: string): string {
+  if (answer === 'HAS_ISSUE') return 'Yes';
+  if (answer === 'NO_ISSUE') return 'No';
+  return 'Unanswered';
+}
+
 export type CaseRegisterBucket =
   | 'PROMPT_ALL'
   | 'PROMPT_YES'
@@ -208,13 +230,18 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
           .filter((d) => d.status === 'PENDING' && inDateRange(d.deliveredAt, range) && promptIdsForChannel.has(d.promptId))
           .map((d) => {
             const u = users.find((user) => user.id === d.userId);
+            const prompt = prompts.find((p) => p.id === d.promptId);
             return {
               id: d.id,
+              deliveryId: d.id,
               userId: d.userId,
-              promptTitle: prompts.find((p) => p.id === d.promptId)?.title ?? 'Prompt',
+              promptTitle: prompt?.title ?? 'Prompt',
+              promptType: prompt?.type ?? 'GENERAL',
               userName: u ? `${u.firstName} ${u.lastName}` : 'Employee',
               answer: 'UNANSWERED' as const,
               date: d.deliveredAt,
+              modified: d.updatedAt ?? d.deliveredAt,
+              needsReview: false,
             };
           })
           .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
@@ -231,13 +258,18 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
         })
         .map((r) => {
           const u = users.find((user) => user.id === r.userId);
+          const prompt = prompts.find((p) => p.id === r.promptId);
           return {
             id: r.id,
+            deliveryId: r.promptDeliveryId,
             userId: r.userId,
-            promptTitle: prompts.find((p) => p.id === r.promptId)?.title ?? 'Prompt',
+            promptTitle: prompt?.title ?? 'Prompt',
+            promptType: prompt?.type ?? 'GENERAL',
             userName: u ? `${u.firstName} ${u.lastName}` : 'Employee',
             answer: r.answer,
             date: r.submittedAt,
+            modified: r.updatedAt ?? r.submittedAt,
+            needsReview: r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false,
           };
         })
         .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
@@ -587,6 +619,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                     <th className="px-3 py-2 text-left">Case type</th>
                     <th className="px-3 py-2 text-left">Reported</th>
                     <th className="px-3 py-2 text-left">Employee</th>
+                    <th className="px-3 py-2 text-left">Check-in query</th>
                     <th className="px-3 py-2 text-left">Incident form</th>
                     <th className="px-3 py-2 text-left">Investigation</th>
                     <th className="px-3 py-2 text-left">Category</th>
@@ -602,20 +635,19 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                     const assignee = report.assignedTo ? users.find((user) => user.id === report.assignedTo) : null;
                     const reporter = report.createdByUserId ? users.find((u) => u.id === report.createdByUserId) : null;
                     const inv = report.investigationId ? investigations.find((i) => i.id === report.investigationId) : undefined;
+                    const linkedPromptResponse = promptResponseForReport(report, responses);
                     return (
-                      <tr key={report.id} className="border-t border-[var(--color-border-200)]">
-                        <td className="px-3 py-2">
+                      <tr
+                        key={report.id}
+                        className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer"
+                        onClick={() => onNavigate('report-detail', { id: report.id })}
+                      >
+                        <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" checked={selectedRows.includes(report.id)} onChange={() => toggleRow(report.id)} />
                         </td>
                         <td className="px-3 py-2">
-                          <button
-                            type="button"
-                            className="interactive-control text-left"
-                            onClick={() => onNavigate('report-detail', { id: report.id })}
-                          >
-                            <p className="font-medium text-[var(--color-text-primary)]">{formatCaseReference(report)}</p>
-                            <p className="text-[var(--color-text-secondary)]">{truncateText(report.summary, 52)}</p>
-                          </button>
+                          <p className="font-medium text-[var(--color-text-primary)]">{formatCaseReference(report)}</p>
+                          <p className="text-[var(--color-text-secondary)]">{truncateText(report.summary, 52)}</p>
                         </td>
                         <td className="px-3 py-2 text-xs">{CASE_TYPE_LABELS[inferCaseType(report.category, report.caseType)]}</td>
                         <td className="px-3 py-2 text-[var(--color-text-secondary)] whitespace-nowrap">{formatDate(report.createdAt)}</td>
@@ -626,9 +658,28 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                             <button
                               type="button"
                               className="text-[var(--mismo-blue)] hover:underline"
-                              onClick={() => onNavigate('employee-detail', { id: reporter.id })}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onNavigate('employee-detail', { id: reporter.id });
+                              }}
                             >
                               {reporter.firstName} {reporter.lastName}
+                            </button>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-[var(--color-text-secondary)]">
+                          {linkedPromptResponse ? (
+                            <button
+                              type="button"
+                              className="text-left text-[var(--mismo-blue)] hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onNavigate('prompt-response-detail', { id: linkedPromptResponse.id, type: linkedPromptResponse.answer });
+                              }}
+                            >
+                              {answerLabel(linkedPromptResponse.answer)} · {formatDate(linkedPromptResponse.submittedAt)}
                             </button>
                           ) : (
                             '-'
@@ -644,7 +695,10 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                             <button
                               type="button"
                               className="text-left text-[var(--mismo-blue)] hover:underline"
-                              onClick={() => onNavigate('investigation-detail', { id: inv.id })}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onNavigate('investigation-detail', { id: inv.id });
+                              }}
                             >
                               {investigationWorkflowLabel(getEffectiveInvestigationPhase(inv))}
                             </button>
@@ -661,7 +715,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                         </td>
                         <td className="px-3 py-2">{assignee ? `${assignee.firstName} ${assignee.lastName}` : 'Unassigned'}</td>
                         <td className="px-3 py-2 text-[var(--color-text-secondary)]">{formatRelativeTime(report.updatedAt)}</td>
-                        <td className="px-3 py-2 text-right">
+                        <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="inline-flex items-center gap-1">
                             <Button variant="default" size="sm" className="bg-[var(--mismo-blue)] hover:bg-[var(--color-primary-700)]" onClick={() => onNavigate('report-detail', { id: report.id })}>
                               Open
@@ -719,40 +773,106 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
 
       {showPromptList && (
         <Card className="mismo-card border border-[var(--color-border-200)]">
-          <CardContent className="p-0">
-            {promptRows.map((row) => (
-              <div
-                key={row.id}
-                className="interactive-control w-full border-b border-[var(--color-border-200)] px-4 py-3 flex flex-wrap items-center justify-between gap-2 hover:bg-[var(--color-surface-200)]"
-              >
-                <button
-                  type="button"
-                  className="text-left flex-1 min-w-0"
-                  onClick={() =>
-                    row.answer === 'UNANSWERED'
-                      ? row.userId && onNavigate('employee-detail', { id: row.userId })
-                      : onNavigate('prompt-response-detail', { id: row.id, type: row.answer })
-                  }
-                >
-                  <p className="font-medium text-[var(--mismo-text)]">{row.promptTitle}</p>
-                  <p className="text-sm text-[var(--mismo-text-secondary)]">
-                    {row.answer} · {formatDate(row.date)}
-                  </p>
-                </button>
-                {row.userId ? (
-                  <button
-                    type="button"
-                    className="text-sm text-[var(--mismo-blue)] hover:underline shrink-0"
-                    onClick={() => onNavigate('employee-detail', { id: row.userId! })}
-                  >
-                    {row.userName}
-                  </button>
-                ) : (
-                  <span className="text-sm text-[var(--mismo-text-secondary)]">{row.userName}</span>
-                )}
-              </div>
-            ))}
-            {promptRows.length === 0 && <p className="p-6 text-sm text-[var(--mismo-text-secondary)]">No check-ins match the current filters.</p>}
+          <CardContent className="p-0 overflow-x-auto">
+            {promptRows.length > 0 ? (
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--color-surface-200)] text-[var(--color-text-secondary)]">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Query #</th>
+                    <th className="px-3 py-2 text-left">Employee</th>
+                    <th className="px-3 py-2 text-left">Prompt</th>
+                    <th className="px-3 py-2 text-left">Submitted</th>
+                    <th className="px-3 py-2 text-left">Modified</th>
+                    <th className="px-3 py-2 text-left">Answer</th>
+                    <th className="px-3 py-2 text-left">Review</th>
+                    <th className="px-3 py-2 text-left">Linked case</th>
+                    <th className="px-3 py-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {promptRows.map((row) => {
+                    const linkedCase = linkedReportForPromptRow(row, reports);
+                    const openRow = () => {
+                      if (row.answer === 'UNANSWERED') {
+                        if (row.userId) onNavigate('employee-detail', { id: row.userId });
+                        return;
+                      }
+                      onNavigate('prompt-response-detail', { id: row.id, type: row.answer });
+                    };
+                    return (
+                      <tr
+                        key={row.id}
+                        className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer"
+                        onClick={openRow}
+                      >
+                        <td className="px-3 py-2 font-medium whitespace-nowrap">{row.deliveryId.slice(-8).toUpperCase()}</td>
+                        <td className="px-3 py-2">
+                          {row.userId ? (
+                            <button
+                              type="button"
+                              className="text-[var(--mismo-blue)] hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onNavigate('employee-detail', { id: row.userId! });
+                              }}
+                            >
+                              {row.userName}
+                            </button>
+                          ) : (
+                            row.userName
+                          )}
+                        </td>
+                        <td className="px-3 py-2 max-w-[180px]">
+                          <p className="font-medium truncate">{row.promptTitle}</p>
+                          <p className="text-xs text-[var(--color-text-muted)]">{row.promptType}</p>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">{formatDate(row.date)}</td>
+                        <td className="px-3 py-2 whitespace-nowrap">{formatRelativeTime(row.modified)}</td>
+                        <td className="px-3 py-2">
+                          <Badge
+                            className={
+                              row.answer === 'HAS_ISSUE'
+                                ? 'status-chip status-chip--warn'
+                                : row.answer === 'NO_ISSUE'
+                                  ? 'status-chip status-chip--success'
+                                  : 'status-chip'
+                            }
+                          >
+                            {answerLabel(row.answer)}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          {row.answer === 'UNANSWERED' ? 'Awaiting response' : row.needsReview ? 'Needs review' : 'Reviewed'}
+                        </td>
+                        <td className="px-3 py-2">
+                          {linkedCase ? (
+                            <button
+                              type="button"
+                              className="text-[var(--mismo-blue)] hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onNavigate('report-detail', { id: linkedCase.id });
+                              }}
+                            >
+                              {formatCaseReference(linkedCase)}
+                            </button>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                          <Button size="sm" variant="outline" onClick={openRow}>
+                            View
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <p className="p-6 text-sm text-[var(--mismo-text-secondary)]">No check-ins match the current filters.</p>
+            )}
           </CardContent>
         </Card>
       )}

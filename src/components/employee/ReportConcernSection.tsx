@@ -69,7 +69,7 @@ export function ReportConcernSection({ onNavigate, compact }: ReportConcernSecti
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Protected rights</p>
-                <h3 className="text-base font-semibold text-[var(--mismo-text)] mt-0.5">Wage &amp; hour question</h3>
+                <h3 className="text-base font-semibold text-[var(--mismo-text)] mt-0.5">Report wage &amp; hour concern</h3>
                 <p className="text-sm text-[var(--mismo-text-secondary)] mt-2 leading-relaxed">
                   Pay, overtime, hours worked, deductions, classification, breaks, benefits calculations, and compensation disputes.
                 </p>
