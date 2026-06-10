@@ -5,6 +5,7 @@ import { Icons } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { employeeIncidentReportHeadline, formatDate, formatRelativeTime, getStatusColor, isEmployeeReportIntakeComplete } from '@/lib/utils';
+import { clearCheckInDeferralForToday, deferCheckInForToday, shouldShowCheckInGate } from '@/lib/checkInGate';
 import { ReportConcernSection } from '@/components/employee/ReportConcernSection';
 import { toast } from 'sonner';
 
@@ -62,10 +63,18 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
         (r) => r.promptDeliveryId === heroPrompt.id && r.userId === currentUser.id && r.finalizedAt
       )
   );
-  const showCheckInGate = Boolean(heroPrompt) && !heroPromptAlreadyAnswered;
+  const showCheckInGate = Boolean(
+    heroPrompt &&
+      !heroPromptAlreadyAnswered &&
+      shouldShowCheckInGate(currentUser.id, heroPrompt.id)
+  );
+  const showDeferredCheckInBanner = Boolean(
+    heroPrompt && !heroPromptAlreadyAnswered && !showCheckInGate
+  );
   const isIncidentGate = Boolean(heroPrompt?.prompt.type === 'INCIDENT');
   const wantsFinancialFollowUp = Boolean(heroPrompt?.prompt.includeFinancialQuestion);
   const [incidentStep, setIncidentStep] = useState<'question' | 'yes_confirm'>('question');
+  const [, setCheckInDeferTick] = useState(0);
   type FinancialFollowUp = {
     deliveryId: string;
     answer: PromptAnswer;
@@ -86,8 +95,8 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
   }, [heroPromptAlreadyAnswered]);
 
   const isFullyCaughtUp = pendingPromptsForEmployee.length === 0 && unreadPolicies.length === 0;
-  /** No mandatory check-in card: show the lighter dashboard (with or without memos to sign). */
-  const showRelaxedDashboard = !showCheckInGate && pendingPromptsForEmployee.length === 0;
+  /** Dashboard sections below the check-in card (including when check-in was deferred for today). */
+  const showRelaxedDashboard = !showCheckInGate;
   const eqcHeaderDate = formatEqcHeaderDate(new Date());
 
   const submitFinancialAndClose = (hasPayConcern: boolean) => {
@@ -184,6 +193,23 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
   };
   
   const pendingIntakes = employeeReports.filter((r) => !isEmployeeReportIntakeComplete(r));
+
+  const handleDeferCheckIn = () => {
+    if (!heroPrompt) return;
+    deferCheckInForToday(currentUser.id, heroPrompt.id);
+    setFinancialFollowUp(null);
+    setIncidentStep('question');
+    setCheckInDeferTick((t) => t + 1);
+  };
+
+  const handleResumeCheckIn = () => {
+    if (!heroPrompt) return;
+    clearCheckInDeferralForToday(currentUser.id, heroPrompt.id);
+    setFinancialFollowUp(null);
+    setIncidentStep('question');
+    setCheckInDeferTick((t) => t + 1);
+    window.scrollTo(0, 0);
+  };
   
   return (
     <div className="space-y-6 relative z-[1]">
@@ -219,6 +245,24 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
           </CardContent>
         </Card>
       )}
+      {showDeferredCheckInBanner && heroPrompt && (
+        <Card className="mismo-card border-2 border-[var(--color-primary-700)]/40 bg-[var(--mismo-blue-light)]/30">
+          <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <p className="font-semibold text-[var(--mismo-text)]">Today&apos;s check-in is still due</p>
+              <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
+                {isIncidentGate
+                  ? 'Your daily incident query has not been submitted yet.'
+                  : `Please complete "${heroPrompt.prompt.title}" when you have a moment.`}
+              </p>
+            </div>
+            <Button className="shrink-0 bg-[var(--mismo-blue)] hover:bg-blue-600 min-h-[44px]" onClick={handleResumeCheckIn}>
+              Complete check-in
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {showCheckInGate && (
         <Card className="mismo-card border-2 border-[var(--color-primary-700)] shadow-[var(--shadow-2)]">
           <CardContent className="p-8 md:p-10">
@@ -258,6 +302,9 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                     <Button type="button" variant="ghost" className="text-[var(--mismo-blue)]" onClick={cancelFinancialFollowUp}>
                       Back to previous step
                     </Button>
+                    <Button type="button" variant="ghost" className="text-[var(--mismo-blue)] ml-2 min-h-[44px]" onClick={handleDeferCheckIn}>
+                      Answer later today
+                    </Button>
                   </div>
                 </>
               ) : (
@@ -288,8 +335,8 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                           Due by {formatDate(heroPrompt.dueAt)}
                         </p>
                       )}
-                      <p className="text-sm font-medium text-[var(--color-text-primary)] mt-6">
-                        A response is required to continue using the application.
+                      <p className="text-sm text-[var(--color-text-secondary)] mt-6">
+                        Please answer today&apos;s incident query. You can use other sections of the app and return to finish this later.
                       </p>
                       <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Button
@@ -304,6 +351,11 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                           onClick={handleIncidentYesContinue}
                         >
                           YES
+                        </Button>
+                      </div>
+                      <div className="mt-6">
+                        <Button type="button" variant="ghost" className="text-[var(--mismo-blue)] min-h-[44px]" onClick={handleDeferCheckIn}>
+                          Answer later today
                         </Button>
                       </div>
                     </>
@@ -327,6 +379,11 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                           onClick={() => handleIncidentYesSubmit(heroPrompt.id)}
                         >
                           Submit
+                        </Button>
+                      </div>
+                      <div className="mt-6">
+                        <Button type="button" variant="ghost" className="text-[var(--mismo-blue)] min-h-[44px]" onClick={handleDeferCheckIn}>
+                          Answer later today
                         </Button>
                       </div>
                     </>
@@ -357,6 +414,11 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                     >
                       I have an issue
                       <Icons.arrowRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  </div>
+                  <div className="mt-6">
+                    <Button type="button" variant="ghost" className="text-[var(--mismo-blue)] min-h-[44px]" onClick={handleDeferCheckIn}>
+                      Answer later today
                     </Button>
                   </div>
                 </>
@@ -392,6 +454,11 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                           Your check-ins are done and your memo sign-offs are up to date. That kind of follow-through keeps everyone safer
                           and makes compliance feel a little lighter. Take a moment to feel good about being on top of it.
                         </p>
+                      ) : pendingPromptsForEmployee.length > 0 ? (
+                        <p className="text-base text-[var(--color-text-secondary)] mt-3 leading-relaxed max-w-2xl mx-auto md:mx-0">
+                          You still have today&apos;s check-in to finish. Use the banner above when you&apos;re ready, or browse My Reports,
+                          Resources, and Settings in the meantime.
+                        </p>
                       ) : (
                         <p className="text-base text-[var(--color-text-secondary)] mt-3 leading-relaxed max-w-2xl mx-auto md:mx-0">
                           Your check-ins are complete. When you have a minute, finish signing the company memos below in your library so
@@ -400,8 +467,22 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                       )}
                       <ul className="mt-4 text-sm text-[var(--color-text-secondary)] space-y-1.5 max-w-2xl mx-auto md:mx-0 list-none">
                         <li className="flex items-center gap-2 justify-center md:justify-start">
-                          <Icons.checkCircle className="h-4 w-4 text-[var(--color-emerald-600)] shrink-0" />
-                          <span>No check-ins waiting on you right now</span>
+                          {pendingPromptsForEmployee.length === 0 ? (
+                            <>
+                              <Icons.checkCircle className="h-4 w-4 text-[var(--color-emerald-600)] shrink-0" />
+                              <span>No check-ins waiting on you right now</span>
+                            </>
+                          ) : (
+                            <>
+                              <Icons.clock className="h-4 w-4 text-[var(--mismo-amber)] shrink-0" />
+                              <span>
+                                Today&apos;s check-in is still due —{' '}
+                                <button type="button" className="text-[var(--mismo-blue)] hover:underline" onClick={handleResumeCheckIn}>
+                                  complete it now
+                                </button>
+                              </span>
+                            </>
+                          )}
                         </li>
                         <li className="flex items-center gap-2 justify-center md:justify-start">
                           {isFullyCaughtUp ? (

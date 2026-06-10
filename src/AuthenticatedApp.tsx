@@ -39,6 +39,7 @@ import { AdminActivity } from '@/pages/admin/AdminActivity';
 import { ManagerDashboard } from '@/pages/manager/ManagerDashboard';
 import { ClientDashboard } from '@/pages/client/ClientDashboard';
 import { buildAppUrl, parseAppLocation, type AppRole } from '@/lib/appUrl';
+import { deferCheckInForToday } from '@/lib/checkInGate';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -48,17 +49,6 @@ interface AuthenticatedAppProps {
 
 function isStaffRole(role: DataStore['currentRole']) {
   return role === 'HR' || role === 'MANAGER' || role === 'ADMIN' || role === 'SUPER_ADMIN';
-}
-
-/** Protected employee routes that must stay reachable (including on reload). */
-function isEmployeeProtectedRoute(page: string): boolean {
-  return (
-    page === 'report-new' ||
-    page === 'wage-hour-report' ||
-    page.startsWith('wage-hour-intake/') ||
-    page.startsWith('incident-intake/') ||
-    page.startsWith('report-detail/')
-  );
 }
 
 export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
@@ -155,16 +145,14 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
   const handleNavigate = (page: string, params?: Record<string, string>) => {
     if (
       currentRole === 'EMPLOYEE' &&
-      pendingPromptsForEmployee.length > 0 &&
+      activePage === 'home' &&
       page !== 'home' &&
-      !isEmployeeProtectedRoute(page)
+      pendingPromptsForEmployee.length > 0
     ) {
-      setSidebarOpen(false);
-      setActivePage('home');
-      setPageParams({});
-      window.history.replaceState({}, '', '/employee/dashboard');
-      window.scrollTo(0, 0);
-      return;
+      const pending = pendingPromptsForEmployee[0];
+      if (pending) {
+        deferCheckInForToday(dataStore.currentUser.id, pending.id);
+      }
     }
     const routeParams = params ?? {};
     setActivePage(page);
@@ -211,19 +199,6 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [currentRole, switchRole, session?.role]);
-
-  /** EQC-style: mandatory check-ins due today must be completed on Home before other employee routes. */
-  useEffect(() => {
-    if (currentRole !== 'EMPLOYEE') return;
-    if (pendingPromptsForEmployee.length === 0) return;
-    if (activePage === 'home') return;
-    if (isEmployeeProtectedRoute(activePage)) return;
-    setActivePage('home');
-    setPageParams({});
-    if (window.location.pathname !== '/employee/dashboard') {
-      window.history.replaceState({}, '', '/employee/dashboard');
-    }
-  }, [currentRole, pendingPromptsForEmployee.length, activePage]);
 
   useEffect(() => {
     const root = document.querySelector('main');
