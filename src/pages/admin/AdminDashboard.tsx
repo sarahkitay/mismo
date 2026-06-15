@@ -380,7 +380,20 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
                         onClick={openRow}
                       >
                         <td className="px-4 py-2">
-                          {emp ? `${emp.firstName} ${emp.lastName}` : 'Employee'}
+                          {emp ? (
+                            <button
+                              type="button"
+                              className="text-[var(--mismo-blue)] hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onNavigate('employee-detail', { id: emp.id });
+                              }}
+                            >
+                              {emp.firstName} {emp.lastName}
+                            </button>
+                          ) : (
+                            'Employee'
+                          )}
                         </td>
                         <td className="px-4 py-2">{row.promptTitle}</td>
                         <td className="px-4 py-2 whitespace-nowrap">{formatRelativeTime(row.date)}</td>

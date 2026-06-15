@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { getEffectiveStage, getInvestigationDisplayId, INVESTIGATION_STAGE_LABELS } from '@/lib/investigationWorkflow';
+import { formatCaseReference } from '@/lib/caseTypes';
 import { downloadCsv } from '@/lib/exportCsv';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -36,7 +37,7 @@ interface AdminInvestigationsProps {
 }
 
 export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: AdminInvestigationsProps) {
-  const { investigations, reports, users, currentUser } = dataStore;
+  const { investigations, reports, users, currentUser, responses } = dataStore;
   
   const tileFromUrl = initialFilters?.tile ?? '';
   const [filter, setFilter] = useState<'ALL' | 'OPEN' | 'CLOSED' | 'ASSIGNED_TO_ME'>(
@@ -281,6 +282,8 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
                   <th className="px-3 py-2 text-left">Investigator</th>
                   <th className="px-3 py-2 text-left">Status</th>
                   <th className="px-3 py-2 text-left">Stage</th>
+                  <th className="px-3 py-2 text-left">Linked case</th>
+                  <th className="px-3 py-2 text-left">Check-in</th>
                   <th className="px-3 py-2 text-left">Report against</th>
                   <th className="px-3 py-2 text-left">Docs</th>
                   <th className="px-3 py-2 text-left">Notes</th>
@@ -299,6 +302,14 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
                     (investigation.notes ?? []).reduce((sum, n) => sum + (n.attachments?.length ?? 0), 0) +
                     (investigation.outcomeAttachment ? 1 : 0);
                   const stage = getEffectiveStage(investigation);
+                  const primaryReport = investigation.linkedReportIds[0]
+                    ? reports.find((r) => r.id === investigation.linkedReportIds[0])
+                    : undefined;
+                  const sourceResponse = investigation.linkedPromptResponseId
+                    ? responses.find((r) => r.id === investigation.linkedPromptResponseId)
+                    : primaryReport?.sourcePromptResponseId
+                      ? responses.find((r) => r.id === primaryReport.sourcePromptResponseId)
+                      : undefined;
                   return (
                     <tr
                       key={investigation.id}
@@ -333,14 +344,54 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
                         </Badge>
                       </td>
                       <td className="px-3 py-2 text-xs">{INVESTIGATION_STAGE_LABELS[stage]}</td>
-                      <td className="px-3 py-2 max-w-[120px] truncate">
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        {primaryReport ? (
+                          <button
+                            type="button"
+                            className="text-[var(--mismo-blue)] hover:underline font-mono text-xs"
+                            onClick={() => onNavigate('report-detail', { id: primaryReport.id, fromInvestigation: investigation.id })}
+                          >
+                            {formatCaseReference(primaryReport)}
+                          </button>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        {sourceResponse ? (
+                          <button
+                            type="button"
+                            className="text-[var(--mismo-blue)] hover:underline text-xs"
+                            onClick={() => onNavigate('prompt-response-detail', { id: sourceResponse.id, type: sourceResponse.answer })}
+                          >
+                            {sourceResponse.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}
+                          </button>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                      <td className="px-3 py-2 max-w-[120px]">
                         {investigation.subjectUserIds?.length
-                          ? investigation.subjectUserIds
-                              .map((id) => {
-                                const u = users.find((x) => x.id === id);
-                                return u ? `${u.firstName} ${u.lastName}` : id;
-                              })
-                              .join(', ')
+                          ? investigation.subjectUserIds.map((id, idx) => {
+                              const u = users.find((x) => x.id === id);
+                              return u ? (
+                                <span key={id}>
+                                  {idx > 0 ? ', ' : ''}
+                                  <button
+                                    type="button"
+                                    className="text-[var(--mismo-blue)] hover:underline"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onNavigate('employee-detail', { id: u.id });
+                                    }}
+                                  >
+                                    {u.firstName} {u.lastName}
+                                  </button>
+                                </span>
+                              ) : (
+                                id
+                              );
+                            })
                           : '-'}
                       </td>
                       <td className="px-3 py-2">{docCount}</td>

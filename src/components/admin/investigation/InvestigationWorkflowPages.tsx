@@ -108,7 +108,7 @@ function readEvidenceFile(file: File): Promise<{ fileName: string; mimeType: str
 }
 
 export function IntakeTriageModule(ctx: WorkflowContext) {
-  const { investigation, dataStore, primaryReport, reporter, owner, onNavigate, openProfile, EmployeeLink } = ctx;
+  const { investigation, dataStore, primaryReport, reporter, owner, onNavigate } = ctx;
   const progress = getModuleProgress(investigation)['intake-triage'];
   const promptCtx = getLinkedPromptContext(investigation, primaryReport, dataStore.prompts, dataStore.responses);
   const [pickupContact, setPickupContact] = useState<InvestigationEmployeeContactPreference>('IN_APP_MESSAGE');
@@ -135,7 +135,17 @@ export function IntakeTriageModule(ctx: WorkflowContext) {
             </div>
             <div>
               <p className="text-xs text-[var(--color-text-muted)]">Reporting party</p>
-              <EmployeeLink user={reporter} onClick={() => reporter && openProfile(reporter.id)} />
+              {reporter ? (
+                <button
+                  type="button"
+                  className="text-[var(--mismo-blue)] hover:underline font-medium text-left"
+                  onClick={() => onNavigate('employee-detail', { id: reporter.id })}
+                >
+                  {reporter.firstName} {reporter.lastName}
+                </button>
+              ) : (
+                <p>—</p>
+              )}
             </div>
             <div>
               <p className="text-xs text-[var(--color-text-muted)]">Date / time reported</p>
