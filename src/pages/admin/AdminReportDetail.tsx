@@ -34,6 +34,8 @@ import { getInvestigationDisplayId, REPORT_SOURCE_LABELS } from '@/lib/investiga
 import { formatCaseReference } from '@/lib/caseTypes';
 import { isIncidentIntakeComplete, isWageHourIntakeComplete } from '@/lib/utils';
 import { EmployeeIntakeReadOnly } from '@/components/admin/EmployeeIntakeReadOnly';
+import { RelatedRecordsNav } from '@/components/admin/RelatedRecordsNav';
+import { relatedNavForReport } from '@/lib/recordLinks';
 
 interface AdminReportDetailProps {
   dataStore: DataStore;
@@ -132,11 +134,13 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
           </Button>
         </div>
       ) : (
-        <Button variant="ghost" onClick={() => onNavigate('prompt-responses', { register: '1' })}>
+        <Button variant="ghost" onClick={() => onNavigate('case-register', { view: 'register', register: '1' })}>
           <Icons.arrowLeft className="h-4 w-4 mr-2" />
-          Back to Reports
+          Back to case register
         </Button>
       )}
+
+      <RelatedRecordsNav links={relatedNavForReport(dataStore, report, fromInvestigationId)} onNavigate={onNavigate} />
 
       {/* Above-the-fold: Case Command Center header */}
       <Card className="mismo-card border border-[var(--color-border-200)]">
@@ -202,11 +206,40 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
             </div>
             <div>
               <p className="text-[var(--color-text-muted)] text-xs uppercase tracking-wide">Reporter</p>
-              <p className="font-medium">{reporterDisplay} <span className="text-[var(--color-text-muted)]">({reporterIdentity})</span></p>
+              <p className="font-medium">
+                {report.isAnonymous || !reporter ? (
+                  <>
+                    {reporterDisplay} <span className="text-[var(--color-text-muted)]">({reporterIdentity})</span>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="text-[var(--mismo-blue)] hover:underline font-medium"
+                      onClick={() => onNavigate('employee-detail', { id: reporter.id })}
+                    >
+                      {reporterDisplay}
+                    </button>{' '}
+                    <span className="text-[var(--color-text-muted)]">({reporterIdentity})</span>
+                  </>
+                )}
+              </p>
             </div>
             <div>
               <p className="text-[var(--color-text-muted)] text-xs uppercase tracking-wide">Assigned owner</p>
-              <p className="font-medium">{assignee ? `${assignee.firstName} ${assignee.lastName}` : 'Unassigned'}</p>
+              <p className="font-medium">
+                {assignee ? (
+                  <button
+                    type="button"
+                    className="text-[var(--mismo-blue)] hover:underline"
+                    onClick={() => onNavigate('employee-detail', { id: assignee.id })}
+                  >
+                    {assignee.firstName} {assignee.lastName}
+                  </button>
+                ) : (
+                  'Unassigned'
+                )}
+              </p>
             </div>
             <div>
               <p className="text-[var(--color-text-muted)] text-xs uppercase tracking-wide">SLA</p>
@@ -219,7 +252,17 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
           <div className="flex flex-wrap gap-2 border-t border-[var(--color-border-200)] pt-4">
             <Button variant="outline" onClick={() => dataStore.assignReport(report.id, dataStore.currentUser.id)}>Assign to me</Button>
             <Button variant="outline" onClick={() => dataStore.updateReportStatus(report.id, 'TRIAGED')}>Mark triaged</Button>
-            <Button variant="outline" onClick={() => dataStore.createInvestigation(report.id, dataStore.currentUser.id)}>Convert to investigation</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const inv = dataStore.createInvestigation(report.id, dataStore.currentUser.id);
+                if (inv) {
+                  onNavigate('investigation-detail', { id: inv.id, tab: 'page-1' });
+                }
+              }}
+            >
+              Convert to investigation
+            </Button>
             <Button variant="outline" onClick={() => dataStore.updateReportStatus(report.id, 'RESOLVED')}>Resolve</Button>
             <Button
               variant="outline"

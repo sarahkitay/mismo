@@ -51,27 +51,13 @@ function isUnderOpenInvestigation(report: Report, investigations: { id: string; 
   return inv?.status === 'OPEN';
 }
 
-function linkedReportForPromptRow(
-  row: { id: string; answer: string; userId?: string },
-  reports: Report[]
-): Report | undefined {
-  if (row.answer === 'UNANSWERED') return undefined;
-  return (
-    reports.find((r) => r.sourcePromptResponseId === row.id) ??
-    reports.find((r) => r.createdByUserId === row.userId && r.reportSourceType === 'EMPLOYEE_PROMPT_RESPONSE')
-  );
-}
-
-function promptResponseForReport(report: Report, responses: DataStore['responses']) {
-  if (!report.sourcePromptResponseId) return undefined;
-  return responses.find((r) => r.id === report.sourcePromptResponseId);
-}
-
-function answerLabel(answer: string): string {
-  if (answer === 'HAS_ISSUE') return 'Yes';
-  if (answer === 'NO_ISSUE') return 'No';
-  return 'Unanswered';
-}
+import {
+  linkedReportForPromptRow,
+  promptResponseForReport,
+  answerLabel,
+  findInvestigationForReport,
+} from '@/lib/recordLinks';
+import { getInvestigationDisplayId } from '@/lib/investigationWorkflow';
 
 export type CaseRegisterBucket =
   | 'PROMPT_ALL'
@@ -786,12 +772,14 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                     <th className="px-3 py-2 text-left">Answer</th>
                     <th className="px-3 py-2 text-left">Review</th>
                     <th className="px-3 py-2 text-left">Linked case</th>
+                    <th className="px-3 py-2 text-left">Investigation</th>
                     <th className="px-3 py-2 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {promptRows.map((row) => {
                     const linkedCase = linkedReportForPromptRow(row, reports);
+                    const linkedInv = linkedCase ? findInvestigationForReport(linkedCase, investigations) : undefined;
                     const openRow = () => {
                       if (row.answer === 'UNANSWERED') {
                         if (row.userId) onNavigate('employee-detail', { id: row.userId });
@@ -855,6 +843,22 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                               }}
                             >
                               {formatCaseReference(linkedCase)}
+                            </button>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {linkedInv ? (
+                            <button
+                              type="button"
+                              className="text-[var(--mismo-blue)] hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onNavigate('investigation-detail', { id: linkedInv.id, tab: 'page-1' });
+                              }}
+                            >
+                              {getInvestigationDisplayId(linkedInv)}
                             </button>
                           ) : (
                             '-'

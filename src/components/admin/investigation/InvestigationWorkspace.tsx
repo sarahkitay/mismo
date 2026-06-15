@@ -30,6 +30,8 @@ import {
   type InvestigationTab,
 } from '@/lib/investigationWorkflow';
 import { formatCaseReference } from '@/lib/caseTypes';
+import { RelatedRecordsNav } from '@/components/admin/RelatedRecordsNav';
+import { relatedNavForInvestigation } from '@/lib/recordLinks';
 import { toast } from 'sonner';
 import { InvestigationPersonDrawer } from '@/components/admin/investigation/InvestigationPersonDrawer';
 import {
@@ -218,24 +220,47 @@ export function InvestigationWorkspace({
                 <th className="px-3 py-2 text-left">Report ID</th>
                 <th className="px-3 py-2 text-left">Type</th>
                 <th className="px-3 py-2 text-left">Source</th>
+                <th className="px-3 py-2 text-left">Check-in</th>
                 <th className="px-3 py-2 text-left">Status</th>
                 <th className="px-3 py-2 text-left">Created</th>
                 <th className="px-3 py-2 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
-              {filteredLinkedReports.map((r) => (
-                <tr key={r.id} className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)]">
+              {filteredLinkedReports.map((r) => {
+                const sourceResponse = r.sourcePromptResponseId
+                  ? dataStore.responses.find((x) => x.id === r.sourcePromptResponseId)
+                  : undefined;
+                return (
+                <tr
+                  key={r.id}
+                  className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer"
+                  onClick={() => onNavigate('report-detail', { id: r.id, fromInvestigation: investigation.id })}
+                >
                   <td className="px-3 py-2 font-medium font-mono">{formatCaseReference(r)}</td>
                   <td className="px-3 py-2">{getCategoryLabel(r.category)}</td>
                   <td className="px-3 py-2">{REPORT_SOURCE_LABELS[r.reportSourceType ?? 'SELF_REPORTED']}</td>
+                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                    {sourceResponse ? (
+                      <button
+                        type="button"
+                        className="text-[var(--mismo-blue)] hover:underline text-xs"
+                        onClick={() => onNavigate('prompt-response-detail', { id: sourceResponse.id, type: sourceResponse.answer })}
+                      >
+                        {sourceResponse.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}
+                      </button>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td className="px-3 py-2"><Badge className={getStatusColor(r.status)}>{r.status}</Badge></td>
                   <td className="px-3 py-2">{formatDate(r.createdAt)}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                     <Button size="sm" variant="outline" onClick={() => onNavigate('report-detail', { id: r.id, fromInvestigation: investigation.id })}>Open</Button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -283,10 +308,18 @@ export function InvestigationWorkspace({
         {reporter && (
           <>
             <Icons.chevronRight className="h-3.5 w-3.5" />
-            <EmployeeLink user={reporter} onClick={() => openProfile(reporter.id)} />
+            <button
+              type="button"
+              className="font-medium text-[var(--mismo-blue)] hover:underline"
+              onClick={() => onNavigate('employee-detail', { id: reporter.id })}
+            >
+              {reporter.firstName} {reporter.lastName}
+            </button>
           </>
         )}
       </nav>
+
+      <RelatedRecordsNav links={relatedNavForInvestigation(dataStore, investigation)} onNavigate={onNavigate} compact />
 
       <Card className="mismo-card border border-[var(--color-border-200)] mb-4">
         <CardContent className="p-5">

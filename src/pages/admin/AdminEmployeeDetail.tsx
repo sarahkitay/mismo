@@ -18,6 +18,13 @@ import {
   getInitials,
 } from '@/lib/utils';
 import { toast } from 'sonner';
+import {
+  activityNavTarget,
+  findInvestigationForReport,
+  findReportForPromptResponse,
+} from '@/lib/recordLinks';
+import { formatCaseReference } from '@/lib/caseTypes';
+import { getInvestigationDisplayId } from '@/lib/investigationWorkflow';
 
 interface AdminEmployeeDetailProps {
   dataStore: DataStore;
@@ -191,8 +198,14 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
               const noteCount = inv.notes?.length ?? 0;
               const docCount = (inv.notes ?? []).reduce((sum, n) => sum + (n.attachments?.length ?? 0), 0) + (inv.outcomeAttachment ? 1 : 0);
               return (
-                <tr key={inv.id} className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)]">
-                  <td className="px-3 py-2 font-medium">{inv.referenceNumber ?? inv.id}</td>
+                <tr
+                  key={inv.id}
+                  className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer"
+                  onClick={() => onNavigate('investigation-detail', { id: inv.id, tab: 'page-1' })}
+                >
+                  <td className="px-3 py-2 font-medium text-[var(--mismo-blue)]">
+                    {getInvestigationDisplayId(inv)}
+                  </td>
                   <td className="px-3 py-2 whitespace-nowrap">{formatDate(inv.openedAt)}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{formatRelativeTime(inv.updatedAt)}</td>
                   <td className="px-3 py-2">{investigator ? `${investigator.firstName} ${investigator.lastName}` : 'Unassigned'}</td>
@@ -200,8 +213,8 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                   <td className="px-3 py-2 text-xs">{inv.workflowPhase ?? 'QUEUED'}</td>
                   <td className="px-3 py-2">{docCount}</td>
                   <td className="px-3 py-2">{noteCount}</td>
-                  <td className="px-3 py-2 text-right">
-                    <Button size="sm" variant="outline" onClick={() => onNavigate('investigation-detail', { id: inv.id })}>
+                  <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                    <Button size="sm" variant="outline" onClick={() => onNavigate('investigation-detail', { id: inv.id, tab: 'page-1' })}>
                       View
                     </Button>
                   </td>
@@ -509,6 +522,8 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                         <th className="px-3 py-2 text-left">Response</th>
                         <th className="px-3 py-2 text-left">Needs review</th>
                         <th className="px-3 py-2 text-left">Answered</th>
+                        <th className="px-3 py-2 text-left">Linked case</th>
+                        <th className="px-3 py-2 text-left">Investigation</th>
                         <th className="px-3 py-2 text-right">Link</th>
                       </tr>
                     </thead>
@@ -517,15 +532,49 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                         const prompt = dataStore.prompts.find((p) => p.id === r.promptId);
                         const needsReview = r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false;
                         const reviewer = r.reviewedByUserId ? dataStore.users.find((u) => u.id === r.reviewedByUserId) : null;
+                        const linkedCase = findReportForPromptResponse(r.id, dataStore.reports);
+                        const linkedInv = linkedCase
+                          ? findInvestigationForReport(linkedCase, dataStore.investigations)
+                          : dataStore.investigations.find((i) => i.linkedPromptResponseId === r.id);
                         return (
-                          <tr key={r.id} className="border-t border-[var(--color-border-200)]">
+                          <tr
+                            key={r.id}
+                            className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer"
+                            onClick={() => onNavigate('prompt-response-detail', { id: r.id, type: r.answer })}
+                          >
                             <td className="px-3 py-2 font-medium">{prompt?.title ?? r.promptId}</td>
                             <td className="px-3 py-2 text-[var(--color-text-secondary)]">{prompt?.type ?? '-'}</td>
-                            <td className="px-3 py-2">{r.answer}</td>
+                            <td className="px-3 py-2">{r.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}</td>
                             <td className="px-3 py-2">{needsReview ? 'Yes' : 'No'}{reviewer ? ` · ${reviewer.firstName}` : ''}</td>
                             <td className="px-3 py-2 text-[var(--color-text-secondary)]">{formatDate(r.submittedAt)}</td>
-                            <td className="px-3 py-2 text-right">
-                              <Button size="sm" variant="outline" onClick={() => onNavigate('prompt-response-detail', { id: r.id })}>
+                            <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                              {linkedCase ? (
+                                <button
+                                  type="button"
+                                  className="text-[var(--mismo-blue)] hover:underline"
+                                  onClick={() => onNavigate('report-detail', { id: linkedCase.id })}
+                                >
+                                  {formatCaseReference(linkedCase)}
+                                </button>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                            <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                              {linkedInv ? (
+                                <button
+                                  type="button"
+                                  className="text-[var(--mismo-blue)] hover:underline"
+                                  onClick={() => onNavigate('investigation-detail', { id: linkedInv.id, tab: 'page-1' })}
+                                >
+                                  {getInvestigationDisplayId(linkedInv)}
+                                </button>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                              <Button size="sm" variant="outline" onClick={() => onNavigate('prompt-response-detail', { id: r.id, type: r.answer })}>
                                 Open
                               </Button>
                             </td>
@@ -600,7 +649,9 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                     <thead className="bg-[var(--color-surface-200)] text-[var(--color-text-secondary)]">
                       <tr>
                         <th className="px-3 py-2 text-left">Date</th>
+                        <th className="px-3 py-2 text-left">Case</th>
                         <th className="px-3 py-2 text-left">Type</th>
+                        <th className="px-3 py-2 text-left">Check-in query</th>
                         <th className="px-3 py-2 text-left">Category</th>
                         <th className="px-3 py-2 text-left">Status</th>
                         <th className="px-3 py-2 text-left">Severity</th>
@@ -613,18 +664,53 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                     <tbody>
                       {employeeReports.map((report) => {
                         const owner = report.assignedTo ? dataStore.users.find((u) => u.id === report.assignedTo) : null;
-                        const inv = report.investigationId ? dataStore.investigations.find((i) => i.id === report.investigationId) : null;
+                        const inv = report.investigationId
+                          ? dataStore.investigations.find((i) => i.id === report.investigationId)
+                          : dataStore.investigations.find((i) => i.linkedReportIds.includes(report.id));
+                        const sourceResponse = report.sourcePromptResponseId
+                          ? dataStore.responses.find((r) => r.id === report.sourcePromptResponseId)
+                          : undefined;
                         return (
-                          <tr key={report.id} className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)]">
+                          <tr
+                            key={report.id}
+                            className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer"
+                            onClick={() => onNavigate('report-detail', { id: report.id })}
+                          >
                             <td className="px-3 py-2 whitespace-nowrap">{formatDate(report.createdAt)}</td>
+                            <td className="px-3 py-2 font-medium text-[var(--mismo-blue)]">{formatCaseReference(report)}</td>
                             <td className="px-3 py-2">{report.sourcePromptId ? 'Prompt escalation' : 'Incident report'}</td>
+                            <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                              {sourceResponse ? (
+                                <button
+                                  type="button"
+                                  className="text-[var(--mismo-blue)] hover:underline"
+                                  onClick={() => onNavigate('prompt-response-detail', { id: sourceResponse.id, type: sourceResponse.answer })}
+                                >
+                                  {sourceResponse.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}
+                                </button>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
                             <td className="px-3 py-2">{getCategoryLabel(report.category)}</td>
                             <td className="px-3 py-2"><Badge className={getStatusColor(report.status)}>{report.status}</Badge></td>
                             <td className="px-3 py-2">{report.severity}</td>
-                            <td className="px-3 py-2">{inv?.referenceNumber ?? inv?.id ?? '-'}</td>
+                            <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                              {inv ? (
+                                <button
+                                  type="button"
+                                  className="text-[var(--mismo-blue)] hover:underline"
+                                  onClick={() => onNavigate('investigation-detail', { id: inv.id, tab: 'page-1' })}
+                                >
+                                  {getInvestigationDisplayId(inv)}
+                                </button>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
                             <td className="px-3 py-2">{owner ? `${owner.firstName} ${owner.lastName}` : 'Unassigned'}</td>
                             <td className="px-3 py-2">{formatRelativeTime(report.updatedAt)}</td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                               <Button size="sm" variant="outline" onClick={() => onNavigate('report-detail', { id: report.id })}>View</Button>
                             </td>
                           </tr>
@@ -671,15 +757,28 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
                 </p>
               ) : (
                 <ul className="space-y-2">
-                  {activityTimeline.map((item) => (
+                  {activityTimeline.map((item) => {
+                    const meta = employeeActivities.find((a) => a.id === item.id)?.metadata as Record<string, unknown> | undefined;
+                    const deepLink = meta ? activityNavTarget(meta, dataStore) : undefined;
+                    return (
                     <li key={item.id} className="border border-[var(--color-border-200)] p-3 rounded-[var(--radius-medium)] text-sm">
-                      <div className="flex flex-wrap justify-between gap-2">
+                      <div className="flex flex-wrap justify-between gap-2 items-start">
                         <span className="font-medium capitalize">{item.label}</span>
                         <span className="text-xs text-[var(--color-text-muted)]">{formatRelativeTime(item.at)}</span>
                       </div>
-                      {item.detail && <p className="text-xs text-[var(--color-text-secondary)] mt-1 truncate">{item.detail}</p>}
+                      {item.detail && <p className="text-xs text-[var(--color-text-muted)] mt-1">{item.detail}</p>}
+                      {deepLink && (
+                        <button
+                          type="button"
+                          className="text-xs text-[var(--mismo-blue)] hover:underline mt-2"
+                          onClick={() => onNavigate(deepLink.page, deepLink.params)}
+                        >
+                          Open {deepLink.label} →
+                        </button>
+                      )}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
             </TabsContent>

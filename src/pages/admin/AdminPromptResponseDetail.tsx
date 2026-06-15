@@ -1,6 +1,13 @@
 import type { DataStore } from '@/hooks/useDataStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { RelatedRecordsNav } from '@/components/admin/RelatedRecordsNav';
+import {
+  relatedNavForDelivery,
+  relatedNavForPromptResponse,
+  userDisplayName,
+} from '@/lib/recordLinks';
 import { toast } from 'sonner';
 
 interface AdminPromptResponseDetailProps {
@@ -16,8 +23,8 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
   if (!response && !delivery) {
     return (
       <div className="space-y-3">
-        <Button variant="ghost" onClick={() => onNavigate('prompt-responses')}>
-          Back
+        <Button variant="ghost" onClick={() => onNavigate('prompt-responses', { view: 'prompts' })}>
+          Back to check-in queries
         </Button>
         <p className="text-sm text-[var(--mismo-text-secondary)]">This check-in or response could not be found.</p>
       </div>
@@ -27,19 +34,36 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
   if (delivery) {
     const prompt = dataStore.prompts.find((p) => p.id === delivery.promptId);
     const user = dataStore.users.find((u) => u.id === delivery.userId);
+    const relatedLinks = relatedNavForDelivery(dataStore, delivery);
+
     return (
       <div className="space-y-4">
-        <Button variant="ghost" onClick={() => onNavigate('prompt-responses', { bucket: 'UNANSWERED', rangePreset: 'ALL' })}>
-          Back to prompt responses
+        <Button variant="ghost" onClick={() => onNavigate('prompt-responses', { bucket: 'UNANSWERED', view: 'prompts', rangePreset: 'ALL' })}>
+          Back to check-in queries
         </Button>
+
+        <RelatedRecordsNav links={relatedLinks} onNavigate={onNavigate} />
+
         <Card className="mismo-card">
           <CardContent className="p-5 space-y-3">
-            <h1 className="text-xl font-semibold">{prompt?.title ?? 'Prompt'}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-semibold">{prompt?.title ?? 'Check-in query'}</h1>
+              <Badge className="status-chip">Unanswered</Badge>
+            </div>
             <p className="text-sm text-[var(--mismo-text-secondary)]">
-              Employee: {user?.firstName} {user?.lastName}
+              Employee:{' '}
+              <button
+                type="button"
+                className="text-[var(--mismo-blue)] hover:underline font-medium"
+                onClick={() => onNavigate('employee-detail', { id: delivery.userId })}
+              >
+                {userDisplayName(user)}
+              </button>
             </p>
-            <p className="text-sm text-[var(--mismo-text-secondary)]">Status: Unanswered (pending)</p>
             <p className="text-sm text-[var(--mismo-text-secondary)]">Sent: {delivery.deliveredAt.toLocaleString()}</p>
+            {delivery.dueAt && (
+              <p className="text-sm text-[var(--mismo-text-secondary)]">Due: {delivery.dueAt.toLocaleString()}</p>
+            )}
             <div className="rounded-md border border-[var(--color-border-200)] bg-[var(--color-surface-100)] p-3 text-sm text-[var(--color-text-secondary)]">
               Assistant (preview): suggest a short reminder focused on the due date and confidentiality. Final copy is edited by HR before send.
             </div>
@@ -73,34 +97,56 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
     );
   }
 
-  if (!response) {
-    return (
-      <div className="space-y-3">
-        <Button variant="ghost" onClick={() => onNavigate('prompt-responses')}>
-          Back
-        </Button>
-        <p className="text-sm text-[var(--mismo-text-secondary)]">This check-in or response could not be found.</p>
-      </div>
-    );
-  }
+  if (!response) return null;
 
   const prompt = dataStore.prompts.find((p) => p.id === response.promptId);
   const user = dataStore.users.find((u) => u.id === response.userId);
   const needsReview = response.answer === 'HAS_ISSUE' && !response.reviewedAt && response.needsReview !== false;
   const reviewer = response.reviewedByUserId ? dataStore.users.find((u) => u.id === response.reviewedByUserId) : null;
+  const relatedLinks = relatedNavForPromptResponse(dataStore, response);
 
   return (
     <div className="space-y-4">
-      <Button variant="ghost" onClick={() => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', rangePreset: 'ALL' })}>
-        Back to prompt responses
+      <Button
+        variant="ghost"
+        onClick={() =>
+          onNavigate('prompt-responses', {
+            view: 'prompts',
+            answer: response.answer,
+            channel: 'incident',
+            rangePreset: 'ALL',
+          })
+        }
+      >
+        Back to check-in queries
       </Button>
+
+      <RelatedRecordsNav links={relatedLinks} onNavigate={onNavigate} />
+
       <Card className="mismo-card">
         <CardContent className="p-5 space-y-2">
-          <h1 className="text-xl font-semibold">{prompt?.title ?? 'Prompt'}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold">{prompt?.title ?? 'Check-in response'}</h1>
+            <Badge className={response.answer === 'HAS_ISSUE' ? 'status-chip status-chip--warn' : 'status-chip status-chip--success'}>
+              {response.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}
+            </Badge>
+          </div>
           <p className="text-sm text-[var(--mismo-text-secondary)]">
-            Employee: {user?.firstName} {user?.lastName}
+            Employee:{' '}
+            <button
+              type="button"
+              className="text-[var(--mismo-blue)] hover:underline font-medium"
+              onClick={() => onNavigate('employee-detail', { id: response.userId })}
+            >
+              {userDisplayName(user)}
+            </button>
           </p>
-          <p className="text-sm text-[var(--mismo-text-secondary)]">Answer: {response.answer}</p>
+          {prompt && (
+            <p className="text-sm text-[var(--mismo-text-secondary)]">
+              Prompt type: {prompt.type}
+              {prompt.includeFinancialQuestion ? ' · includes pay screening' : ''}
+            </p>
+          )}
           <p className="text-sm text-[var(--mismo-text-secondary)]">Submitted: {response.submittedAt.toLocaleString()}</p>
           <p className="text-sm text-[var(--mismo-text-secondary)]">
             Needs HR review: {needsReview ? 'Yes' : 'No'}
@@ -111,7 +157,7 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
               </>
             )}
           </p>
-          {response.notes && <p className="text-sm">Notes: {response.notes}</p>}
+          {response.notes && <p className="text-sm border-l-2 border-[var(--color-border-200)] pl-3 mt-2">{response.notes}</p>}
           {needsReview && (
             <Button
               className="mt-2 bg-[var(--color-primary-900)] text-white"
