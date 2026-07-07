@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { OutreachToneCoach } from '@/components/admin/OutreachToneCoach';
 
 export interface OutreachReminderPayload {
   subject: string;
@@ -27,6 +28,14 @@ interface OutreachReminderModalProps {
   relatedLabel?: string;
   defaultSubject?: string;
   defaultBody?: string;
+  /** Enables AI tone coach when set */
+  orgId?: string;
+  createdByUserId?: string;
+  reportId?: string;
+  investigationId?: string;
+  stateCode?: string;
+  caseCategory?: string;
+  caseType?: string;
   onSend: (payload: OutreachReminderPayload) => void;
 }
 
@@ -37,6 +46,13 @@ export function OutreachReminderModal({
   relatedLabel,
   defaultSubject = 'HR reminder',
   defaultBody = 'Please complete your pending HR item at your earliest convenience.',
+  orgId,
+  createdByUserId,
+  reportId,
+  investigationId,
+  stateCode,
+  caseCategory,
+  caseType,
   onSend,
 }: OutreachReminderModalProps) {
   const [subject, setSubject] = useState(defaultSubject);
@@ -73,7 +89,7 @@ export function OutreachReminderModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Send reminder to {employeeName}</DialogTitle>
         </DialogHeader>
@@ -132,6 +148,23 @@ export function OutreachReminderModal({
               <Label htmlFor="outreach-internal">Internal note (not sent to employee)</Label>
               <Textarea id="outreach-internal" rows={2} value={internalNote} onChange={(e) => setInternalNote(e.target.value)} />
             </div>
+            {orgId && (
+              <OutreachToneCoach
+                orgId={orgId}
+                createdBy={createdByUserId}
+                reportId={reportId}
+                investigationId={investigationId}
+                subject={subject}
+                body={body}
+                stateCode={stateCode}
+                caseCategory={caseCategory}
+                caseType={caseType}
+                onApplySuggestion={(s, b) => {
+                  setSubject(s);
+                  setBody(b);
+                }}
+              />
+            )}
           </div>
         )}
         <DialogFooter className="gap-2 sm:gap-0">

@@ -4,6 +4,11 @@ import { Icons } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
+  PAYROLL_EXPEDITED_EMPLOYEE_MESSAGE,
+  PAYROLL_EXPEDITED_QUICK_LABEL,
+  PAYROLL_MEMO_CHOICE_HEADING,
+  PAYROLL_MEMO_FULL_DESCRIPTION,
+  PAYROLL_MEMO_QUICK_DESCRIPTION,
   WAGE_HOUR_RETALIATION_NOTE,
   WAGE_HOUR_SCREENING_QUESTION,
   WAGE_HOUR_YES_CONFIRMATION_BODY,
@@ -24,8 +29,9 @@ function formatEqcHeaderDate(d: Date): string {
 }
 
 export function WageHourReporting({ dataStore, onNavigate }: WageHourReportingProps) {
-  const { currentUser, recordWageHourScreeningNo, beginWageHourCase, organizationName } = dataStore;
-  const [step, setStep] = useState<'screening' | 'yes_confirm' | 'no_ack'>('screening');
+  const { currentUser, recordWageHourScreeningNo, beginWageHourCase, submitExpeditedPayrollReport, organizationName } =
+    dataStore;
+  const [step, setStep] = useState<'screening' | 'yes_confirm' | 'payroll_choice' | 'no_ack'>('screening');
 
   const handleNo = () => {
     recordWageHourScreeningNo(currentUser.id);
@@ -38,10 +44,23 @@ export function WageHourReporting({ dataStore, onNavigate }: WageHourReportingPr
   };
 
   const handleYesSubmit = () => {
+    setStep('payroll_choice');
+  };
+
+  const handleExpeditedPayroll = () => {
+    const report = submitExpeditedPayrollReport(currentUser.id, { sourceType: 'WAGE_HOUR_PROMPT' });
+    toast.success(PAYROLL_EXPEDITED_EMPLOYEE_MESSAGE, { duration: 9000 });
+    if (report) {
+      toast.message(`Reference ${formatCaseReference(report)}`, { duration: 5000 });
+    }
+    onNavigate('home');
+  };
+
+  const handleFullPayrollSheet = () => {
     const report = beginWageHourCase(currentUser.id, 'WAGE_HOUR_PROMPT');
     const ref = formatCaseReference(report);
     toast.success(
-      `Your response is recorded (${ref}). HR has been notified (simulated email to you and your administrator). Complete the intake form next.`,
+      `Your response is recorded (${ref}). Complete the intake form next.`,
       { duration: 8000 }
     );
     onNavigate(`wage-hour-intake/${report.id}`);
@@ -116,7 +135,7 @@ export function WageHourReporting({ dataStore, onNavigate }: WageHourReportingPr
                 If you selected &quot;Yes&quot; by mistake, you can go back before submitting the intake form. Once submitted, changes are version-tracked for compliance.
               </p>
             </>
-          ) : (
+          ) : step === 'yes_confirm' ? (
             <>
               <p className="text-base md:text-lg text-[var(--color-text-primary)] mt-5 leading-relaxed">
                 {WAGE_HOUR_YES_CONFIRMATION_BODY}
@@ -132,7 +151,39 @@ export function WageHourReporting({ dataStore, onNavigate }: WageHourReportingPr
                   className="min-h-[44px] h-14 text-base bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)]"
                   onClick={handleYesSubmit}
                 >
-                  Submit &amp; continue
+                  Continue
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="text-xl md:text-2xl font-semibold text-[var(--color-primary-900)] mt-5">{PAYROLL_MEMO_CHOICE_HEADING}</h2>
+              <div className="mt-6 space-y-4">
+                <Card className="border border-[var(--color-border-200)]">
+                  <CardContent className="p-5 space-y-3">
+                    <p className="font-semibold text-[var(--color-text-primary)]">{PAYROLL_EXPEDITED_QUICK_LABEL}</p>
+                    <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">{PAYROLL_MEMO_QUICK_DESCRIPTION}</p>
+                    <Button
+                      className="w-full sm:w-auto min-h-[44px] bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)]"
+                      onClick={handleExpeditedPayroll}
+                    >
+                      Submit payroll issue (no details)
+                    </Button>
+                  </CardContent>
+                </Card>
+                <Card className="border border-[var(--color-border-200)]">
+                  <CardContent className="p-5 space-y-3">
+                    <p className="font-semibold text-[var(--color-text-primary)]">Fill out payroll report sheet</p>
+                    <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">{PAYROLL_MEMO_FULL_DESCRIPTION}</p>
+                    <Button variant="outline" className="w-full sm:w-auto min-h-[44px]" onClick={handleFullPayrollSheet}>
+                      Continue to report sheet
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="mt-6">
+                <Button variant="outline" className="min-h-[44px]" onClick={() => setStep('yes_confirm')}>
+                  Back
                 </Button>
               </div>
             </>

@@ -20,7 +20,7 @@ import {
 } from '@/lib/utils';
 import { compareByLastFirstName } from '@/lib/sortUsers';
 import { Badge } from '@/components/ui/badge';
-import { CASE_TYPE_LABELS, formatCaseReference, getReportStatusLabel, inferCaseType } from '@/lib/caseTypes';
+import { CASE_TYPE_LABELS, MARK_INITIAL_REVIEW_ACTION, MARK_INITIAL_REVIEW_TOAST, formatCaseReference, getReportStatusLabel, inferCaseType } from '@/lib/caseTypes';
 import { Icons } from '@/lib/icons';
 import { toast } from 'sonner';
 import {
@@ -30,7 +30,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-const OPEN_STATUSES: ReportStatus[] = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_REVIEW', 'NEEDS_INFO', 'PENDING_WAGE_HOUR_REVIEW'];
+const OPEN_STATUSES: ReportStatus[] = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_REVIEW', 'NEEDS_INFO', 'PENDING_WAGE_HOUR_REVIEW', 'PAYROLL_EXPEDITED'];
 const SLA_DAYS = 14;
 
 function isOpenReport(r: Report) {
@@ -414,17 +414,6 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
           </div>
         </div>
         <div>
-          <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)] mb-2">Memos</p>
-          <div className="flex flex-wrap gap-2">
-            <BucketBtn active={false} onClick={() => onNavigate('policies', { memoQueue: 'pending_ack' })}>
-              Pending acknowledgement →
-            </BucketBtn>
-            <BucketBtn active={false} onClick={() => onNavigate('policies', { memoQueue: 'clarification' })}>
-              Need clarification →
-            </BucketBtn>
-          </div>
-        </div>
-        <div>
           <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)] mb-2">Case register</p>
           <div className="flex flex-wrap gap-2">
             <BucketBtn active={promptChannel === 'register' && bucket === 'CASE_REGISTER'} onClick={() => goRegister({})}>
@@ -488,7 +477,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
               >
                 <option value="ALL">All statuses</option>
                 <option value="NEW">NEW</option>
-                <option value="TRIAGED">TRIAGED</option>
+                <option value="TRIAGED">Initial review complete</option>
                 <option value="ASSIGNED">ASSIGNED</option>
                 <option value="IN_REVIEW">IN REVIEW</option>
                 <option value="NEEDS_INFO">NEEDS INFO</option>
@@ -562,7 +551,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                   Assign to me
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => bulkStatus('TRIAGED')}>
-                  Mark triaged
+                  {MARK_INITIAL_REVIEW_ACTION}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => bulkStatus('IN_REVIEW')}>
                   Mark in review
@@ -719,8 +708,8 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                                   </DropdownMenuItem>
                                 )}
                                 {report.status === 'NEW' && (
-                                  <DropdownMenuItem onClick={() => { updateReportStatus(report.id, 'TRIAGED'); toast.success('Marked triaged.'); }}>
-                                    Mark triaged
+                                  <DropdownMenuItem onClick={() => { updateReportStatus(report.id, 'TRIAGED'); toast.success(MARK_INITIAL_REVIEW_TOAST); }}>
+                                    {MARK_INITIAL_REVIEW_ACTION}
                                   </DropdownMenuItem>
                                 )}
                                 {!report.investigationId && report.status !== 'NEW' && (

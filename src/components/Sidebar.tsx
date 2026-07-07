@@ -36,7 +36,6 @@ const adminNavItems: NavItem[] = [
     id: 'policies',
     label: "Memos & announcements",
     icon: 'bookOpen',
-    badgeKey: 'memoAcknowledgementsPending',
   },
   {
     id: 'case-register',

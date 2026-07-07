@@ -5,9 +5,17 @@ import { Icons } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { employeeIncidentReportHeadline, formatDate, formatRelativeTime, getStatusColor, isEmployeeReportIntakeComplete } from '@/lib/utils';
-import { clearCheckInDeferralForToday, deferCheckInForToday, shouldShowCheckInGate } from '@/lib/checkInGate';
+import { clearCheckInDeferralForToday, shouldShowCheckInGate } from '@/lib/checkInGate';
 import { ReportConcernSection } from '@/components/employee/ReportConcernSection';
 import { toast } from 'sonner';
+import {
+  PAYROLL_EXPEDITED_EMPLOYEE_MESSAGE,
+  PAYROLL_EXPEDITED_QUICK_LABEL,
+  PAYROLL_MEMO_CHOICE_HEADING,
+  PAYROLL_MEMO_FULL_DESCRIPTION,
+  PAYROLL_MEMO_QUICK_DESCRIPTION,
+  formatCaseReference,
+} from '@/lib/caseTypes';
 
 /** EQC-style mandatory incident query copy (shown for prompts with type INCIDENT). */
 const EQC_INCIDENT_QUESTION =
@@ -45,6 +53,8 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
     employeeReports,
     submitPromptResponse,
     submitIncidentPromptYes,
+    submitExpeditedPayrollReport,
+    beginWageHourCase,
     policies,
     policyAcknowledgements,
     organizationName,
@@ -82,14 +92,17 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
     incidentRestoreStep?: 'question' | 'yes_confirm';
   };
   const [financialFollowUp, setFinancialFollowUp] = useState<FinancialFollowUp | null>(null);
+  const [financialPayrollChoice, setFinancialPayrollChoice] = useState(false);
   useEffect(() => {
     setIncidentStep('question');
     setFinancialFollowUp(null);
+    setFinancialPayrollChoice(false);
   }, [heroPrompt?.id]);
 
   useEffect(() => {
     if (heroPromptAlreadyAnswered) {
       setFinancialFollowUp(null);
+      setFinancialPayrollChoice(false);
       setIncidentStep('question');
     }
   }, [heroPromptAlreadyAnswered]);
@@ -111,6 +124,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
       : 'Financial follow-up: no pay, compensation, or benefits-related concern indicated.';
     const { deliveryId, answer, promptIdForReport } = financialFollowUp;
     setFinancialFollowUp(null);
+    setFinancialPayrollChoice(false);
     setIncidentStep('question');
 
     if (answer === 'HAS_ISSUE' && isIncidentGate) {
@@ -139,11 +153,56 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
     }
   };
 
+  const handleFinancialYesConcern = () => {
+    if (!financialFollowUp) return;
+    if (financialFollowUp.answer === 'HAS_ISSUE' && isIncidentGate) {
+      submitFinancialAndClose(true);
+      return;
+    }
+    setFinancialPayrollChoice(true);
+  };
+
+  const submitExpeditedPayrollFromCheckIn = () => {
+    if (!financialFollowUp) return;
+    const report = submitExpeditedPayrollReport(currentUser.id, {
+      deliveryId: financialFollowUp.deliveryId,
+      promptId: heroPrompt?.prompt.id,
+      sourceType: 'EMPLOYEE_PROMPT_RESPONSE',
+    });
+    setFinancialFollowUp(null);
+    setFinancialPayrollChoice(false);
+    setIncidentStep('question');
+    toast.success(PAYROLL_EXPEDITED_EMPLOYEE_MESSAGE, { duration: 9000 });
+    if (report) {
+      toast.message(`Reference ${formatCaseReference(report)}`, { duration: 5000 });
+    }
+  };
+
+  const submitFullPayrollFromCheckIn = () => {
+    if (!financialFollowUp) return;
+    const { deliveryId } = financialFollowUp;
+    submitPromptResponse(
+      deliveryId,
+      'HAS_ISSUE',
+      'Financial follow-up: employee chose to complete the full wage & hour report sheet.'
+    );
+    const report = beginWageHourCase(currentUser.id, 'EMPLOYEE_PROMPT_RESPONSE');
+    setFinancialFollowUp(null);
+    setFinancialPayrollChoice(false);
+    setIncidentStep('question');
+    toast.success(
+      `Complete the report sheet to submit details (${formatCaseReference(report)}).`,
+      { duration: 7000 }
+    );
+    onNavigate(`wage-hour-intake/${report.id}`);
+  };
+
   const cancelFinancialFollowUp = () => {
     if (financialFollowUp?.incidentRestoreStep) {
       setIncidentStep(financialFollowUp.incidentRestoreStep);
     }
     setFinancialFollowUp(null);
+    setFinancialPayrollChoice(false);
   };
 
   const handleNoIssues = (deliveryId: string) => {
@@ -199,18 +258,11 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
   
   const pendingIntakes = employeeReports.filter((r) => !isEmployeeReportIntakeComplete(r));
 
-  const handleDeferCheckIn = () => {
-    if (!heroPrompt) return;
-    deferCheckInForToday(currentUser.id, heroPrompt.id);
-    setFinancialFollowUp(null);
-    setIncidentStep('question');
-    setCheckInDeferTick((t) => t + 1);
-  };
-
   const handleResumeCheckIn = () => {
     if (!heroPrompt) return;
     clearCheckInDeferralForToday(currentUser.id, heroPrompt.id);
     setFinancialFollowUp(null);
+    setFinancialPayrollChoice(false);
     setIncidentStep('question');
     setCheckInDeferTick((t) => t + 1);
     window.scrollTo(0, 0);
@@ -241,6 +293,42 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
           <CardContent className="p-8 md:p-10">
             <div className="max-w-3xl">
               {financialFollowUp ? (
+                financialPayrollChoice ? (
+                  <>
+                    <p className="text-xs tracking-[0.08em] uppercase text-[var(--color-text-secondary)]">
+                      Pay and compensation screening
+                    </p>
+                    <h2 className="mismo-heading text-2xl md:text-3xl mt-3 text-[var(--color-primary-900)]">{PAYROLL_MEMO_CHOICE_HEADING}</h2>
+                    <div className="mt-6 space-y-4">
+                      <Card className="border border-[var(--color-border-200)]">
+                        <CardContent className="p-5 space-y-3">
+                          <p className="font-semibold text-[var(--color-text-primary)]">{PAYROLL_EXPEDITED_QUICK_LABEL}</p>
+                          <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">{PAYROLL_MEMO_QUICK_DESCRIPTION}</p>
+                          <Button
+                            className="w-full sm:w-auto min-h-[44px] bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)]"
+                            onClick={submitExpeditedPayrollFromCheckIn}
+                          >
+                            Submit payroll issue (no details)
+                          </Button>
+                        </CardContent>
+                      </Card>
+                      <Card className="border border-[var(--color-border-200)]">
+                        <CardContent className="p-5 space-y-3">
+                          <p className="font-semibold text-[var(--color-text-primary)]">Fill out payroll report sheet</p>
+                          <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">{PAYROLL_MEMO_FULL_DESCRIPTION}</p>
+                          <Button variant="outline" className="w-full sm:w-auto min-h-[44px]" onClick={submitFullPayrollFromCheckIn}>
+                            Continue to report sheet
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </div>
+                    <div className="mt-6">
+                      <Button type="button" variant="ghost" className="text-[var(--mismo-blue)]" onClick={() => setFinancialPayrollChoice(false)}>
+                        Back
+                      </Button>
+                    </div>
+                  </>
+                ) : (
                 <>
                   <p className="text-xs tracking-[0.08em] uppercase text-[var(--color-text-secondary)]">
                     {isIncidentGate ? 'Check-in required before you continue' : 'Compliance Check-In Required'}
@@ -266,7 +354,7 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                     </Button>
                     <Button
                       className="h-14 text-base bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)] shadow-[var(--shadow-2)] enterprise-interactive"
-                      onClick={() => submitFinancialAndClose(true)}
+                      onClick={handleFinancialYesConcern}
                     >
                       Yes, I have a concern
                     </Button>
@@ -275,11 +363,9 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                     <Button type="button" variant="ghost" className="text-[var(--mismo-blue)]" onClick={cancelFinancialFollowUp}>
                       Back to previous step
                     </Button>
-                    <Button type="button" variant="ghost" className="text-[var(--mismo-blue)] ml-2 min-h-[44px]" onClick={handleDeferCheckIn}>
-                      Answer later today
-                    </Button>
                   </div>
                 </>
+                )
               ) : (
                 <>
               {checkInStepLabel && (
@@ -329,11 +415,6 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                           YES
                         </Button>
                       </div>
-                      <div className="mt-6">
-                        <Button type="button" variant="ghost" className="text-[var(--mismo-blue)] min-h-[44px]" onClick={handleDeferCheckIn}>
-                          Answer later today
-                        </Button>
-                      </div>
                     </>
                   ) : (
                     <>
@@ -355,11 +436,6 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                           onClick={() => handleIncidentYesSubmit(heroPrompt.id)}
                         >
                           Submit
-                        </Button>
-                      </div>
-                      <div className="mt-6">
-                        <Button type="button" variant="ghost" className="text-[var(--mismo-blue)] min-h-[44px]" onClick={handleDeferCheckIn}>
-                          Answer later today
                         </Button>
                       </div>
                     </>
@@ -390,11 +466,6 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
                     >
                       I have an issue
                       <Icons.arrowRight className="h-4 w-4 ml-2" />
-                    </Button>
-                  </div>
-                  <div className="mt-6">
-                    <Button type="button" variant="ghost" className="text-[var(--mismo-blue)] min-h-[44px]" onClick={handleDeferCheckIn}>
-                      Answer later today
                     </Button>
                   </div>
                 </>

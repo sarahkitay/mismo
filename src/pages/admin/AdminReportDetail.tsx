@@ -31,7 +31,7 @@ function getSlaLabel(report: { createdAt: Date; updatedAt: Date; status: string 
 }
 import { exportCaseCsv, exportCasePdf } from '@/lib/evidenceExport';
 import { getInvestigationDisplayId, REPORT_SOURCE_LABELS } from '@/lib/investigationWorkflow';
-import { formatCaseReference } from '@/lib/caseTypes';
+import { ASSIGN_CASE_TO_ME_ACTION, MARK_INITIAL_REVIEW_ACTION, formatCaseReference, getPayrollExpeditedSlaLabel, getReportStatusLabel } from '@/lib/caseTypes';
 import { isIncidentIntakeComplete, isWageHourIntakeComplete } from '@/lib/utils';
 import { EmployeeIntakeReadOnly } from '@/components/admin/EmployeeIntakeReadOnly';
 import { RelatedRecordsNav } from '@/components/admin/RelatedRecordsNav';
@@ -108,7 +108,11 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
     report.caseType === 'WAGE_HOUR' ? isWageHourIntakeComplete(report) : isIncidentIntakeComplete(report);
   const reporterIdentity = report.isAnonymous ? 'Anonymous' : reporter ? 'Named' : 'Confidential';
   const reporterDisplay = report.isAnonymous ? 'Anonymous' : reporter ? `${reporter.firstName} ${reporter.lastName}` : 'Confidential';
-  const sla = getSlaLabel(report);
+  const isExpeditedPayroll = report.status === 'PAYROLL_EXPEDITED' && report.expeditedPayroll;
+  const payrollSla = isExpeditedPayroll ? getPayrollExpeditedSlaLabel(report) : null;
+  const sla = payrollSla?.label
+    ? { label: payrollSla.label, overdue: payrollSla.overdue }
+    : getSlaLabel(report);
 
   return (
     <div className="space-y-5">
@@ -141,6 +145,23 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
       )}
 
       <RelatedRecordsNav links={relatedNavForReport(dataStore, report, fromInvestigationId)} onNavigate={onNavigate} />
+
+      {isExpeditedPayroll && (
+        <Card className="mismo-card border-2 border-[var(--color-alert-600)]/50 bg-amber-50/80">
+          <CardContent className="p-5 space-y-2">
+            <p className="font-semibold text-[var(--color-alert-600)]">Expedited payroll memo — no triage</p>
+            <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
+              The employee flagged a payroll issue without additional details. This case bypasses the normal triage queue.
+              An administrator must review and resolve within 24 hours.
+            </p>
+            {payrollSla && (
+              <p className={`text-sm font-medium ${payrollSla.overdue ? 'text-[var(--color-alert-600)]' : 'text-[var(--color-primary-900)]'}`}>
+                {payrollSla.label}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Above-the-fold: Case Command Center header */}
       <Card className="mismo-card border border-[var(--color-border-200)]">
@@ -192,7 +213,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
 
           <div className="flex flex-wrap items-center gap-2">
             <Badge className={getSeverityColor(report.severity)}>{report.severity}</Badge>
-            <Badge className={getStatusColor(report.status)}>{report.status.replace('_', ' ')}</Badge>
+            <Badge className={getStatusColor(report.status)}>{getReportStatusLabel(report.status)}</Badge>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-sm border-t border-[var(--color-border-200)] pt-4">
@@ -250,8 +271,10 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
           <p className="text-[var(--mismo-text-secondary)] text-sm">{report.description}</p>
 
           <div className="flex flex-wrap gap-2 border-t border-[var(--color-border-200)] pt-4">
-            <Button variant="outline" onClick={() => dataStore.assignReport(report.id, dataStore.currentUser.id)}>Assign to me</Button>
-            <Button variant="outline" onClick={() => dataStore.updateReportStatus(report.id, 'TRIAGED')}>Mark triaged</Button>
+            <Button variant="outline" onClick={() => dataStore.assignReport(report.id, dataStore.currentUser.id)}>{ASSIGN_CASE_TO_ME_ACTION}</Button>
+            {!isExpeditedPayroll && (
+              <Button variant="outline" onClick={() => dataStore.updateReportStatus(report.id, 'TRIAGED')}>{MARK_INITIAL_REVIEW_ACTION}</Button>
+            )}
             <Button
               variant="outline"
               onClick={() => {
@@ -263,7 +286,13 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
             >
               Convert to investigation
             </Button>
-            <Button variant="outline" onClick={() => dataStore.updateReportStatus(report.id, 'RESOLVED')}>Resolve</Button>
+            <Button
+              className={isExpeditedPayroll ? 'bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)] text-white' : undefined}
+              variant={isExpeditedPayroll ? 'default' : 'outline'}
+              onClick={() => dataStore.updateReportStatus(report.id, 'RESOLVED')}
+            >
+              {isExpeditedPayroll ? 'Resolve payroll issue' : 'Resolve'}
+            </Button>
             <Button
               variant="outline"
               onClick={() => {

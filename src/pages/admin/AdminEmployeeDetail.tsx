@@ -789,6 +789,8 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
       <OutreachReminderModal
         open={reminderOpen}
         onOpenChange={setReminderOpen}
+        orgId={dataStore.currentUser.orgId}
+        createdByUserId={dataStore.currentUser.id}
         employeeName={`${employee.firstName} ${employee.lastName}`}
         relatedLabel="Employee profile reminder"
         defaultSubject="HR reminder — action required"

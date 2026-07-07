@@ -20,7 +20,7 @@ import type {
 } from '@/types';
 
 // Current user org ID
-const ORG_ID = 'org-1';
+const ORG_ID = 'org-mismo-1';
 
 // Organization
 export const mockOrg: Organization = {
@@ -94,7 +94,7 @@ export const mockUsers: User[] = [
   {
     id: 'user-manager-1',
     orgId: ORG_ID,
-    role: 'HR',
+    role: 'MANAGER',
     firstName: 'Jordan',
     lastName: 'Lee',
     email: 'jordan.lee@mismo.com',
@@ -1170,9 +1170,7 @@ export function getDashboardCounts(): DashboardCounts {
     yesResponsesNeedingReview +
     unansweredPromptDeliveries +
     activeInvestigations +
-    reportsNeedingClarification +
-    memoAcknowledgementsPending +
-    memosNeedingClarification;
+    reportsNeedingClarification;
 
   const openCaseRegisterCount = mockReports.filter((r) => {
     if (['RESOLVED', 'CLOSED'].includes(r.status)) return false;
@@ -1324,7 +1322,7 @@ export function getCategoryLabel(category: string): string {
 export function getStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     NEW: 'New',
-    TRIAGED: 'Triaged',
+    TRIAGED: 'Initial review complete',
     ASSIGNED: 'Assigned',
     IN_REVIEW: 'In Review',
     NEEDS_INFO: 'Needs Info',

@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatDate, formatRelativeTime } from '@/lib/utils';
+import { formatRelativeTime } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Icons } from '@/lib/icons';
+import { fetchHrNextTasks, isAiFeaturesEnabled, type HrNextTask } from '@/lib/api/aiServices';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 interface AdminDashboardProps {
@@ -48,7 +49,47 @@ function ActionLine({
 
 export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
   const dc = dataStore.dashboardCounts;
-  const { policies, policyAcknowledgements, responses, deliveries, investigations, activities, users, reports, prompts } = dataStore;
+  const { policies, policyAcknowledgements, responses, deliveries, investigations, activities, users, reports, prompts, currentUser } = dataStore;
+  const [hrNextTasks, setHrNextTasks] = useState<HrNextTask[]>([]);
+  const [loadingHrTasks, setLoadingHrTasks] = useState(false);
+
+  useEffect(() => {
+    if (!isAiFeaturesEnabled()) return;
+    setLoadingHrTasks(true);
+    void fetchHrNextTasks(currentUser.orgId, {
+      payrollExpedited: dc.payrollExpeditedOpen,
+      needsInfo: dc.reportsNeedingClarification,
+      wageHour: dc.wageHourPendingReview,
+      yesReview: dc.yesResponsesNeedingReview,
+      atRiskEmployees: dc.atRiskEmployees,
+      unansweredPrompts: dc.unansweredPromptDeliveries,
+      openInvestigations: dc.activeInvestigations,
+    })
+      .then(({ tasks }) => setHrNextTasks(tasks))
+      .catch(() => setHrNextTasks([]))
+      .finally(() => setLoadingHrTasks(false));
+  }, [
+    currentUser.orgId,
+    dc.payrollExpeditedOpen,
+    dc.reportsNeedingClarification,
+    dc.wageHourPendingReview,
+    dc.yesResponsesNeedingReview,
+    dc.atRiskEmployees,
+    dc.unansweredPromptDeliveries,
+    dc.activeInvestigations,
+  ]);
+
+  const openHrTask = (action: string) => {
+    const [page, query = ''] = action.split('?');
+    const params: Record<string, string> = {};
+    if (query) {
+      for (const part of query.split('&')) {
+        const [key, value] = part.split('=');
+        if (key && value) params[key] = decodeURIComponent(value);
+      }
+    }
+    onNavigate(page, params);
+  };
 
   const recentCheckInQueries = useMemo(() => {
     const startOfToday = new Date();
@@ -83,20 +124,9 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
     const noCount = responses.filter((r) => r.answer === 'NO_ISSUE').length;
     const unanswered = deliveries.filter((d) => d.status === 'PENDING').length;
     const needsClarification = dc.reportsNeedingClarification;
-
-    const activeEmployees = users.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');
-    const requiredMemos = policies.filter((p) => p.status === 'PUBLISHED' && p.acknowledgmentRequired);
-    let memoUnderstood = 0;
-    let memoNeedsClar = 0;
-    let memoUnanswered = 0;
-    for (const p of requiredMemos) {
-      for (const emp of activeEmployees) {
-        const ack = policyAcknowledgements.find((a) => a.policyId === p.id && a.userId === emp.id);
-        if (!ack) memoUnanswered += 1;
-        else if (ack.outcome === 'REQUEST_CLARIFICATION') memoNeedsClar += 1;
-        else memoUnderstood += 1;
-      }
-    }
+    const payrollExpedited = dc.payrollExpeditedOpen;
+    const wageHourPending = dc.wageHourPendingReview;
+    const openCases = dc.openCaseRegisterCount;
 
     const invOpen = investigations.filter((i) => i.status === 'OPEN' && i.workflowPhase === 'QUEUED').length;
     const invProgress = investigations.filter((i) => i.status === 'OPEN' && i.workflowPhase === 'IN_PROGRESS').length;
@@ -109,10 +139,11 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
         { name: 'Unanswered', value: unanswered, fill: CHART_COLORS.amber },
         { name: 'Needs clarification', value: needsClarification, fill: CHART_COLORS.navy },
       ],
-      memoStatus: [
-        { name: 'Read & understood', value: memoUnderstood, fill: CHART_COLORS.green },
-        { name: 'Needs clarification', value: memoNeedsClar, fill: CHART_COLORS.amber },
-        { name: 'Unanswered', value: memoUnanswered, fill: CHART_COLORS.red },
+      caseActions: [
+        { name: 'Open cases', value: openCases, fill: CHART_COLORS.navy },
+        { name: 'Needs employee info', value: needsClarification, fill: CHART_COLORS.amber },
+        { name: 'Payroll (24h)', value: payrollExpedited, fill: CHART_COLORS.red },
+        { name: 'Wage & hour intake', value: wageHourPending, fill: CHART_COLORS.green },
       ],
       investigations: [
         { name: 'Open (queued)', value: invOpen, fill: CHART_COLORS.amber },
@@ -120,7 +151,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
         { name: 'Complete / closed', value: invComplete, fill: CHART_COLORS.green },
       ],
     };
-  }, [responses, deliveries, dc.reportsNeedingClarification, policies, policyAcknowledgements, users, investigations]);
+  }, [responses, deliveries, dc.reportsNeedingClarification, dc.payrollExpeditedOpen, dc.wageHourPendingReview, dc.openCaseRegisterCount, users, investigations]);
 
   const recentActivity = activities.slice(0, 6);
   const analyticsScore = useMemo(() => {
@@ -138,12 +169,6 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
     ? resolvedReports.reduce((sum, r) => sum + (r.updatedAt.getTime() - r.createdAt.getTime()) / (1000 * 60 * 60 * 24), 0) /
       resolvedReports.length
     : 0;
-  const activeMemosCount = policies.filter((p) => p.status === 'PUBLISHED').length;
-
-  const upcomingMemoDeadlines = policies
-    .filter((p) => p.status === 'PUBLISHED' && p.completionDueDate)
-    .sort((a, b) => (a.completionDueDate!.getTime() - b.completionDueDate!.getTime()))
-    .slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -207,14 +232,10 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
                       onClick={() => onNavigate('case-register', { view: 'register', register: '1', needs_info: '1' })}
                     />
                     <ActionLine
-                      label="Memo tasks pending acknowledgement"
-                      count={dc.memoAcknowledgementsPending}
-                      onClick={() => onNavigate('policies', { memoQueue: 'pending_ack' })}
-                    />
-                    <ActionLine
-                      label="Memos needing clarification"
-                      count={dc.memosNeedingClarification}
-                      onClick={() => onNavigate('policies', { memoQueue: 'clarification' })}
+                      label="Payroll issues — administrator action (24h)"
+                      count={dc.payrollExpeditedOpen}
+                      urgent
+                      onClick={() => onNavigate('case-register', { view: 'register', register: '1', status: 'PAYROLL_EXPEDITED' })}
                     />
                   </div>
                 )}
@@ -255,6 +276,54 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
         </Card>
       </div>
 
+      {isAiFeaturesEnabled() && (
+        <Card className="mismo-card">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[12px] uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">HR next tasks</p>
+                <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+                  Prioritized recommendations from your database and live dashboard counts, with AI suggestions when configured.
+                </p>
+              </div>
+              {loadingHrTasks && <span className="text-xs text-[var(--color-text-secondary)]">Updating…</span>}
+            </div>
+            {hrNextTasks.length === 0 && !loadingHrTasks ? (
+              <p className="mt-4 text-sm text-[var(--color-text-secondary)]">No open HR tasks right now — queue is clear.</p>
+            ) : (
+              <div className="mt-4 space-y-2">
+                {hrNextTasks.map((task) => (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => openHrTask(task.action)}
+                    className="w-full text-left rounded border border-[var(--color-border-200)] px-4 py-3 hover:bg-[var(--color-surface-200)] transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className={`text-sm font-medium ${task.priority === 'URGENT' ? 'text-[var(--color-alert-600)]' : 'text-[var(--mismo-text)]'}`}>
+                          {task.title}
+                        </p>
+                        <p className="text-xs text-[var(--color-text-secondary)] mt-1">{task.detail}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        {task.count != null && task.count > 0 && (
+                          <span className="text-sm font-semibold tabular-nums">{task.count}</span>
+                        )}
+                        <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] mt-1">
+                          {task.priority}
+                          {task.source === 'ai' ? ' · AI' : ''}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
         {[
           {
@@ -287,11 +356,12 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
             onClick: () => onNavigate('analytics'),
           },
           {
-            label: 'Active memos',
-            count: activeMemosCount,
-            helper: 'Published memos currently live in the employee portal.',
-            action: 'Manage memos',
-            onClick: () => onNavigate('policies'),
+            label: 'Open cases',
+            count: dc.openCaseRegisterCount,
+            helper: 'Reports and concerns awaiting HR action in the case register.',
+            action: 'Open case register',
+            onClick: () => onNavigate('case-register', { view: 'register', register: '1' }),
+            accent: 'text-[var(--color-alert-600)]',
           },
           {
             label: 'At-risk employees',
@@ -436,7 +506,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {[
           { title: 'Prompt response status', data: chartData.promptResponses, onClick: () => onNavigate('prompt-responses', { view: 'prompts' }) },
-          { title: 'Memo acknowledgement status', data: chartData.memoStatus, onClick: () => onNavigate('policies') },
+          { title: 'Cases needing action', data: chartData.caseActions, onClick: () => onNavigate('case-register', { view: 'register', register: '1' }) },
           { title: 'Investigation status', data: chartData.investigations, onClick: () => onNavigate('investigations') },
         ].map((chart) => (
           <Card key={chart.title} className="mismo-card">
@@ -488,22 +558,45 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
 
         <Card className="mismo-card">
           <CardContent className="p-5">
-            <h3 className="font-command text-xl font-bold text-[var(--color-primary-900)]">Memo completion deadlines</h3>
-            <p className="text-sm text-[var(--color-text-secondary)] mt-1">Published memos with a completion due date.</p>
+            <h3 className="font-command text-xl font-bold text-[var(--color-primary-900)]">Priority case queue</h3>
+            <p className="text-sm text-[var(--color-text-secondary)] mt-1">Open items that need administrator or HR attention now.</p>
             <div className="mt-3 space-y-2">
-              {upcomingMemoDeadlines.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className="w-full text-left p-3 border border-[var(--color-border-200)] rounded-[var(--radius-small)] hover:bg-[var(--color-surface-200)]"
-                  onClick={() => onNavigate('policy-detail', { id: item.id })}
-                >
-                  <p className="text-sm font-medium">{item.title}</p>
-                  <p className="text-xs text-[var(--color-text-secondary)]">Complete by {formatDate(item.completionDueDate!)}</p>
-                </button>
-              ))}
-              {upcomingMemoDeadlines.length === 0 && (
-                <p className="text-sm text-[var(--color-text-secondary)]">No memo deadlines in the current window.</p>
+              {[
+                {
+                  label: 'Payroll issues (24h SLA)',
+                  count: dc.payrollExpeditedOpen,
+                  onClick: () => onNavigate('case-register', { view: 'register', register: '1', status: 'PAYROLL_EXPEDITED' }),
+                },
+                {
+                  label: 'Yes responses needing review',
+                  count: dc.yesResponsesNeedingReview,
+                  onClick: () => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', needs_review: '1', view: 'prompts' }),
+                },
+                {
+                  label: 'Reports awaiting clarification',
+                  count: dc.reportsNeedingClarification,
+                  onClick: () => onNavigate('case-register', { view: 'register', register: '1', needs_info: '1' }),
+                },
+                {
+                  label: 'Wage & hour intakes pending',
+                  count: dc.wageHourPendingReview,
+                  onClick: () => onNavigate('case-register', { view: 'register', register: '1', status: 'PENDING_WAGE_HOUR_REVIEW' }),
+                },
+              ]
+                .filter((row) => row.count > 0)
+                .map((row) => (
+                  <button
+                    key={row.label}
+                    type="button"
+                    className="w-full text-left p-3 border border-[var(--color-border-200)] rounded-[var(--radius-small)] hover:bg-[var(--color-surface-200)] flex items-center justify-between gap-3"
+                    onClick={row.onClick}
+                  >
+                    <span className="text-sm font-medium">{row.label}</span>
+                    <span className="font-command text-lg tabular-nums text-[var(--color-alert-600)]">{row.count}</span>
+                  </button>
+                ))}
+              {dc.actionRequiredTotal === 0 && (
+                <p className="text-sm text-[var(--color-text-secondary)]">No priority cases in the queue right now.</p>
               )}
             </div>
           </CardContent>
