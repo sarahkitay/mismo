@@ -101,6 +101,7 @@ export function getStatusColor(status: string): string {
     IN_REVIEW: 'status-chip status-chip--warn',
     NEEDS_INFO: 'status-chip status-chip--warn',
     PENDING_WAGE_HOUR_REVIEW: 'status-chip status-chip--warn',
+    PAYROLL_EXPEDITED: 'status-chip status-chip--warn',
     RESOLVED: 'status-chip status-chip--success',
     CLOSED: 'status-chip status-chip--neutral',
     OPEN: 'status-chip status-chip--warn',

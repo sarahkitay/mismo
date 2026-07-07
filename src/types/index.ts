@@ -43,6 +43,7 @@ export type ReportStatus =
   | 'IN_REVIEW' 
   | 'NEEDS_INFO' 
   | 'PENDING_WAGE_HOUR_REVIEW'
+  | 'PAYROLL_EXPEDITED'
   | 'RESOLVED' 
   | 'CLOSED';
 
@@ -367,6 +368,7 @@ export type ActivityEventType =
   | 'INVESTIGATION_UPDATED'
   | 'WAGE_HOUR_SCREENING'
   | 'WAGE_HOUR_SUBMITTED'
+  | 'PAYROLL_EXPEDITED'
   | 'NUDGE_SENT'
   | 'EXPORT_PDF'
   | 'EXPORT_CSV';
@@ -541,6 +543,9 @@ export interface Report {
   wageHourIntake?: WageHourIntakeData;
   needsExtendedWageHourIntake?: boolean;
   wageHourIntakeCompletedAt?: Date;
+  /** Payroll memo quick-report: no employee details; admin must resolve within SLA */
+  expeditedPayroll?: boolean;
+  payrollSlaDueAt?: Date;
   handlingLedger?: ReportHandlingEntry[];
   responseChecklist?: ReportChecklistItem[];
   ginaBuildNotes?: string;

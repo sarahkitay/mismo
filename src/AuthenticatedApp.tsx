@@ -296,7 +296,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
       case 'analytics':
         return <AdminAnalytics dataStore={dataStore} onNavigate={handleNavigate} />;
       case 'compliance':
-        return <AdminCompliance dataStore={dataStore} onNavigate={handleNavigate} />;
+        return <AdminCompliance dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
       case 'system-health':
         return <AdminSystemHealth dataStore={dataStore} />;
       case 'settings':

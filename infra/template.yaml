@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Mismo API — OpenAI HR law sync + outreach coach (Phase 2)
+
+Parameters:
+  Environment:
+    Type: String
+    Default: staging
+    AllowedValues: [staging, prod]
+  OpenAISecretArn:
+    Type: String
+    Description: Secrets Manager ARN for OpenAI API key JSON
+  DatabaseSecretArn:
+    Type: String
+    Description: Secrets Manager ARN for RDS connection JSON
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 120
+    MemorySize: 512
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        OPENAI_SECRET_ARN: !Ref OpenAISecretArn
+        DATABASE_SECRET_ARN: !Ref DatabaseSecretArn
+
+Resources:
+  MismoHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods: [GET, POST, PUT, OPTIONS]
+        AllowHeaders: [Content-Type, Authorization]
+
+  OutreachCoachFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../services/api/
+      Handler: dist/handlers/outreach-coach.handler
+      Description: Analyze HR outreach tone via OpenAI
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref OpenAISecretArn
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref DatabaseSecretArn
+      Events:
+        CoachApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref MismoHttpApi
+            Path: /ai/outreach/coach
+            Method: POST
+
+  HrLawSyncFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../services/api/
+      Handler: dist/handlers/hr-law-sync.handler
+      Description: Weekly state HR law research via OpenAI
+      Timeout: 900
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref OpenAISecretArn
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref DatabaseSecretArn
+      Events:
+        WeeklySync:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 6 ? * MON *)
+            Description: Research HR laws for watched states
+
+  HrLawNotifyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../services/api/
+      Handler: dist/handlers/hr-law-notify.handler
+      Description: Email and in-app alerts for HR law updates
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref DatabaseSecretArn
+        - Statement:
+            - Effect: Allow
+              Action: [ses:SendEmail, ses:SendRawEmail]
+              Resource: '*'
+      Events:
+        DailyNotify:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 14 * * ? *)
+            Description: Send pending HR law update notifications
+
+Outputs:
+  ApiEndpoint:
+    Description: HTTP API base URL — set as VITE_API_BASE_URL
+    Value: !Sub 'https://${MismoHttpApi}.execute-api.${AWS::Region}.amazonaws.com'

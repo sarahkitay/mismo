@@ -27,7 +27,8 @@ import {
 } from '@/components/ui/dialog';
 import { formatRelativeTime, formatPercent, formatDate, getInitials } from '@/lib/utils';
 import { compareByLastFirstName } from '@/lib/sortUsers';
-import type { User } from '@/types';
+import type { User, UserRole } from '@/types';
+import { ASSIGNABLE_ROLES, roleLabel } from '@/lib/roleLabels';
 import { mockDepartments } from '@/data/mockData';
 import { toast } from 'sonner';
 
@@ -81,11 +82,11 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
   const [filter, setFilter] = useState<DirectoryFilter>(initialFilters?.atRisk === 'true' ? 'AT_RISK' : 'ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('ALL');
-  const [roleFilter, setRoleFilter] = useState<'ALL' | 'EMPLOYEE' | 'ADMIN' | 'SUPER_ADMIN' | 'HR' | 'MANAGER' | 'CLIENT'>('ALL');
+  const [roleFilter, setRoleFilter] = useState<'ALL' | UserRole>('ALL');
 
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const editingUser = directoryUsers.find((u) => u.id === editingUserId) ?? null;
-  const [editRole, setEditRole] = useState<'EMPLOYEE' | 'ADMIN' | 'SUPER_ADMIN'>('EMPLOYEE');
+  const [editRole, setEditRole] = useState<UserRole>('EMPLOYEE');
   const [editDepartment, setEditDepartment] = useState('UNASSIGNED');
   const [editPhone, setEditPhone] = useState('');
   const [editEmployeeId, setEditEmployeeId] = useState('');
@@ -122,14 +123,24 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
     }
   }, [importHeaders.length]);
 
+  const atRiskIds = useMemo(() => new Set(atRiskEmployees.map((e) => e.userId)), [atRiskEmployees]);
+
+  const showAtRiskOnly = () => {
+    setFilter('AT_RISK');
+    setActiveTab('DIRECTORY');
+    setRecordStatusFilter('ACTIVE');
+    window.setTimeout(() => {
+      document.getElementById('employee-directory-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
   const filteredEmployees = directoryUsers
     .filter((emp) => {
-    const engagement = getEmployeeEngagement(emp.id);
     const matchesFilter =
       filter === 'ALL' ||
-      (filter === 'AT_RISK' && engagement?.isAtRisk) ||
-      (filter === 'NEVER_RESPONDED' && !engagement?.lastResponseAt) ||
-      (filter === 'LOW_ENGAGEMENT' && engagement && engagement.responseRate30d < orgSettings.thresholds.atRiskMinResponseRate);
+      (filter === 'AT_RISK' && atRiskIds.has(emp.id)) ||
+      (filter === 'NEVER_RESPONDED' && !getEmployeeEngagement(emp.id)?.lastResponseAt) ||
+      (filter === 'LOW_ENGAGEMENT' && (getEmployeeEngagement(emp.id)?.responseRate30d ?? 1) < orgSettings.thresholds.atRiskMinResponseRate);
     const q = searchQuery.toLowerCase();
     const matchesSearch =
       !searchQuery ||
@@ -167,7 +178,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
     const user = directoryUsers.find((item) => item.id === userId);
     if (!user) return;
     setEditingUserId(user.id);
-    setEditRole((user.role as 'EMPLOYEE' | 'ADMIN' | 'SUPER_ADMIN') ?? 'EMPLOYEE');
+    setEditRole(user.role ?? 'EMPLOYEE');
     setEditDepartment(user.departmentId ?? 'UNASSIGNED');
     setEditPhone(user.phone ?? '');
     setEditEmployeeId(user.employeeId ?? '');
@@ -377,13 +388,33 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
       {activeTab === 'DIRECTORY' && (
         <>
           {recordStatusFilter === 'ACTIVE' && atRiskEmployees.length > 0 && (
-            <Card className="mismo-card border-l-4 border-l-[var(--color-alert-600)]">
-              <CardContent className="p-4 flex items-center justify-between">
+            <Card
+              className="mismo-card border-l-4 border-l-[var(--color-alert-600)] cursor-pointer hover:bg-[var(--color-surface-200)] transition-colors"
+              role="button"
+              tabIndex={0}
+              onClick={showAtRiskOnly}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  showAtRiskOnly();
+                }
+              }}
+            >
+              <CardContent className="p-4 flex items-center justify-between gap-4">
                 <div>
                   <p className="font-medium text-[var(--mismo-text)]">{atRiskEmployees.length} employees at risk</p>
-                  <p className="text-sm text-[var(--mismo-text-secondary)]">Low engagement or no recent responses</p>
+                  <p className="text-sm text-[var(--mismo-text-secondary)]">Low engagement or no recent responses — click to filter directory</p>
                 </div>
-                <Button variant="outline" onClick={() => setFilter('AT_RISK')}>View at-risk</Button>
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    showAtRiskOnly();
+                  }}
+                >
+                  View at-risk
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -424,17 +455,17 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
                 <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">All Roles</SelectItem>
-                  <SelectItem value="EMPLOYEE">Employee</SelectItem>
-                  <SelectItem value="ADMIN">Admin</SelectItem>
-                  <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
-                  <SelectItem value="HR">Human Resources</SelectItem>
-                  <SelectItem value="CLIENT">Client</SelectItem>
+                  {ASSIGNABLE_ROLES.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {roleLabel(role)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div id="employee-directory-list" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredEmployees.map((employee) => {
               const engagement = getEmployeeEngagement(employee.id);
               const reportedIssueViaPrompt = userIdsWithReportedIssue.has(employee.id);
@@ -460,7 +491,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
                         <p className="text-sm text-[var(--mismo-text-secondary)] truncate">{employee.email}</p>
                         <p className="text-sm text-[var(--mismo-text-secondary)]">{getDepartmentName(employee.departmentId)}</p>
                         <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">
-                          Role: {employee.role}
+                          Role: {roleLabel(employee.role)}
                           <span className={`ml-2 px-1.5 py-0.5 rounded ${employee.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>
                             {employee.status === 'active' ? 'Active' : 'Inactive'}
                           </span>
@@ -692,12 +723,14 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
             </div>
             <div className="space-y-1.5">
               <Label>Role</Label>
-              <Select value={editRole} onValueChange={(v) => setEditRole(v as typeof editRole)}>
+              <Select value={editRole} onValueChange={(v) => setEditRole(v as UserRole)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="EMPLOYEE">Employee</SelectItem>
-                  <SelectItem value="ADMIN">Admin</SelectItem>
-                  <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
+                  {ASSIGNABLE_ROLES.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {roleLabel(role)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

@@ -71,7 +71,11 @@ function formatAuditFieldValue(value: unknown): string {
 }
 
 function normalizeUserRoles(list: User[]): User[] {
-  return list.map((user) => (user.role === 'MANAGER' ? { ...user, role: 'HR' as UserRole } : user));
+  return list.map((user) => ({
+    ...user,
+    orgId: user.orgId === 'org-1' ? 'org-mismo-1' : user.orgId,
+    role: user.id === 'user-manager-1' && user.role === 'HR' ? 'MANAGER' : user.role,
+  }));
 }
 
 /** Canonical seed users (login + fresh installs); persisted lists can lag behind mock email changes */
@@ -194,9 +198,7 @@ export function useDataStore() {
   const [wageHourAcknowledgements, setWageHourAcknowledgements] = useState<WageHourScreeningAcknowledgement[]>(
     persisted?.wageHourAcknowledgements ?? []
   );
-  const [currentRole, setCurrentRole] = useState<UserRole>(
-    persisted?.currentRole === 'MANAGER' ? 'HR' : (persisted?.currentRole ?? 'EMPLOYEE')
-  );
+  const [currentRole, setCurrentRole] = useState<UserRole>(persisted?.currentRole ?? 'EMPLOYEE');
   const [session, setSessionState] = useState<Session | null>(readSession);
   const [previewUserId, setPreviewUserId] = useState<string | null>(null);
   const lastDailyDeliveryDateRef = useRef<string | null>(null);
@@ -241,7 +243,6 @@ export function useDataStore() {
   }, [setSession]);
 
   useEffect(() => {
-    setCurrentRole((prev) => (prev === 'MANAGER' ? 'HR' : prev));
     setPrompts((prev) =>
       prev.map((prompt) =>
         prompt.id === 'prompt-1'
@@ -751,6 +752,122 @@ export function useDataStore() {
       ]);
     },
     [reports, currentUser.id]
+  );
+
+  /** Payroll memo only: quick flag with no employee details — skips triage, 24h admin SLA. */
+  const submitExpeditedPayrollReport = useCallback(
+    (
+      userId: string,
+      opts?: {
+        deliveryId?: string;
+        promptId?: string;
+        promptNotes?: string;
+        sourceType?: Report['reportSourceType'];
+      }
+    ) => {
+      const now = new Date();
+      const slaDue = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const refNum = allocateCaseReferenceNumber(reports, effectiveOrgId, 'WAGE_HOUR');
+      const defaultAdmin = users.find((u) => u.role === 'ADMIN' || u.role === 'HR');
+
+      let responseId: string | undefined;
+      if (opts?.deliveryId) {
+        const delivery = deliveries.find((d) => d.id === opts.deliveryId);
+        if (delivery) {
+          const note =
+            opts.promptNotes ??
+            'Payroll memo: employee reported a payroll issue with no additional details (expedited 24h path).';
+          const response = submitPromptResponse(delivery.id, 'HAS_ISSUE', note);
+          responseId = response?.id;
+          if (responseId) {
+            setResponses((prev) =>
+              prev.map((r) =>
+                r.id === responseId
+                  ? { ...r, needsReview: false, reviewedAt: now }
+                  : r
+              )
+            );
+          }
+        }
+      }
+
+      const intakeNote =
+        'Employee reported a payroll issue through the expedited payroll memo path. No additional details were provided. Administrator must review and resolve within 24 hours.';
+
+      const newReport: Report = {
+        id: `report-${Date.now()}`,
+        orgId: effectiveOrgId,
+        createdByUserId: userId,
+        isAnonymous: false,
+        sourcePromptId: opts?.promptId,
+        sourcePromptResponseId: responseId,
+        reportSourceType: opts?.sourceType ?? 'WAGE_HOUR_PROMPT',
+        caseType: 'WAGE_HOUR',
+        referenceNumber: refNum,
+        category: 'WAGE_HOURS',
+        severity: 'HIGH',
+        summary: 'Payroll issue — expedited (no details)',
+        description: intakeNote,
+        status: 'PAYROLL_EXPEDITED',
+        assignedTo: defaultAdmin?.id,
+        expeditedPayroll: true,
+        payrollSlaDueAt: slaDue,
+        needsExtendedWageHourIntake: false,
+        wageHourIntakeCompletedAt: now,
+        wageHourIntake: {
+          issueTypes: ['OTHER'],
+          concernDescription: intakeNote,
+          submittedAt: now,
+        },
+        handlingLedger: [
+          {
+            id: `ledger-${Date.now()}`,
+            type: 'NOTE',
+            text: 'Expedited payroll memo submitted. Routed directly to administrator — triage skipped. 24-hour resolution SLA.',
+            createdAt: now,
+            createdBy: userId,
+          },
+        ],
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      setReports((prev) => [newReport, ...prev]);
+      setActivities((prev) => [
+        {
+          id: `activity-${Date.now()}`,
+          orgId: mockOrg.id,
+          type: 'PAYROLL_EXPEDITED',
+          actorUserId: userId,
+          metadata: {
+            reportId: newReport.id,
+            referenceNumber: refNum,
+            payrollSlaDueAt: slaDue.toISOString(),
+            alert: 'ADMIN_24H',
+          },
+          createdAt: now,
+        },
+        ...prev,
+      ]);
+      setAuditLogs((prev) => [
+        {
+          id: `audit-${Date.now()}`,
+          orgId: mockOrg.id,
+          recordType: 'REPORT',
+          recordId: newReport.id,
+          field: 'status',
+          oldValue: '',
+          newValue: 'PAYROLL_EXPEDITED',
+          actorUserId: userId,
+          createdAt: now,
+          reason: 'Expedited payroll memo — no triage',
+        },
+        ...prev,
+      ]);
+
+      return newReport;
+    },
+    [effectiveOrgId, reports, users, deliveries, submitPromptResponse]
   );
   
   // Update report status
@@ -2228,14 +2345,16 @@ export function useDataStore() {
       return inv?.status !== 'OPEN';
     }).length,
     wageHourPendingReview: effectiveReports.filter((r) => r.status === 'PENDING_WAGE_HOUR_REVIEW').length,
+    payrollExpeditedOpen: effectiveReports.filter(
+      (r) => r.status === 'PAYROLL_EXPEDITED' && r.expeditedPayroll
+    ).length,
   };
   const actionRequiredTotal =
     dashboardCounts.yesResponsesNeedingReview +
     dashboardCounts.unansweredPromptDeliveries +
     dashboardCounts.activeInvestigations +
     dashboardCounts.reportsNeedingClarification +
-    dashboardCounts.memoAcknowledgementsPending +
-    dashboardCounts.memosNeedingClarification;
+    dashboardCounts.payrollExpeditedOpen;
   const dashboardCountsWithAction = { ...dashboardCounts, actionRequiredTotal };
   
   return {
@@ -2284,6 +2403,7 @@ export function useDataStore() {
     recordWageHourScreeningNo,
     beginWageHourCase,
     completeWageHourIntake,
+    submitExpeditedPayrollReport,
     wageHourAcknowledgements,
     updateReportStatus,
     assignReport,

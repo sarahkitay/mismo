@@ -39,6 +39,48 @@ export const WAGE_HOUR_RETALIATION_NOTE =
 export const WAGE_HOUR_YES_CONFIRMATION_BODY =
   'We are prepared to fully investigate any and all acts and circumstances surrounding your response. However, if you selected "YES" by mistake, please go back to the prior screen and submit your intended response. If your intended response is "YES" please submit now.';
 
+export const PAYROLL_EXPEDITED_SLA_HOURS = 24;
+
+export const PAYROLL_EXPEDITED_QUICK_LABEL = "There's an issue with payroll";
+
+export const PAYROLL_EXPEDITED_EMPLOYEE_MESSAGE =
+  'Your payroll issue has been flagged for administrator review. No additional details are required. An administrator will address this within 24 hours. Retaliation for reporting pay concerns is prohibited.';
+
+export const PAYROLL_MEMO_CHOICE_HEADING = 'How would you like to report this payroll concern?';
+
+export const PAYROLL_MEMO_QUICK_DESCRIPTION =
+  'Flag a payroll issue for administrator review without providing additional details. An administrator will address this within 24 hours.';
+
+export const PAYROLL_MEMO_FULL_DESCRIPTION =
+  'Complete the wage & hour report sheet with details about your pay, hours, deductions, or other compensation concerns.';
+
+export function getPayrollExpeditedSlaLabel(report: {
+  payrollSlaDueAt?: Date;
+  status: string;
+  createdAt: Date;
+}): { label: string; overdue: boolean; urgent: boolean } {
+  if (!['PAYROLL_EXPEDITED'].includes(report.status)) {
+    return { label: '', overdue: false, urgent: false };
+  }
+  const due =
+    report.payrollSlaDueAt instanceof Date
+      ? report.payrollSlaDueAt
+      : report.payrollSlaDueAt
+        ? new Date(report.payrollSlaDueAt)
+        : new Date(new Date(report.createdAt).getTime() + PAYROLL_EXPEDITED_SLA_HOURS * 60 * 60 * 1000);
+  const now = new Date();
+  if (now.getTime() > due.getTime()) {
+    const hours = Math.max(1, Math.ceil((now.getTime() - due.getTime()) / (60 * 60 * 1000)));
+    return { label: `Payroll SLA overdue by ${hours}h`, overdue: true, urgent: true };
+  }
+  const hoursLeft = Math.max(1, Math.ceil((due.getTime() - now.getTime()) / (60 * 60 * 1000)));
+  return {
+    label: `Administrator action due within ${hoursLeft}h`,
+    overdue: false,
+    urgent: hoursLeft <= 8,
+  };
+}
+
 export const WAGE_HOUR_CONFIRMATION_MESSAGE =
   'Your concern has been securely submitted and routed for review. Retaliation for reporting wage or compensation concerns is prohibited.';
 
@@ -50,9 +92,26 @@ export function formatCaseReference(report: { id: string; referenceNumber?: stri
 }
 
 export function getReportStatusLabel(status: string): string {
-  if (status === 'PENDING_WAGE_HOUR_REVIEW') return 'Pending wage & hour review';
-  return status.replace(/_/g, ' ');
+  const labels: Record<string, string> = {
+    NEW: 'New — not yet reviewed',
+    TRIAGED: 'Initial review complete',
+    ASSIGNED: 'Assigned',
+    IN_REVIEW: 'In review',
+    NEEDS_INFO: 'Needs info from employee',
+    PENDING_WAGE_HOUR_REVIEW: 'Pending wage & hour review',
+    PAYROLL_EXPEDITED: 'Payroll expedited — admin action due',
+    RESOLVED: 'Resolved',
+    CLOSED: 'Closed',
+  };
+  return labels[status] ?? status.replace(/_/g, ' ');
 }
+
+/** Admin action: HR has read the report and decided what happens next (not the same as closing it). */
+export const MARK_INITIAL_REVIEW_ACTION = 'Mark initial review complete';
+
+export const MARK_INITIAL_REVIEW_TOAST = 'Initial review recorded. Case stays open until resolved or assigned.';
+
+export const ASSIGN_CASE_TO_ME_ACTION = 'Take ownership';
 
 export function inferCaseType(category: string, caseType?: CaseType): CaseType {
   if (caseType) return caseType;
