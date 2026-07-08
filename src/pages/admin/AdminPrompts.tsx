@@ -28,7 +28,6 @@ import {
   truncateText 
 } from '@/lib/utils';
 import type { PromptType, PromptCadence, PromptAudience, ReportSeverity } from '@/types';
-import { mockDepartments } from '@/data/mockData';
 import { toast } from 'sonner';
 
 interface AdminPromptsProps {
@@ -65,7 +64,7 @@ const severityOptions: { value: ReportSeverity; label: string }[] = [
 ];
 
 export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPromptsProps) {
-  const { prompts, deliveries, createPrompt, updatePrompt } = dataStore;
+  const { prompts, deliveries, createPrompt, updatePrompt, departments } = dataStore;
   
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [viewPromptId, setViewPromptId] = useState<string | null>(null);
@@ -262,7 +261,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                 <div className="space-y-2">
                   <Label>Select Departments</Label>
                   <div className="flex flex-wrap gap-2">
-                    {mockDepartments.map(dept => (
+                    {departments.map(dept => (
                       <button
                         key={dept.id}
                         onClick={() => {

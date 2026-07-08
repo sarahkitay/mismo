@@ -18,6 +18,7 @@ import type {
  Policy,
  PolicyAcknowledgement,
  Announcement,
+ Department,
  ReportHandlingEntry,
  ReportHandlingEntryType,
  ReportChecklistItem,
@@ -46,23 +47,13 @@ import {
 import { allocateCaseReferenceNumber } from '@/lib/caseReference';
 import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
 import {
- mockUsers,
- mockReports,
- mockPrompts,
- mockPromptDeliveries,
- mockPromptResponses,
- mockInvestigations,
- mockNudges,
- mockActivityEvents,
- mockReportStatusEvents,
- mockOrg,
- mockPolicies,
- mockPolicyAcknowledgements,
- mockCompanyResources,
- mockEmergencyHotlines,
- mockAnnouncements,
- mockAuditLogs,
-} from '@/data/mockData';
+ DEFAULT_ORG_ID,
+ DEFAULT_ORG_NAME,
+ DEFAULT_ORG_SETTINGS,
+ isSupabaseAppConfigured,
+} from '@/data/orgDefaults';
+import { getSupabaseClient } from '@/lib/supabaseClient';
+import { findAppUserByEmail, loadOrgDataFromSupabase } from '@/lib/supabase/loadOrgData';
 import { INDUSTRY_CHECKLIST_SECTIONS } from '@/data/industryChecklist';
 
 function formatAuditFieldValue(value: unknown): string {
@@ -72,28 +63,31 @@ function formatAuditFieldValue(value: unknown): string {
 }
 
 function normalizeUserRoles(list: User[]): User[] {
- return list.map((user) => ({
- ...user,
- orgId: user.orgId === 'org-1' ? 'org-mismo-1' : user.orgId,
- role: user.id === 'user-manager-1' && user.role === 'HR' ? 'MANAGER' : user.role,
- }));
+ return list;
 }
 
-/** Canonical seed users (login + fresh installs); persisted lists can lag behind mock email changes */
-const SEED_USERS = normalizeUserRoles(mockUsers);
+/** Production: Supabase is source of truth; localStorage is not used for org data. */
+const USE_SUPABASE = isSupabaseAppConfigured();
 
-// Current user (for demo, we can switch between employee and admin)
-const CURRENT_USER_ID = 'user-emp-1'; // Default to employee (demo fallback)
-const CURRENT_HR_ID = 'user-manager-1';
-const CURRENT_ADMIN_ID = 'user-admin-1'; // Admin user
-const CURRENT_CLIENT_ID = 'user-client-1';
+function parseJwtClaims(accessToken: string): {
+ orgId?: string;
+ appUserId?: string;
+ role?: UserRole;
+} {
+ try {
+ const payload = JSON.parse(atob(accessToken.split('.')[1] ?? '')) as Record<string, string>;
+ return {
+ orgId: payload.org_id,
+ appUserId: payload.app_user_id,
+ role: payload.user_role as UserRole | undefined,
+ };
+ } catch {
+ return {};
+ }
+}
+
 const STORAGE_KEY = 'mismo_app_v2';
 const SESSION_KEY = 'mismo_session';
-
-/** Legacy / alternate demo addresses → canonical seed email (lowercase) */
-const LOGIN_EMAIL_ALIASES: Record<string, string> = {
- 'admin@mismo.com': 'hr@mismo.com',
-};
 
 export interface Session {
  userId: string;
@@ -172,30 +166,34 @@ function createIndustryChecklistForReport(): ReportChecklistItem[] {
 
 // Data store hook
 export function useDataStore() {
- const persisted = typeof window !== 'undefined' ? readPersistedState() : null;
+ const persisted = !USE_SUPABASE && typeof window !== 'undefined' ? readPersistedState() : null;
+ const [dataLoading, setDataLoading] = useState(false);
+ const [departments, setDepartments] = useState<Department[]>([]);
+ const [orgSettings, setOrgSettings] = useState(DEFAULT_ORG_SETTINGS);
+ const [organizationName, setOrganizationName] = useState(DEFAULT_ORG_NAME);
 
  // State
  const [users, setUsers] = useState<User[]>(
- persisted?.users ? normalizeUserRoles(persisted.users as User[]) : SEED_USERS
+ persisted?.users ? normalizeUserRoles(persisted.users as User[]) : []
  );
- const [reports, setReports] = useState<Report[]>(persisted?.reports ?? mockReports);
- const [prompts, setPrompts] = useState<Prompt[]>(persisted?.prompts ?? mockPrompts);
- const [deliveries, setDeliveries] = useState<PromptDelivery[]>(persisted?.deliveries ?? mockPromptDeliveries);
- const [responses, setResponses] = useState<PromptResponse[]>(persisted?.responses ?? mockPromptResponses);
- const [investigations, setInvestigations] = useState<Investigation[]>(persisted?.investigations ?? mockInvestigations);
- const [nudges, setNudges] = useState<Nudge[]>(persisted?.nudges ?? mockNudges);
- const [activities, setActivities] = useState<ActivityEvent[]>(persisted?.activities ?? mockActivityEvents);
+ const [reports, setReports] = useState<Report[]>(persisted?.reports ?? []);
+ const [prompts, setPrompts] = useState<Prompt[]>(persisted?.prompts ?? []);
+ const [deliveries, setDeliveries] = useState<PromptDelivery[]>(persisted?.deliveries ?? []);
+ const [responses, setResponses] = useState<PromptResponse[]>(persisted?.responses ?? []);
+ const [investigations, setInvestigations] = useState<Investigation[]>(persisted?.investigations ?? []);
+ const [nudges, setNudges] = useState<Nudge[]>(persisted?.nudges ?? []);
+ const [activities, setActivities] = useState<ActivityEvent[]>(persisted?.activities ?? []);
  const [reportStatusEvents, setReportStatusEvents] = useState<ReportStatusEvent[]>(
- persisted?.reportStatusEvents ?? mockReportStatusEvents
+ persisted?.reportStatusEvents ?? []
  );
- const [policies, setPolicies] = useState<Policy[]>(persisted?.policies ?? mockPolicies);
- const [companyResources] = useState<CompanyResource[]>(mockCompanyResources);
- const [emergencyHotlines] = useState<EmergencyHotline[]>(mockEmergencyHotlines);
+ const [policies, setPolicies] = useState<Policy[]>(persisted?.policies ?? []);
+ const [companyResources, setCompanyResources] = useState<CompanyResource[]>([]);
+ const [emergencyHotlines, setEmergencyHotlines] = useState<EmergencyHotline[]>([]);
  const [policyAcknowledgements, setPolicyAcknowledgements] = useState<PolicyAcknowledgement[]>(
- persisted?.policyAcknowledgements ?? mockPolicyAcknowledgements
+ persisted?.policyAcknowledgements ?? []
  );
- const [announcements, setAnnouncements] = useState<Announcement[]>(persisted?.announcements ?? mockAnnouncements);
- const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(persisted?.auditLogs ?? mockAuditLogs);
+ const [announcements, setAnnouncements] = useState<Announcement[]>(persisted?.announcements ?? []);
+ const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(persisted?.auditLogs ?? []);
  const [wageHourAcknowledgements, setWageHourAcknowledgements] = useState<WageHourScreeningAcknowledgement[]>(
  persisted?.wageHourAcknowledgements ?? []
  );
@@ -209,56 +207,188 @@ export function useDataStore() {
  writeSession(s);
  }, []);
 
- const login = useCallback((email: string, orgId?: string): boolean => {
- const raw = email.trim().toLowerCase();
- const normalized = LOGIN_EMAIL_ALIASES[raw] ?? raw;
+ const login = useCallback(async (email: string, password: string): Promise<{ ok: boolean; message?: string }> => {
+ if (!USE_SUPABASE) {
+ return { ok: false, message: 'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.' };
+ }
+ const trimmed = email.trim().toLowerCase();
+ if (!trimmed || !password) {
+ return { ok: false, message: 'Email and password are required.' };
+ }
 
- const findByEmail = (list: User[]) =>
- list.find((u) => u.email.toLowerCase() === normalized && (orgId == null || u.orgId === orgId));
+ try {
+ const supabase = getSupabaseClient();
+ const { data, error } = await supabase.auth.signInWithPassword({
+ email: trimmed,
+ password,
+ });
+ if (error || !data.session) {
+ return { ok: false, message: error?.message ?? 'Sign in failed.' };
+ }
 
- let found = findByEmail(users);
- if (!found) {
- found = findByEmail(SEED_USERS);
- if (found && !users.some((u) => u.id === found!.id)) {
- setUsers((prev) => [...prev, found!]);
+ const claims = parseJwtClaims(data.session.access_token);
+ let appUserId = claims.appUserId;
+ let orgId = claims.orgId;
+ let role = claims.role;
+
+ if (!appUserId || !orgId || !role) {
+ const { data: userRow, error: userErr } = await supabase
+ .from('users')
+ .select('*')
+ .eq('auth_user_id', data.session.user.id)
+ .maybeSingle();
+ if (userErr || !userRow) {
+ const byEmail = await findAppUserByEmail(trimmed);
+ if (!byEmail) {
+ return {
+ ok: false,
+ message: 'Account signed in but no employee profile is linked. Ask HR to provision your user record.',
+ };
+ }
+ appUserId = byEmail.id;
+ orgId = byEmail.orgId;
+ role = byEmail.role;
+ } else {
+ appUserId = String(userRow.id);
+ orgId = String(userRow.org_id);
+ role = userRow.role as UserRole;
  }
  }
- if (!found) return false;
- setSession({ userId: found.id, orgId: found.orgId, role: found.role });
- setCurrentRole(found.role);
+
+ setSession({ userId: appUserId!, orgId: orgId!, role: role! });
+ setCurrentRole(role!);
  if (typeof window !== 'undefined') {
  const path =
- found.role === 'EMPLOYEE'
+ role === 'EMPLOYEE'
  ? '/employee/dashboard'
- : found.role === 'CLIENT'
+ : role === 'CLIENT'
  ? '/admin/client-dashboard'
  : '/admin/dashboard';
  window.history.replaceState({}, '', path);
  }
- return true;
- }, [users, setSession, setUsers]);
+ return { ok: true };
+ } catch (err) {
+ return { ok: false, message: err instanceof Error ? err.message : 'Sign in failed.' };
+ }
+ }, [setSession]);
 
- const logout = useCallback(() => {
+ const logout = useCallback(async () => {
+ if (USE_SUPABASE) {
+ await getSupabaseClient().auth.signOut();
+ }
  setSession(null);
  setPreviewUserId(null);
  }, [setSession]);
 
- useEffect(() => {
- setPrompts((prev) =>
- prev.map((prompt) =>
- prompt.id === 'prompt-1'
- ? {
- ...prompt,
- title: 'Incident Query',
- description:
- 'Mandatory employment-rights incident screen shown at logon (EQC-style). Employee may answer Yes or No only; Yes requires confirmation before logging.',
+ const resolveAppSession = useCallback(async (): Promise<Session | null> => {
+ if (!USE_SUPABASE) return readSession();
+ const supabase = getSupabaseClient();
+ const { data: authData } = await supabase.auth.getSession();
+ const authSession = authData.session;
+ if (!authSession) return null;
+
+ const claims = parseJwtClaims(authSession.access_token);
+ let appUserId = claims.appUserId;
+ let orgId = claims.orgId;
+ let role = claims.role;
+
+ if (!appUserId || !orgId || !role) {
+ const { data: userRow } = await supabase
+ .from('users')
+ .select('*')
+ .eq('auth_user_id', authSession.user.id)
+ .maybeSingle();
+ if (userRow) {
+ appUserId = String(userRow.id);
+ orgId = String(userRow.org_id);
+ role = userRow.role as UserRole;
+ } else if (authSession.user.email) {
+ const byEmail = await findAppUserByEmail(authSession.user.email);
+ if (byEmail) {
+ appUserId = byEmail.id;
+ orgId = byEmail.orgId;
+ role = byEmail.role;
  }
- : prompt
- )
- );
+ }
+ }
+
+ if (!appUserId || !orgId || !role) return null;
+ return { userId: appUserId, orgId, role };
  }, []);
 
  useEffect(() => {
+ if (!USE_SUPABASE) return;
+ const supabase = getSupabaseClient();
+
+ void (async () => {
+ const restored = await resolveAppSession();
+ if (restored) {
+ setSessionState(restored);
+ writeSession(restored);
+ setCurrentRole(restored.role);
+ }
+ })();
+
+ const { data: authListener } = supabase.auth.onAuthStateChange((_event, authSession) => {
+ if (!authSession) {
+ setSessionState(null);
+ writeSession(null);
+ return;
+ }
+ void resolveAppSession().then((restored) => {
+ if (restored) {
+ setSessionState(restored);
+ writeSession(restored);
+ setCurrentRole(restored.role);
+ }
+ });
+ });
+
+ return () => authListener.subscription.unsubscribe();
+ }, [resolveAppSession]);
+
+ useEffect(() => {
+ if (!USE_SUPABASE) return;
+ localStorage.removeItem(STORAGE_KEY);
+ }, []);
+
+ const hydrateFromSupabase = useCallback(async (orgId: string) => {
+ if (!USE_SUPABASE) return;
+ setDataLoading(true);
+ try {
+ const snapshot = await loadOrgDataFromSupabase(orgId);
+ setOrganizationName(snapshot.organizationName);
+ setOrgSettings(snapshot.orgSettings);
+ setDepartments(snapshot.departments);
+ setUsers(normalizeUserRoles(snapshot.users));
+ setReports(snapshot.reports);
+ setPrompts(snapshot.prompts);
+ setDeliveries(snapshot.deliveries);
+ setResponses(snapshot.responses);
+ setInvestigations(snapshot.investigations);
+ setPolicies(snapshot.policies);
+ setPolicyAcknowledgements(snapshot.policyAcknowledgements);
+ setAnnouncements(snapshot.announcements);
+ setNudges(snapshot.nudges);
+ setActivities(snapshot.activities);
+ setReportStatusEvents(snapshot.reportStatusEvents);
+ setAuditLogs(snapshot.auditLogs);
+ setCompanyResources(snapshot.companyResources);
+ setEmergencyHotlines(snapshot.emergencyHotlines);
+ } catch (err) {
+ console.error('Failed to load organization data:', err);
+ } finally {
+ setDataLoading(false);
+ }
+ }, []);
+
+ useEffect(() => {
+ if (!session?.orgId || !USE_SUPABASE) return;
+ void hydrateFromSupabase(session.orgId);
+ }, [session?.orgId, hydrateFromSupabase]);
+
+ useEffect(() => {
+ if (USE_SUPABASE) return;
  localStorage.setItem(
  STORAGE_KEY,
  JSON.stringify({
@@ -330,7 +460,7 @@ export function useDataStore() {
  }, [session, deliveries, prompts]);
 
  // Org-scoped data when session exists (each company sees only their data)
- const effectiveOrgId = session?.orgId ?? mockOrg.id;
+ const effectiveOrgId = session?.orgId ?? DEFAULT_ORG_ID;
  const effectiveUsers = session ? users.filter((u) => u.orgId === session.orgId) : users;
  const effectiveReports = session ? reports.filter((r) => r.orgId === session.orgId) : reports;
  const effectivePrompts = session ? prompts.filter((p) => p.orgId === session.orgId) : prompts;
@@ -354,19 +484,32 @@ export function useDataStore() {
  const currentUser =
  currentUserFromPreview ??
  currentUserFromSession ??
- (currentRole === 'EMPLOYEE'
- ? users.find((u) => u.id === CURRENT_USER_ID)
- : currentRole === 'HR' || currentRole === 'MANAGER'
- ? users.find((u) => u.id === CURRENT_HR_ID)
- : currentRole === 'CLIENT'
- ? users.find((u) => u.id === CURRENT_CLIENT_ID)
- : users.find((u) => u.id === CURRENT_ADMIN_ID))!;
+ (session
+ ? {
+ id: session.userId,
+ orgId: session.orgId,
+ role: session.role,
+ firstName: '',
+ lastName: '',
+ email: '',
+ status: 'active' as const,
+ createdAt: new Date(),
+ updatedAt: new Date(),
+ }
+ : ({
+ id: '',
+ orgId: effectiveOrgId,
+ role: 'EMPLOYEE' as UserRole,
+ firstName: '',
+ lastName: '',
+ email: '',
+ status: 'active' as const,
+ createdAt: new Date(),
+ updatedAt: new Date(),
+ } as User));
  const effectiveCurrentRole = previewUserId ? 'EMPLOYEE' : (session?.role ?? currentRole);
 
- // Get org settings
- const orgSettings = mockOrg.settings;
- 
- // Switch role (for demo) - only when not in preview and session allows (HR/Client)
+ // Switch role - only when not in preview and session allows (HR/Client)
  const switchRole = useCallback((role: UserRole) => {
  if (previewUserId) return;
  setCurrentRole(role);
@@ -422,7 +565,7 @@ export function useDataStore() {
  setAuditLogs((prev) => [
  {
  id: `audit-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  recordType: 'PROMPT_RESPONSE',
  recordId: responseId,
  field: 'answer',
@@ -492,7 +635,7 @@ export function useDataStore() {
  setActivities((prev) => [
  {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'REPORT_CREATED',
  actorUserId: userId,
  metadata: {
@@ -508,7 +651,7 @@ export function useDataStore() {
  setAuditLogs((prev) => [
  {
  id: `audit-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  recordType: 'REPORT',
  recordId: newReport.id,
  field: 'caseType',
@@ -578,7 +721,7 @@ export function useDataStore() {
  // Add activity event
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'REPORT_CREATED',
  actorUserId: reportData.createdByUserId,
  metadata: { reportId: newReport.id, category: reportData.category },
@@ -604,7 +747,7 @@ export function useDataStore() {
  setActivities((prev) => [
  {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'WAGE_HOUR_SCREENING',
  actorUserId: userId,
  metadata: { hasConcern: false, acknowledgementId: ack.id },
@@ -615,7 +758,7 @@ export function useDataStore() {
  setAuditLogs((prev) => [
  {
  id: `audit-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  recordType: 'WAGE_HOUR_SCREENING',
  recordId: ack.id,
  field: 'hasConcern',
@@ -669,7 +812,7 @@ export function useDataStore() {
  setActivities((prev) => [
  {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'WAGE_HOUR_SCREENING',
  actorUserId: userId,
  metadata: { hasConcern: true, reportId: newReport.id, referenceNumber: refNum, alert: 'CLIENT_ADMIN' },
@@ -680,7 +823,7 @@ export function useDataStore() {
  setAuditLogs((prev) => [
  {
  id: `audit-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  recordType: 'REPORT',
  recordId: newReport.id,
  field: 'caseType',
@@ -729,7 +872,7 @@ export function useDataStore() {
  setActivities((prev) => [
  {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'WAGE_HOUR_SUBMITTED',
  actorUserId: reports.find((r) => r.id === reportId)?.createdByUserId,
  metadata: { reportId },
@@ -740,7 +883,7 @@ export function useDataStore() {
  setAuditLogs((prev) => [
  {
  id: `audit-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  recordType: 'REPORT',
  recordId: reportId,
  field: 'wageHourIntake',
@@ -837,7 +980,7 @@ export function useDataStore() {
  setActivities((prev) => [
  {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'PAYROLL_EXPEDITED',
  actorUserId: userId,
  metadata: {
@@ -853,7 +996,7 @@ export function useDataStore() {
  setAuditLogs((prev) => [
  {
  id: `audit-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  recordType: 'REPORT',
  recordId: newReport.id,
  field: 'status',
@@ -898,7 +1041,7 @@ export function useDataStore() {
  // Add activity event
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'REPORT_STATUS_CHANGED',
  actorUserId: currentUser.id,
  metadata: { reportId, from: oldStatus, to: newStatus },
@@ -908,7 +1051,7 @@ export function useDataStore() {
  setActivities(prev => [newActivity, ...prev]);
  const statusEvent: ReportStatusEvent = {
  id: `status-event-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  reportId,
  fromStatus: oldStatus,
  toStatus: newStatus,
@@ -936,7 +1079,7 @@ export function useDataStore() {
  // Add activity event
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'REPORT_ASSIGNED',
  actorUserId: currentUser.id,
  metadata: { reportId, assignedTo: adminId },
@@ -947,7 +1090,7 @@ export function useDataStore() {
  if (report.status !== 'ASSIGNED') {
  const statusEvent: ReportStatusEvent = {
  id: `status-event-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  reportId,
  fromStatus: report.status,
  toStatus: 'ASSIGNED',
@@ -970,7 +1113,7 @@ export function useDataStore() {
  const refNum =
  report.referenceNumber ??
  allocateCaseReferenceNumber(reports, report.orgId, report.caseType ?? 'WORKPLACE_INVESTIGATION');
- const prompt = report.sourcePromptId ? mockPrompts.find((p) => p.id === report.sourcePromptId) : undefined;
+ const prompt = report.sourcePromptId ? prompts.find((p) => p.id === report.sourcePromptId) : undefined;
  const sourceType = inferReportSourceType(report, prompt);
  const priority: InvestigationPriority =
  report.severity === 'CRITICAL' ? 'CRITICAL' : report.severity === 'HIGH' ? 'HIGH' : report.severity === 'MEDIUM' ? 'MEDIUM' : 'LOW';
@@ -980,7 +1123,7 @@ export function useDataStore() {
  ];
  const newInvestigation: Investigation = {
  id: `inv-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  referenceNumber: refNum,
  status: 'OPEN',
  ownerId,
@@ -1025,7 +1168,7 @@ export function useDataStore() {
  // Add activity event
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'INVESTIGATION_CREATED',
  actorUserId: currentUser.id,
  metadata: { investigationId: newInvestigation.id, reportId },
@@ -1037,7 +1180,7 @@ export function useDataStore() {
  setAuditLogs((prev) => [
  {
  id: `audit-${Date.now()}-inv`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  recordType: 'INVESTIGATION',
  recordId: newInvestigation.id,
  field: 'status',
@@ -1049,7 +1192,7 @@ export function useDataStore() {
  },
  {
  id: `audit-${Date.now()}-report`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  recordType: 'REPORT',
  recordId: reportId,
  field: 'investigationId',
@@ -1068,7 +1211,7 @@ export function useDataStore() {
  (investigationId: string, field: string, oldValue: string, newValue: string, reason?: string) => {
  const entry: AuditLogEntry = {
  id: `audit-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  recordType: 'INVESTIGATION',
  recordId: investigationId,
  field,
@@ -1244,7 +1387,7 @@ export function useDataStore() {
  setActivities((prev) => [
  {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'INVESTIGATION_UPDATED',
  actorUserId: currentUser.id,
  metadata: { investigationId, requestId, action: 'EMPLOYEE_RESPONSE_SUBMITTED' },
@@ -1255,7 +1398,7 @@ export function useDataStore() {
  setAuditLogs((prev) => [
  {
  id: `audit-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  recordType: 'INVESTIGATION',
  recordId: investigationId,
  field: 'responseRequest',
@@ -1427,7 +1570,7 @@ export function useDataStore() {
  );
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'INVESTIGATION_UPDATED',
  actorUserId: currentUser.id,
  metadata: { investigationId, action: 'PICKED_UP' },
@@ -1504,7 +1647,7 @@ export function useDataStore() {
  );
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'INVESTIGATION_UPDATED',
  actorUserId: currentUser.id,
  metadata: { investigationId, noteId: note.id },
@@ -1550,7 +1693,7 @@ export function useDataStore() {
  );
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'INVESTIGATION_UPDATED',
  actorUserId: currentUser.id,
  metadata: { investigationId, action: 'OUTCOME_SENT' },
@@ -1607,7 +1750,7 @@ export function useDataStore() {
  );
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'INVESTIGATION_UPDATED',
  actorUserId: currentUser.id,
  metadata: { investigationId, action: 'CLOSED' },
@@ -1640,7 +1783,7 @@ export function useDataStore() {
  );
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'REPORT_STATUS_CHANGED',
  actorUserId: currentUser.id,
  metadata: { reportId, action: 'INCIDENT_INTAKE_COMPLETED' },
@@ -1662,7 +1805,7 @@ export function useDataStore() {
  
  const newNudge: Nudge = {
  id: `nudge-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  targetUserId,
  channel,
  message,
@@ -1678,7 +1821,7 @@ export function useDataStore() {
  // Add activity event
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'NUDGE_SENT',
  actorUserId: currentUser.id,
  metadata: { nudgeId: newNudge.id, targetUserId },
@@ -1706,7 +1849,7 @@ export function useDataStore() {
  );
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'PROMPT_RESPONSE',
  actorUserId: currentUser.id,
  metadata: { responseId, action: 'REVIEWED' },
@@ -1756,7 +1899,7 @@ export function useDataStore() {
  const now = new Date();
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: format === 'PDF' ? 'EXPORT_PDF' : 'EXPORT_CSV',
  actorUserId: currentUser.id,
  metadata: { reportId, case_id: reportId },
@@ -1772,7 +1915,7 @@ export function useDataStore() {
  const newPrompt: Prompt = {
  ...promptData,
  id: `prompt-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  createdBy: currentUser.id,
  createdAt: now,
  updatedAt: now,
@@ -1796,7 +1939,7 @@ export function useDataStore() {
  
  const newDeliveries: PromptDelivery[] = targetUserIds.map(userId => ({
  id: `delivery-${Date.now()}-${userId}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  promptId: newPrompt.id,
  userId,
  status: 'PENDING',
@@ -1811,7 +1954,7 @@ export function useDataStore() {
  // Add activity event
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  type: 'PROMPT_CREATED',
  actorUserId: currentUser.id,
  metadata: { promptId: newPrompt.id, title: newPrompt.title },
@@ -1832,7 +1975,7 @@ export function useDataStore() {
  const policy: Policy = {
  ...payload,
  id: `policy-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  createdAt: now,
  updatedAt: now,
  };
@@ -1890,7 +2033,7 @@ export function useDataStore() {
  const item: Announcement = {
  ...payload,
  id: `announcement-${Date.now()}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  createdAt: now,
  updatedAt: now,
  };
@@ -2109,7 +2252,7 @@ export function useDataStore() {
  if (before === after) continue;
  auditEntries.push({
  id: `audit-${now.getTime()}-${String(key)}-${Math.random().toString(36).slice(2, 6)}`,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  recordType: 'User',
  recordId: userId,
  field: String(key),
@@ -2152,7 +2295,7 @@ export function useDataStore() {
  return {
  ...rest,
  id,
- orgId: mockOrg.id,
+ orgId: effectiveOrgId,
  createdAt: now,
  updatedAt: now,
  };
@@ -2424,7 +2567,9 @@ export function useDataStore() {
  currentUser,
  currentRole: effectiveCurrentRole,
  orgSettings,
- organizationName: mockOrg.name,
+ organizationName,
+ dataLoading,
+ departments: session ? departments.filter((d) => d.orgId === session.orgId) : departments,
  session,
  previewUserId,
  login,

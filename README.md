@@ -74,12 +74,14 @@ export default defineConfig([
 
 ## Mismo Internal Notes
 
-- Data storage:
-  - App state is persisted to `localStorage` under key `mismo-app-state-v1`.
+- Data storage (production):
+  - When `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set, org data loads from Supabase via `src/lib/supabase/loadOrgData.ts`.
+  - Auth uses Supabase (`signInWithPassword`); session is stored in `localStorage` under `mismo_session`.
   - Main state source is `src/hooks/useDataStore.ts`.
-- Seed data:
-  - Initial mock seed lives in `src/data/mockData.ts`.
-  - Add/edit seed entities there for users, reports, prompts, policies, announcements, etc.
+- Bootstrap:
+  - Run SQL in `docs/database/` (including `06_production_bootstrap.sql` for an empty org).
+  - Create HR users in Supabase Auth and link rows in `public.users` (see bootstrap comments).
+  - Set `VITE_ORG_ID` to match `organizations.id`.
 - Portal switching:
   - Use the top-right `View as` dropdown.
   - Roles supported: `Employee`, `Manager`, `Admin`, `Client`.

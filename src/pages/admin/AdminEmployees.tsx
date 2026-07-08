@@ -23,7 +23,6 @@ import { formatRelativeTime, formatPercent, formatDate, getInitials } from '@/li
 import { compareByLastFirstName } from '@/lib/sortUsers';
 import type { User, UserRole, UserStatus } from '@/types';
 import { ASSIGNABLE_ROLES, roleLabel } from '@/lib/roleLabels';
-import { mockDepartments } from '@/data/mockData';
 import { toast } from 'sonner';
 
 interface AdminEmployeesProps {
@@ -55,7 +54,7 @@ function displayEmployeeId(user: User): string {
 }
 
 export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminEmployeesProps) {
-  const { users, responses, atRiskEmployees, orgSettings, getEmployeeEngagement, createUsers, updateUser } = dataStore;
+  const { users, responses, atRiskEmployees, orgSettings, getEmployeeEngagement, createUsers, updateUser, departments } = dataStore;
 
  /** Prompt "I have an issue" / HAS_ISSUE: show corner badge; not for no-response / low-engagement alone */
  const userIdsWithReportedIssue = useMemo(() => {
@@ -153,7 +152,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
 
  const getDepartmentName = (deptId?: string) => {
  if (!deptId) return 'Unassigned';
- return mockDepartments.find((d) => d.id === deptId)?.name || deptId;
+ return departments.find((d) => d.id === deptId)?.name || deptId;
  };
 
   const toDateInput = (d: Date | undefined) => {
@@ -287,7 +286,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  const lastName = row[fieldMap.lastName] || '';
  const email = row[fieldMap.email] || '';
  const phone = row[fieldMap.phone] || undefined;
- const departmentId = mockDepartments.find((d) => d.name.toLowerCase() === (row[fieldMap.department] || '').toLowerCase())?.id;
+ const departmentId = departments.find((d) => d.name.toLowerCase() === (row[fieldMap.department] || '').toLowerCase())?.id;
 
  if (!firstName || !lastName || !email) {
  errors.push(`Row ${index + 1}: missing required field(s).`);
@@ -436,7 +435,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <SelectTrigger className="w-[170px]"><SelectValue /></SelectTrigger>
  <SelectContent>
  <SelectItem value="ALL">All Departments</SelectItem>
- {mockDepartments.map((dept) => (
+ {departments.map((dept) => (
  <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
  ))}
  </SelectContent>
@@ -730,7 +729,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <SelectTrigger><SelectValue /></SelectTrigger>
  <SelectContent>
  <SelectItem value="UNASSIGNED">Unassigned</SelectItem>
- {mockDepartments.map((dept) => (
+ {departments.map((dept) => (
  <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
  ))}
  </SelectContent>
