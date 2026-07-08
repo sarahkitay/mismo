@@ -911,17 +911,8 @@ WHERE pr.answer = 'HAS_ISSUE'
 -- ROLES: Supabase uses service_role (server) and anon/authenticated (client via RLS).
 -- Do NOT expose service_role in the browser. See 04_rls_policies.sql.
 -- =============================================================================
--- SEED: MINIMAL ORG (optional — matches demo org in mockData.ts)
+-- Production org bootstrap (no sample users): run 06_production_bootstrap.sql
 -- =============================================================================
-
-INSERT INTO organizations (id, name) VALUES
-  ('org-mismo-1', 'Mismo Demo Organization')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO departments (id, org_id, name) VALUES
-  ('dept-ops', 'org-mismo-1', 'Operations'),
-  ('dept-hr', 'org-mismo-1', 'Human Resources')
-ON CONFLICT (id) DO NOTHING;
 
 COMMIT;
 

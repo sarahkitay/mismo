@@ -12,18 +12,19 @@ interface LoginProps {
 
 export function Login({ dataStore }: LoginProps) {
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    if (!email.trim() || !password) return;
     setSubmitting(true);
-    const ok = dataStore.login(email.trim());
+    const result = await dataStore.login(email.trim(), password);
     setSubmitting(false);
-    if (ok) {
+    if (result.ok) {
       toast.success('Signed in.');
     } else {
-      toast.error('No account found for this email. Use an existing user email or add people via HR → Employees → Bulk Import.');
+      toast.error(result.message ?? 'Sign in failed.');
     }
   };
 
@@ -38,31 +39,44 @@ export function Login({ dataStore }: LoginProps) {
             </div>
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="email" className="section-label block text-left">Email</Label>
+                <Label htmlFor="email" className="section-label block text-left">
+                  Email
+                </Label>
                 <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                placeholder="you@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full h-10 rounded-md border-[var(--color-border-200)]"
-                required
-              />
-              <p className="text-xs text-[var(--color-text-muted)]">
-                Sign in with your work email. Each company has its own data; only your organization’s records are visible.
-              </p>
-            </div>
-            <Button type="submit" className="w-full h-10 font-medium" disabled={submitting}>
-              {submitting ? 'Signing in…' : 'Sign in'}
-            </Button>
-          </form>
-          <p className="text-xs text-center text-[var(--color-text-muted)] border-t border-[var(--color-border-200)] pt-4">
-            Demo: <span className="text-[var(--color-text-secondary)]">employee@mismo.com</span> (employee) or{' '}
-            <span className="text-[var(--color-text-secondary)]">hr@mismo.com</span> (HR).
-          </p>
-        </CardContent>
-      </Card>
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full h-10 rounded-md border-[var(--color-border-200)]"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password" className="section-label block text-left">
+                  Password
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full h-10 rounded-md border-[var(--color-border-200)]"
+                  required
+                />
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  Sign in with your work email and password. Only your organization&apos;s records are visible after
+                  sign-in.
+                </p>
+              </div>
+              <Button type="submit" className="w-full h-10 font-medium" disabled={submitting}>
+                {submitting ? 'Signing in…' : 'Sign in'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

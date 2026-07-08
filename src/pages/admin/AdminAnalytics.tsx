@@ -5,7 +5,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatPercent } from '@/lib/utils';
-import { mockDepartments } from '@/data/mockData';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
 import { defaultDateRange, dateRangeToParams, inDateRange, type DateRangeState } from '@/lib/dateFilters';
 import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
@@ -19,7 +18,7 @@ interface AdminAnalyticsProps {
 }
 
 export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
- const { reports, deliveries, responses, policies, policyAcknowledgements, investigations, users } = dataStore;
+ const { reports, deliveries, responses, policies, policyAcknowledgements, investigations, users, departments } = dataStore;
  const [dateRange, setDateRange] = useState<DateRangeState>({ ...defaultDateRange, preset: '30D' });
  const [reportOpen, setReportOpen] = useState(false);
  const responseMetricsRef = useRef<HTMLDivElement | null>(null);
@@ -53,7 +52,7 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  const categoryData = Object.entries(categoryMap).sort((a, b) => b[1] - a[1]);
  
  // Department health
- const departmentData = mockDepartments.map((department) => {
+ const departmentData = departments.map((department) => {
  const departmentUsers = dataStore.users.filter((u) => u.departmentId === department.id && u.role === 'EMPLOYEE');
  const reportCount = reportsInWindow.filter((report) => departmentUsers.some((u) => u.id === report.createdByUserId)).length;
  const riskLevel = reportCount > 6 ? 'HIGH' : reportCount > 2 ? 'MEDIUM' : 'LOW';
