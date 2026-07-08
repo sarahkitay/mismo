@@ -57,6 +57,10 @@ import {
   answerLabel,
   findInvestigationForReport,
 } from '@/lib/recordLinks';
+import {
+  buildEmployeePromptRegisterRows,
+  exportEmployeePromptRegisterCsv,
+} from '@/lib/employeePromptRegister';
 import { getInvestigationDisplayId } from '@/lib/investigationWorkflow';
 
 export type CaseRegisterBucket =
@@ -83,6 +87,7 @@ function deriveBucket(filters: Record<string, string>, hubPage: 'prompt-response
     filters.register === '1' ||
     filters.view === 'register' ||
     filters.status ||
+    filters.open === '1' ||
     filters.unassigned === '1' ||
     filters.new24h === '1' ||
     filters.new7d === '1' ||
@@ -149,6 +154,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
   const tileNew24h = filters.new24h === '1';
   const tileNew7d = filters.new7d === '1';
   const tileOverSla = filters.over_sla === '1';
+  const tileOpenOnly = filters.open === '1';
   const caseTypeFilter =
     filters.caseType ?? (promptChannel === 'wage_hour' ? 'WAGE_HOUR' : 'ALL');
 
@@ -195,10 +201,52 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
     return new Set(prompts.map((p) => p.id));
   }, [prompts, promptChannel]);
 
+  const employeeIdFilter = filters.employeeId;
+  const filterEmployee = employeeIdFilter ? users.find((u) => u.id === employeeIdFilter) : undefined;
+
+  const reportSummary = useMemo(() => {
+    const scoped = registerReports.filter((report) => {
+      if (employeeIdFilter && report.createdByUserId !== employeeIdFilter) return false;
+      return inDateRange(report.updatedAt ?? report.createdAt, range);
+    });
+    return {
+      total: scoped.length,
+      open: scoped.filter((report) => isOpenReport(report)).length,
+      resolved: scoped.filter((report) => ['RESOLVED', 'CLOSED'].includes(report.status)).length,
+    };
+  }, [registerReports, range, employeeIdFilter]);
+
+  const reportScopeAll =
+    !tileOpenOnly &&
+    initialStatus.length === 0 &&
+    !tileCritical &&
+    !tileUnassigned &&
+    !tileNeedsInfo &&
+    !tileNew24h &&
+    !tileNew7d &&
+    !tileOverSla;
+
   const promptRows = useMemo(() => {
     if (bucket === 'CASE_REGISTER' || bucket === 'NEW_CRITICAL' || bucket === 'NEEDS_RESPONSE') return [];
-    if (promptChannel === 'memo' || promptChannel === 'register') return [];
+    if (!employeeIdFilter && (promptChannel === 'memo' || promptChannel === 'register')) return [];
     const q = promptQuery.trim().toLowerCase();
+
+    if (employeeIdFilter) {
+      const ansFilter =
+        bucket === 'PROMPT_YES'
+          ? ('HAS_ISSUE' as const)
+          : bucket === 'PROMPT_NO'
+            ? ('NO_ISSUE' as const)
+            : bucket === 'PROMPT_UNANSWERED'
+              ? ('UNANSWERED' as const)
+              : null;
+      return buildEmployeePromptRegisterRows(employeeIdFilter, users, deliveries, responses, prompts, {
+        range,
+        answerFilter: ansFilter,
+        needsReviewOnly: needsReviewOnly && bucket === 'PROMPT_YES',
+      }).filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q));
+    }
+
     const sortRows = <T extends { userId?: string; userName: string; date: Date }>(rows: T[]) =>
       [...rows].sort((a, b) => {
         const ua = a.userId ? users.find((u) => u.id === a.userId) : undefined;
@@ -260,13 +308,14 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
         })
         .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
     );
-  }, [bucket, deliveries, responses, prompts, users, range, promptQuery, needsReviewOnly, promptChannel, promptIdsForChannel]);
+  }, [bucket, deliveries, responses, prompts, users, range, promptQuery, needsReviewOnly, promptChannel, promptIdsForChannel, employeeIdFilter]);
 
   const filteredRegisterReports = useMemo(() => {
     const ms24h = 24 * 60 * 60 * 1000;
     const ms7d = 7 * 24 * 60 * 60 * 1000;
     return registerReports
       .filter((report) => {
+        if (employeeIdFilter && report.createdByUserId !== employeeIdFilter) return false;
         if (bucket === 'NEW_CRITICAL') {
           if (!(report.severity === 'CRITICAL' || report.severity === 'HIGH') || !isOpenReport(report)) return false;
         } else if (bucket === 'NEEDS_RESPONSE') {
@@ -291,6 +340,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
           if (Date.now() - t > ms7d) return false;
         }
         if (tileOverSla && (!isOpenReport(report) || !isOverSla(report))) return false;
+        if (tileOpenOnly && !isOpenReport(report)) return false;
         if (caseTypeFilter !== 'ALL') {
           const ct = inferCaseType(report.category, report.caseType);
           if (ct !== caseTypeFilter) return false;
@@ -313,7 +363,9 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
     tileNew24h,
     tileNew7d,
     tileOverSla,
+    tileOpenOnly,
     caseTypeFilter,
+    employeeIdFilter,
   ]);
 
   const applyTile = (params: Record<string, string>) => {
@@ -321,9 +373,27 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
   };
   const clearTile = () => goRegister({});
   const goPrompt = (params: Record<string, string>) =>
-    onNavigate('prompt-responses', { view: 'prompts', channel: promptChannel === 'register' ? 'incident' : promptChannel, ...params });
+    onNavigate('prompt-responses', {
+      view: 'prompts',
+      channel: promptChannel === 'register' ? 'incident' : promptChannel,
+      ...(employeeIdFilter ? { employeeId: employeeIdFilter } : {}),
+      ...params,
+    });
   const goRegister = (params: Record<string, string>) =>
-    onNavigate('case-register', { view: 'register', register: '1', channel: 'register', ...params });
+    onNavigate('prompt-responses', {
+      view: 'register',
+      register: '1',
+      channel: 'register',
+      ...(employeeIdFilter ? { employeeId: employeeIdFilter } : {}),
+      ...params,
+    });
+  const openEmployeeRegister = (userId: string) =>
+    onNavigate('prompt-responses', {
+      view: 'prompts',
+      employeeId: userId,
+      rangePreset: 'ALL',
+      channel: 'incident',
+    });
 
   const showCaseTable =
     promptChannel === 'register' ||
@@ -332,10 +402,11 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
     bucket === 'NEW_CRITICAL' ||
     bucket === 'NEEDS_RESPONSE';
   const showPromptList =
-    promptChannel !== 'register' &&
-    promptChannel !== 'memo' &&
-    promptChannel !== 'wage_hour' &&
-    (bucket === 'PROMPT_ALL' || bucket === 'PROMPT_YES' || bucket === 'PROMPT_NO' || bucket === 'PROMPT_UNANSWERED');
+    Boolean(employeeIdFilter) ||
+    (promptChannel !== 'register' &&
+      promptChannel !== 'memo' &&
+      promptChannel !== 'wage_hour' &&
+      (bucket === 'PROMPT_ALL' || bucket === 'PROMPT_YES' || bucket === 'PROMPT_NO' || bucket === 'PROMPT_UNANSWERED'));
 
   const toggleRow = (id: string) => {
     setSelectedRows((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
@@ -359,17 +430,43 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
   return (
     <div className="space-y-5">
       <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-5 py-4">
-        <h1 className="mismo-heading text-3xl text-[var(--color-primary-900)]">
-          {hubPage === 'case-register' ? 'Case register & check-ins' : 'Prompt responses'}
-        </h1>
+        <h1 className="mismo-heading text-3xl text-[var(--color-primary-900)]">Prompt responses</h1>
         <p className="mt-1 text-[var(--color-text-secondary)]">
-          <strong>Prompt responses</strong> are scheduled check-in answers. <strong>Case register</strong> items are reports and escalations
-          (from a Yes response, incident intake, memo clarification, or manual entry) that HR triages here. Escalations may become{' '}
+          Scheduled check-in answers and the <strong>case register</strong> in one place. <strong>Prompt responses</strong> are
+          check-in answers (Yes, No, unanswered). <strong>Case register</strong> items are reports and escalations (from a Yes
+          response, incident intake, memo clarification, or manual entry) that HR triages here. Escalations may become{' '}
           <button type="button" className="text-[var(--mismo-blue)] hover:underline font-medium" onClick={() => onNavigate('investigations')}>
             Investigations
           </button>
           . Cases linked to an open investigation are hidden from this register until closed.
         </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Tile
+          active={reportScopeAll && promptChannel === 'register'}
+          onClick={() => goRegister({})}
+          label="Total reports"
+          value={reportSummary.total}
+        />
+        <Tile
+          active={tileOpenOnly}
+          onClick={() => goRegister(tileOpenOnly ? {} : { open: '1' })}
+          label="Open reports"
+          value={reportSummary.open}
+        />
+        <Tile
+          active={initialStatus.includes('RESOLVED') || initialStatus.includes('CLOSED')}
+          onClick={() =>
+            goRegister(
+              initialStatus.includes('RESOLVED') || initialStatus.includes('CLOSED')
+                ? {}
+                : { status: 'RESOLVED,CLOSED' }
+            )
+          }
+          label="Resolved reports"
+          value={reportSummary.resolved}
+        />
       </div>
 
       <div className="space-y-4">
@@ -448,6 +545,52 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
             </p>
           )}
         </>
+      )}
+
+      {showPromptList && filterEmployee && (
+        <Card className="mismo-card border border-[var(--color-primary-700)] bg-[var(--mismo-blue-light)]/20">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)]">Employee check-in register</p>
+              <p className="font-medium text-[var(--mismo-text)]">
+                {filterEmployee.firstName} {filterEmployee.lastName}
+              </p>
+              <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+                All prompt answers, pending check-ins, and linked case escalations for this employee. Export for audit or reporting.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <Button type="button" variant="outline" size="sm" onClick={() => onNavigate('employee-detail', { id: filterEmployee.id, tab: 'prompts' })}>
+                Employee profile
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const exportData = exportEmployeePromptRegisterCsv(
+                    promptRows,
+                    reports,
+                    `${filterEmployee.firstName} ${filterEmployee.lastName}`,
+                    filterEmployee.employeeId ?? filterEmployee.id
+                  );
+                  downloadCsv(exportData.filename, exportData.headers, exportData.rows);
+                  toast.success('Employee check-in report exported.');
+                }}
+              >
+                Export CSV
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onNavigate('prompt-responses', { view: 'prompts', channel: 'incident', rangePreset: 'ALL' })}
+              >
+                Clear employee filter
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {showPromptList && (
@@ -771,7 +914,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                     const linkedInv = linkedCase ? findInvestigationForReport(linkedCase, investigations) : undefined;
                     const openRow = () => {
                       if (row.answer === 'UNANSWERED') {
-                        if (row.userId) onNavigate('employee-detail', { id: row.userId });
+                        if (row.userId) openEmployeeRegister(row.userId);
                         return;
                       }
                       onNavigate('prompt-response-detail', { id: row.id, type: row.answer });
@@ -790,7 +933,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                               className="text-[var(--mismo-blue)] hover:underline"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onNavigate('employee-detail', { id: row.userId! });
+                                openEmployeeRegister(row.userId!);
                               }}
                             >
                               {row.userName}

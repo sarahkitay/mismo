@@ -6,6 +6,7 @@ import { formatRelativeTime } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Icons } from '@/lib/icons';
 import { fetchHrNextTasks, isAiFeaturesEnabled, type HrNextTask } from '@/lib/api/aiServices';
+import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 interface AdminDashboardProps {
@@ -164,11 +165,17 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  }, [users, policies, policyAcknowledgements, deliveries, responses, investigations]);
 
  const totalYesResponses = responses.filter((r) => r.answer === 'HAS_ISSUE').length;
+ const openReportsCount = reports.filter((r) => !['RESOLVED', 'CLOSED'].includes(r.status)).length;
  const resolvedReports = reports.filter((r) => ['RESOLVED', 'CLOSED'].includes(r.status));
  const avgResolutionDays = resolvedReports.length
  ? resolvedReports.reduce((sum, r) => sum + (r.updatedAt.getTime() - r.createdAt.getTime()) / (1000 * 60 * 60 * 24), 0) /
  resolvedReports.length
  : 0;
+
+ const investigationWorkload = useMemo(
+ () => computeOpenInvestigationWorkload(investigations, responses, reports),
+ [investigations, responses, reports]
+ );
 
  return (
  <div className="space-y-6">
@@ -236,6 +243,16 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  count={dc.payrollExpeditedOpen}
  urgent
  onClick={() => onNavigate('case-register', { view: 'register', register: '1', status: 'PAYROLL_EXPEDITED' })}
+ />
+ <ActionLine
+ label="Memo sign-offs pending"
+ count={dc.memoAcknowledgementsPending}
+ onClick={() => onNavigate('policies', { memoQueue: 'pending_ack' })}
+ />
+ <ActionLine
+ label="Memos needing clarification"
+ count={dc.memosNeedingClarification}
+ onClick={() => onNavigate('policies', { memoQueue: 'clarification' })}
  />
  </div>
  )}
@@ -327,6 +344,28 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
  {[
  {
+ label: 'Total reports',
+ count: reports.length,
+ helper: 'All incident reports and escalations on record.',
+ action: 'View all reports',
+ onClick: () => onNavigate('prompt-responses', { view: 'register', register: '1', channel: 'register', rangePreset: 'ALL' }),
+ },
+ {
+ label: 'Open reports',
+ count: openReportsCount,
+ helper: 'Reports and concerns awaiting HR action in the case register.',
+ action: 'View open reports',
+ onClick: () => onNavigate('prompt-responses', { view: 'register', register: '1', channel: 'register', open: '1' }),
+ accent: 'text-[var(--color-alert-600)]',
+ },
+ {
+ label: 'Resolved reports',
+ count: resolvedReports.length,
+ helper: 'Reports marked resolved or closed.',
+ action: 'View resolved',
+ onClick: () => onNavigate('prompt-responses', { view: 'register', register: '1', channel: 'register', status: 'RESOLVED,CLOSED' }),
+ },
+ {
  label: 'Total yes answers',
  count: totalYesResponses,
  helper: 'All-time check-in answers where staff chose Yes.',
@@ -336,17 +375,13 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  },
  {
  label: 'Open investigations',
- count: dc.activeInvestigations,
- helper: 'Includes Yes responses under active review and formal investigations.',
+ count: investigationWorkload.totalCount,
+ helper:
+ investigationWorkload.yesUnderReviewCount > 0
+ ? `${investigationWorkload.formalCount} formal investigation${investigationWorkload.formalCount === 1 ? '' : 's'} plus ${investigationWorkload.yesUnderReviewCount} Yes response${investigationWorkload.yesUnderReviewCount === 1 ? '' : 's'} under review.`
+ : 'Formal investigation files in progress.',
  action: 'View investigations',
  onClick: () => onNavigate('investigations', { status: 'OPEN' }),
- },
- {
- label: 'Resolved cases',
- count: resolvedReports.length,
- helper: 'Reports marked resolved or closed.',
- action: 'View resolved',
- onClick: () => onNavigate('case-register', { view: 'register', register: '1', status: 'RESOLVED,CLOSED' }),
  },
  {
  label: 'Avg resolution (days)',
@@ -356,28 +391,47 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  onClick: () => onNavigate('analytics'),
  },
  {
- label: 'Open cases',
- count: dc.openCaseRegisterCount,
- helper: 'Reports and concerns awaiting HR action in the case register.',
- action: 'Open case register',
- onClick: () => onNavigate('case-register', { view: 'register', register: '1' }),
- accent: 'text-[var(--color-alert-600)]',
- },
- {
  label: 'At-risk employees',
  count: dc.atRiskEmployees,
  helper: 'Low engagement or overdue check-ins in the last 30 days.',
  action: 'View employees',
  onClick: () => onNavigate('users', { atRisk: 'true' }),
  },
+ {
+ label: 'Memo sign-offs pending',
+ count: dc.memoAcknowledgementsPending,
+ helper: 'Required memo acknowledgements not yet completed by active employees.',
+ action: 'View memos needing sign-off',
+ onClick: () => onNavigate('policies', { memoQueue: 'pending_ack' }),
+ accent: dc.memoAcknowledgementsPending > 0 ? 'text-[var(--color-alert-600)]' : undefined,
+ },
  ].map((card) => (
- <Card key={card.label} className="mismo-card h-full hover:border-[var(--color-primary-700)] transition-colors">
+ <Card
+ key={card.label}
+ role="button"
+ tabIndex={0}
+ className="mismo-card h-full hover:border-[var(--color-primary-700)] transition-colors cursor-pointer"
+ onClick={card.onClick}
+ onKeyDown={(e) => {
+ if (e.key === 'Enter' || e.key === ' ') {
+ e.preventDefault();
+ card.onClick();
+ }
+ }}
+ >
  <CardContent className="p-5 flex h-full flex-col">
  <p className="text-[12px] uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">{card.label}</p>
  <p className={`font-command text-4xl font-medium tabular-nums mt-2 ${'accent' in card ? card.accent ?? '' : ''}`}>{card.count}</p>
  <p className="text-xs text-[var(--color-text-secondary)] mt-2 flex-1">{card.helper}</p>
  <div className="mt-4 flex flex-col gap-2">
- <Button variant="outline" className="w-full border-[var(--color-primary-900)] text-[var(--color-primary-900)]" onClick={card.onClick}>
+ <Button
+ variant="outline"
+ className="w-full border-[var(--color-primary-900)] text-[var(--color-primary-900)]"
+ onClick={(e) => {
+ e.stopPropagation();
+ card.onClick();
+ }}
+ >
  {card.action} →
  </Button>
  {card.label === 'At-risk employees' && dc.atRiskEmployees > 0 && (
@@ -436,7 +490,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  const linkedCase = row.kind === 'response' ? reports.find((r) => r.sourcePromptResponseId === row.id) : undefined;
  const openRow = () => {
  if (row.kind === 'pending' && row.userId) {
- onNavigate('employee-detail', { id: row.userId });
+ onNavigate('prompt-responses', { view: 'prompts', employeeId: row.userId, rangePreset: 'ALL', channel: 'incident' });
  return;
  }
  if (row.kind === 'response') {
@@ -456,7 +510,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  className="text-[var(--mismo-blue)] hover:underline"
  onClick={(e) => {
  e.stopPropagation();
- onNavigate('employee-detail', { id: emp.id });
+ onNavigate('prompt-responses', { view: 'prompts', employeeId: emp.id, rangePreset: 'ALL', channel: 'incident' });
  }}
  >
  {emp.firstName} {emp.lastName}

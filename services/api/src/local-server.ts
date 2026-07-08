@@ -94,7 +94,7 @@ const server = http.createServer(async (req, res) => {
  };
  const hasSnapshot = Object.values(snapshot).some((v) => v !== undefined && v > 0);
  const tasks = await computeHrNextTasks(orgId, hasSnapshot ? snapshot : undefined);
- sendJson(res, 200, { tasks });
+ sendJson(res, 200, tasks);
  return;
  }
 

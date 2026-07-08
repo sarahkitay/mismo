@@ -1,0 +1,9 @@
+# Supabase local / deploy config for Mismo API (Edge Functions)
+# Docs: https://supabase.com/docs/guides/functions
+
+[api]
+enabled = true
+
+[functions.mismo-api]
+verify_jwt = false
+# Set verify_jwt = true in production and pass Authorization: Bearer <user JWT> from the app.

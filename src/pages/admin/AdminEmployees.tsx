@@ -14,12 +14,6 @@ import {
  SelectValue,
 } from '@/components/ui/select';
 import {
- DropdownMenu,
- DropdownMenuContent,
- DropdownMenuItem,
- DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
  Dialog,
  DialogContent,
  DialogHeader,
@@ -27,7 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { formatRelativeTime, formatPercent, formatDate, getInitials } from '@/lib/utils';
 import { compareByLastFirstName } from '@/lib/sortUsers';
-import type { User, UserRole } from '@/types';
+import type { User, UserRole, UserStatus } from '@/types';
 import { ASSIGNABLE_ROLES, roleLabel } from '@/lib/roleLabels';
 import { mockDepartments } from '@/data/mockData';
 import { toast } from 'sonner';
@@ -61,7 +55,7 @@ function displayEmployeeId(user: User): string {
 }
 
 export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminEmployeesProps) {
- const { users, responses, atRiskEmployees, sendNudge, orgSettings, getEmployeeEngagement, createUsers, updateUser } = dataStore;
+  const { users, responses, atRiskEmployees, orgSettings, getEmployeeEngagement, createUsers, updateUser } = dataStore;
 
  /** Prompt "I have an issue" / HAS_ISSUE: show corner badge; not for no-response / low-engagement alone */
  const userIdsWithReportedIssue = useMemo(() => {
@@ -92,7 +86,8 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  const [editEmployeeId, setEditEmployeeId] = useState('');
  const [editLocation, setEditLocation] = useState('');
  const [editArchiveStart, setEditArchiveStart] = useState('');
- const [editArchiveEnd, setEditArchiveEnd] = useState('');
+  const [editArchiveEnd, setEditArchiveEnd] = useState('');
+  const [editStatus, setEditStatus] = useState<UserStatus>('active');
 
  const [importHeaders, setImportHeaders] = useState<string[]>([]);
  const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
@@ -161,14 +156,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  return mockDepartments.find((d) => d.id === deptId)?.name || deptId;
  };
 
- const handleNudge = (employeeId: string, channel: 'EMAIL' | 'SMS' | 'MANUAL') => {
- const emp = directoryUsers.find((e) => e.id === employeeId);
- if (!emp) return;
- sendNudge(employeeId, channel, `Compliance reminder for ${emp.firstName}.`, { type: 'AT_RISK_OUTREACH' });
- toast.success(`${channel} reminder logged.`);
- };
-
- const toDateInput = (d: Date | undefined) => {
+  const toDateInput = (d: Date | undefined) => {
  if (!d) return '';
  const date = d instanceof Date ? d : new Date(d);
  return date.toISOString().slice(0, 10);
@@ -183,15 +171,17 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  setEditPhone(user.phone ?? '');
  setEditEmployeeId(user.employeeId ?? '');
  setEditLocation(user.location ?? '');
- setEditArchiveStart(toDateInput(user.archiveStartDate));
- setEditArchiveEnd(toDateInput(user.archiveEndDate));
- };
+    setEditArchiveStart(toDateInput(user.archiveStartDate));
+    setEditArchiveEnd(toDateInput(user.archiveEndDate));
+    setEditStatus(user.status);
+  };
 
  const saveUserEdits = () => {
  if (!editingUser) return;
- updateUser(editingUser.id, {
- role: editRole,
- departmentId: editDepartment === 'UNASSIGNED' ? undefined : editDepartment,
+    updateUser(editingUser.id, {
+      role: editRole,
+      status: editStatus,
+      departmentId: editDepartment === 'UNASSIGNED' ? undefined : editDepartment,
  phone: editPhone || undefined,
  employeeId: editEmployeeId.trim() || undefined,
  location: editLocation.trim() || undefined,
@@ -529,24 +519,10 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <Button variant="default" size="sm" onClick={() => onNavigate('employee-detail', { id: employee.id })}>
  View chart
  </Button>
- <Button variant="outline" size="sm" onClick={() => openEditUser(employee.id)}>
- Edit
- </Button>
- <DropdownMenu>
- <DropdownMenuTrigger asChild>
- <Button variant="outline" size="sm">Nudge</Button>
- </DropdownMenuTrigger>
- <DropdownMenuContent align="end">
- {orgSettings.enableEmail && (
- <DropdownMenuItem onClick={() => handleNudge(employee.id, 'EMAIL')}>Send Email</DropdownMenuItem>
- )}
- {orgSettings.enableSMS && employee.phone && (
- <DropdownMenuItem onClick={() => handleNudge(employee.id, 'SMS')}>Send SMS</DropdownMenuItem>
- )}
- <DropdownMenuItem onClick={() => handleNudge(employee.id, 'MANUAL')}>Log Manual Outreach</DropdownMenuItem>
- </DropdownMenuContent>
- </DropdownMenu>
- </div>
+                    <Button variant="outline" size="sm" onClick={() => openEditUser(employee.id)}>
+                      Edit
+                    </Button>
+                  </div>
  </CardContent>
  </Card>
  );
@@ -702,8 +678,12 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <DialogHeader>
  <DialogTitle>Edit employee</DialogTitle>
  </DialogHeader>
- <div className="space-y-3">
- <div className="space-y-1.5">
+        <div className="space-y-3">
+          <p className="text-xs text-[var(--color-text-secondary)]">
+            Optional fields (location, employee ID, phone, archive dates) can be cleared by emptying them and saving.
+            Check-in and case history is never deleted from this screen.
+          </p>
+          <div className="space-y-1.5">
  <Label>Employee ID</Label>
  <Input value={editEmployeeId} onChange={(e) => setEditEmployeeId(e.target.value)} placeholder="Company / badge number" />
  </div>
@@ -721,8 +701,18 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <Input type="date" value={editArchiveEnd} onChange={(e) => setEditArchiveEnd(e.target.value)} />
  </div>
  </div>
- <div className="space-y-1.5">
- <Label>Role</Label>
+          <div className="space-y-1.5">
+            <Label>Employment status</Label>
+            <Select value={editStatus} onValueChange={(v) => setEditStatus(v as UserStatus)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Role</Label>
  <Select value={editRole} onValueChange={(v) => setEditRole(v as UserRole)}>
  <SelectTrigger><SelectValue /></SelectTrigger>
  <SelectContent>

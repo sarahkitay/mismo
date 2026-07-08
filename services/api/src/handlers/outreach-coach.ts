@@ -46,6 +46,7 @@ export type OutreachCoachResponse = z.infer<typeof CoachResponseSchema> & {
   promptVersion: string;
   model: string;
   disclaimer: string;
+  sessionId?: string;
 };
 
 export async function runOutreachCoach(input: OutreachCoachRequest): Promise<OutreachCoachResponse> {

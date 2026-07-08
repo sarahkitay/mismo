@@ -44,6 +44,7 @@ import {
  inferReportSourceType,
 } from '@/lib/investigationWorkflow';
 import { allocateCaseReferenceNumber } from '@/lib/caseReference';
+import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
 import {
  mockUsers,
  mockReports,
@@ -1716,22 +1717,39 @@ export function useDataStore() {
  [currentUser.id]
  );
 
- const sendMemoReminderToUnacknowledged = useCallback(
- (policyId: string, channel: 'EMAIL' | 'SMS', message: string) => {
- const policy = policies.find((p) => p.id === policyId);
- if (!policy?.acknowledgmentRequired) return 0;
- const employees = users.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');
- let sent = 0;
- for (const u of employees) {
- const ack = policyAcknowledgements.find((a) => a.policyId === policyId && a.userId === u.id);
- if (ack) continue;
- sendNudge(u.id, channel, message, { type: 'MEMO_REMINDER', policyId, relatedLabel: policy.title });
- sent += 1;
- }
- return sent;
- },
- [policies, users, policyAcknowledgements, sendNudge]
- );
+  const sendMemoReminderToUnacknowledged = useCallback(
+    (payload: {
+      policyId: string;
+      channels: ('EMAIL' | 'SMS')[];
+      subject: string;
+      emailBody: string;
+      smsBody: string;
+    }) => {
+      const policy = policies.find((p) => p.id === payload.policyId);
+      if (!policy?.acknowledgmentRequired) return 0;
+      const employees = users.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');
+      let sent = 0;
+      for (const u of employees) {
+        const ack = policyAcknowledgements.find((a) => a.policyId === payload.policyId && a.userId === u.id);
+        if (ack) continue;
+        for (const channel of payload.channels) {
+          if (channel === 'SMS' && !u.phone?.trim()) continue;
+          const message =
+            channel === 'EMAIL'
+              ? `Subject: ${payload.subject}\n\n${payload.emailBody}`
+              : payload.smsBody;
+          sendNudge(u.id, channel, message, {
+            type: 'MEMO_REMINDER',
+            policyId: payload.policyId,
+            relatedLabel: policy.title,
+          });
+          sent += 1;
+        }
+      }
+      return sent;
+    },
+    [policies, users, policyAcknowledgements, sendNudge]
+  );
 
  // Log export event for audit (append-only)
  const logExportEvent = useCallback((reportId: string, format: 'PDF' | 'CSV') => {
@@ -2060,10 +2078,30 @@ export function useDataStore() {
  const updateUser = useCallback((userId: string, updates: Partial<User>) => {
  const now = new Date();
  const auditEntries: AuditLogEntry[] = [];
+ const clearableKeys: (keyof User)[] = [
+ 'phone',
+ 'employeeId',
+ 'location',
+ 'archiveStartDate',
+ 'archiveEndDate',
+ 'departmentId',
+ 'managerId',
+ 'hiredDate',
+ 'state',
+ ];
  setUsers((prev) => {
  const prevUser = prev.find((u) => u.id === userId);
  if (!prevUser) return prev;
- const next: User = { ...prevUser, ...updates, updatedAt: now };
+ const next: User = { ...prevUser, updatedAt: now };
+ for (const [key, value] of Object.entries(updates) as [keyof User, User[keyof User]][]) {
+ if (key === 'updatedAt' || key === 'createdAt' || key === 'id' || key === 'orgId') continue;
+      if (value === undefined && clearableKeys.includes(key)) {
+        const mutable = next as unknown as Record<string, unknown>;
+        delete mutable[key as string];
+      } else if (value !== undefined) {
+        (next as unknown as Record<string, unknown>)[key as string] = value;
+      }
+ }
  for (const key of Object.keys(updates) as (keyof User)[]) {
  if (key === 'updatedAt' || key === 'createdAt') continue;
  const before = prevUser[key];
@@ -2349,13 +2387,22 @@ export function useDataStore() {
  (r) => r.status === 'PAYROLL_EXPEDITED' && r.expeditedPayroll
  ).length,
  };
+ const investigationWorkload = computeOpenInvestigationWorkload(
+ effectiveInvestigations,
+ effectiveResponses,
+ effectiveReports
+ );
+ const dashboardCountsWithWorkload = {
+ ...dashboardCounts,
+ openInvestigationWorkload: investigationWorkload.totalCount,
+ };
  const actionRequiredTotal =
- dashboardCounts.yesResponsesNeedingReview +
- dashboardCounts.unansweredPromptDeliveries +
- dashboardCounts.activeInvestigations +
- dashboardCounts.reportsNeedingClarification +
- dashboardCounts.payrollExpeditedOpen;
- const dashboardCountsWithAction = { ...dashboardCounts, actionRequiredTotal };
+ dashboardCountsWithWorkload.yesResponsesNeedingReview +
+ dashboardCountsWithWorkload.unansweredPromptDeliveries +
+ dashboardCountsWithWorkload.activeInvestigations +
+ dashboardCountsWithWorkload.reportsNeedingClarification +
+ dashboardCountsWithWorkload.payrollExpeditedOpen;
+ const dashboardCountsWithAction = { ...dashboardCountsWithWorkload, actionRequiredTotal };
  
  return {
  // State (org-scoped when session exists)

@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { getEffectiveStage, getInvestigationDisplayId, INVESTIGATION_STAGE_LABELS } from '@/lib/investigationWorkflow';
+import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
 import { formatCaseReference } from '@/lib/caseTypes';
 import { downloadCsv } from '@/lib/exportCsv';
 import { Button } from '@/components/ui/button';
@@ -68,6 +69,11 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
       readyToClose,
     };
   }, [investigations, reports]);
+
+  const investigationWorkload = useMemo(
+    () => computeOpenInvestigationWorkload(investigations, responses, reports),
+    [investigations, responses, reports]
+  );
 
   const filteredInvestigations = useMemo(() => {
     return investigations.filter(inv => {
@@ -132,7 +138,7 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
         <div>
           <h1 className="mismo-heading text-3xl text-[var(--color-primary-900)]">Investigations</h1>
           <p className="text-[var(--mismo-text-secondary)] mt-1">
-            Structured case management for active and closed investigations.
+            Formal investigation files plus Yes check-in responses under HR review before or alongside a case file.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -183,6 +189,38 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
         </div>
       </div>
 
+      {investigationWorkload.yesUnderReviewCount > 0 && (
+        <Card className="mismo-card border border-amber-300/60 bg-amber-50/80">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="font-medium text-[var(--mismo-text)]">
+                {investigationWorkload.yesUnderReviewCount} Yes check-in
+                {investigationWorkload.yesUnderReviewCount === 1 ? '' : 's'} under review
+              </p>
+              <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
+                These are in active HR review and count toward open investigations until triaged into a formal case file or
+                marked reviewed.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              className="shrink-0 border-amber-600 text-amber-900 hover:bg-amber-100"
+              onClick={() =>
+                onNavigate('prompt-responses', {
+                  view: 'prompts',
+                  channel: 'incident',
+                  answer: 'HAS_ISSUE',
+                  needs_review: '1',
+                  rangePreset: 'ALL',
+                })
+              }
+            >
+              Review Yes responses →
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Risk Summary Bar – clickable tiles deep-link to filtered list */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3" role="group" aria-label="Risk summary filters">
         <button
@@ -192,7 +230,12 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
           aria-pressed={tileFromUrl === 'open'}
         >
           <p className="text-xs text-[var(--color-text-muted)] uppercase">Open Investigations</p>
-          <p className="text-xl font-semibold text-[var(--color-text-primary)]">{riskSummary.open}</p>
+          <p className="text-xl font-semibold text-[var(--color-text-primary)]">{investigationWorkload.totalCount}</p>
+          {investigationWorkload.yesUnderReviewCount > 0 && (
+            <p className="text-[10px] text-[var(--color-text-secondary)] mt-1">
+              {investigationWorkload.formalCount} formal · {investigationWorkload.yesUnderReviewCount} Yes
+            </p>
+          )}
         </button>
         <button
           type="button"

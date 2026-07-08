@@ -873,6 +873,8 @@ export interface DashboardCounts {
  memosNeedingClarification: number;
  /** Distinct actionable queue items for command center (deduped sum) */
  actionRequiredTotal: number;
+ /** Formal open investigations plus Yes check-ins under HR review (deduped) */
+ openInvestigationWorkload: number;
  /** Open case register rows (excl. cases under open investigation) */
  openCaseRegisterCount: number;
 }

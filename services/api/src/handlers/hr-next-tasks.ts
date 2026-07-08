@@ -42,7 +42,7 @@ function buildTasksFromCounts(counts: {
  priority: 'URGENT',
  title: 'Payroll issues - 24h administrator action',
  detail: `${counts.payroll} expedited payroll memo(s) require resolution within SLA.`,
- action: 'case-register?status=PAYROLL_EXPEDITED',
+ action: 'prompt-responses?view=register&register=1&channel=register&status=PAYROLL_EXPEDITED',
  count: counts.payroll,
  source,
  });
@@ -54,7 +54,7 @@ function buildTasksFromCounts(counts: {
  priority: 'HIGH',
  title: 'Yes check-in responses need review',
  detail: `${counts.yesReview} employee(s) answered Yes on a check-in and need HR triage.`,
- action: 'prompt-responses?answer=HAS_ISSUE&needs_review=1',
+ action: 'prompt-responses?view=prompts&answer=HAS_ISSUE&needs_review=1&channel=incident',
  count: counts.yesReview,
  source,
  });
@@ -66,7 +66,7 @@ function buildTasksFromCounts(counts: {
  priority: 'HIGH',
  title: 'Cases awaiting employee clarification',
  detail: `${counts.needsInfo} report(s) are waiting on additional information.`,
- action: 'case-register?needs_info=1',
+ action: 'prompt-responses?view=register&register=1&channel=register&needs_info=1',
  count: counts.needsInfo,
  source,
  });
@@ -78,7 +78,7 @@ function buildTasksFromCounts(counts: {
  priority: 'HIGH',
  title: 'Daily check-ins not answered',
  detail: `${counts.unansweredPrompts} employee(s) have not completed a required check-in.`,
- action: 'prompt-responses?bucket=UNANSWERED',
+ action: 'prompt-responses?view=prompts&bucket=UNANSWERED&channel=incident',
  count: counts.unansweredPrompts,
  source,
  });
@@ -90,7 +90,7 @@ function buildTasksFromCounts(counts: {
  priority: 'MEDIUM',
  title: 'Wage & hour intakes pending review',
  detail: `${counts.wageHour} wage & hour report sheet(s) need HR review.`,
- action: 'case-register?status=PENDING_WAGE_HOUR_REVIEW',
+ action: 'prompt-responses?view=register&register=1&channel=register&status=PENDING_WAGE_HOUR_REVIEW',
  count: counts.wageHour,
  source,
  });
@@ -102,7 +102,7 @@ function buildTasksFromCounts(counts: {
  priority: 'MEDIUM',
  title: 'Unassigned new cases',
  detail: `${counts.unassigned} case(s) have no assigned owner yet.`,
- action: 'case-register?unassigned=1',
+ action: 'prompt-responses?view=register&register=1&channel=register&unassigned=1',
  count: counts.unassigned,
  source,
  });
@@ -256,7 +256,10 @@ async function generateAiRecommendations(
  }
 }
 
-export async function computeHrNextTasks(orgId: string, snapshot?: DashboardSnapshot): Promise<HrNextTask[]> {
+export async function computeHrNextTasks(
+ orgId: string,
+ snapshot?: DashboardSnapshot
+): Promise<{ tasks: HrNextTask[]; aiEnabled: boolean; dataSource: 'database' | 'snapshot' | 'mixed' }> {
  let dbCounts = {
  payroll: 0,
  needsInfo: 0,
@@ -266,9 +269,11 @@ export async function computeHrNextTasks(orgId: string, snapshot?: DashboardSnap
  unassigned: 0,
  };
 
+ let loadedFromDb = false;
  if (isSupabaseConfigured()) {
  try {
  dbCounts = await fetchDbCounts(orgId);
+ loadedFromDb = true;
  } catch (err) {
  console.error('Failed to load HR next tasks from database:', err);
  }
@@ -290,11 +295,29 @@ export async function computeHrNextTasks(orgId: string, snapshot?: DashboardSnap
  const source: HrNextTask['source'] = dbTotal > 0 ? 'database' : snapshot ? 'snapshot' : 'database';
  const tasks = buildTasksFromCounts(mergedCounts, source);
 
- if (snapshot && process.env.OPENAI_API_KEY) {
- const aiTasks = await generateAiRecommendations(orgId, snapshot, tasks);
+ const aiSnapshot: DashboardSnapshot = {
+ payrollExpedited: mergedCounts.payroll,
+ needsInfo: mergedCounts.needsInfo,
+ wageHour: mergedCounts.wageHour,
+ yesReview: mergedCounts.yesReview,
+ lawUpdates: mergedCounts.lawUpdates,
+ unassigned: mergedCounts.unassigned,
+ atRiskEmployees: mergedCounts.atRiskEmployees,
+ unansweredPrompts: mergedCounts.unansweredPrompts,
+ openInvestigations: mergedCounts.openInvestigations,
+ };
+
+ if (process.env.OPENAI_API_KEY) {
+ const aiTasks = await generateAiRecommendations(orgId, aiSnapshot, tasks);
  tasks.push(...aiTasks);
  }
 
  const order = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
- return tasks.sort((a, b) => order[a.priority] - order[b.priority]);
+ tasks.sort((a, b) => order[a.priority] - order[b.priority]);
+
+ return {
+ tasks,
+ aiEnabled: Boolean(process.env.OPENAI_API_KEY),
+ dataSource: loadedFromDb ? (snapshot ? 'mixed' : 'database') : snapshot ? 'snapshot' : 'database',
+ };
 }

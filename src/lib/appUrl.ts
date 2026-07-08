@@ -2,6 +2,23 @@
 
 export type AppRole = 'EMPLOYEE' | 'HR' | 'MANAGER' | 'ADMIN' | 'SUPER_ADMIN' | 'CLIENT';
 
+const CASE_REGISTER_DEFAULTS: Record<string, string> = {
+  view: 'register',
+  register: '1',
+  channel: 'register',
+};
+
+/** Case register lives under Prompt Responses; normalize legacy routes and deep links. */
+export function normalizeHrNavigation(
+  page: string,
+  params: Record<string, string> = {}
+): { page: string; params: Record<string, string> } {
+  if (page === 'case-register') {
+    return { page: 'prompt-responses', params: { ...CASE_REGISTER_DEFAULTS, ...params } };
+  }
+  return { page, params };
+}
+
 function searchTail(routeParams: Record<string, string>, skipKeys: Set<string>): string {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(routeParams)) {
@@ -14,6 +31,10 @@ function searchTail(routeParams: Record<string, string>, skipKeys: Set<string>):
 }
 
 export function buildAppUrl(page: string, role: AppRole, routeParams: Record<string, string> = {}): string {
+  const normalized =
+    role !== 'EMPLOYEE' && role !== 'CLIENT' ? normalizeHrNavigation(page, routeParams) : { page, params: routeParams };
+  page = normalized.page;
+  routeParams = normalized.params;
   const id = routeParams.id ?? '';
   const tail = searchTail(routeParams, new Set(['id', 'previewEmployee']));
 
@@ -37,7 +58,6 @@ export function buildAppUrl(page: string, role: AppRole, routeParams: Record<str
     employees: '/admin/users',
     prompts: '/admin/prompts',
     'prompt-responses': '/admin/employee-prompt-responses',
-    'case-register': '/admin/case-register',
     compliance: '/admin/compliance',
     investigations: '/admin/investigations',
     activity: '/admin/activity',
@@ -142,7 +162,9 @@ export function parseAppLocation(
   if (pathname === '/admin/prompts') return merge({ role: 'HR', page: 'prompts', params: {} });
   if (pathname === '/admin/prompts/scheduled') return merge({ role: 'HR', page: 'scheduled-memos', params: {} });
   if (pathname === '/admin/employee-prompt-responses') return merge({ role: 'HR', page: 'prompt-responses', params: {} });
-  if (pathname === '/admin/case-register') return merge({ role: 'HR', page: 'case-register', params: {} });
+  if (pathname === '/admin/case-register') {
+    return merge({ role: 'HR', page: 'prompt-responses', params: { ...CASE_REGISTER_DEFAULTS } });
+  }
   if (pathname.startsWith('/admin/employee-prompt-responses/')) {
     const rid = pathname.split('/admin/employee-prompt-responses/')[1]?.split('?')[0] ?? '';
     return merge({
