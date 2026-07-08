@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
 import { defaultDateRange, inDateRange, type DateRangeState } from '@/lib/dateFilters';
 import { formatDate, getMemoCategoryDisplay } from '@/lib/utils';
+import { getMemoUnacknowledgedEmployees } from '@/lib/memoReminder';
+import { MemoNudgeModal, type MemoNudgePayload } from '@/components/admin/MemoNudgeModal';
 import { downloadCsv } from '@/lib/exportCsv';
 import { ReportBuilderDialog } from '@/components/admin/ReportBuilderDialog';
 import { toast } from 'sonner';
@@ -313,16 +315,30 @@ function MemoTableRow({
   onNavigate: (page: string, params?: Record<string, string>) => void;
   archived?: boolean;
 }) {
+  const [nudgeOpen, setNudgeOpen] = useState(false);
   const cat = getMemoCategoryDisplay(memo);
-  const employees = dataStore.users.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');
   const acks = dataStore.policyAcknowledgements.filter((a) => a.policyId === memo.id);
   const understood = acks.filter((a) => a.outcome === 'READ_UNDERSTOOD').length;
   const clarification = acks.filter((a) => a.outcome === 'REQUEST_CLARIFICATION').length;
-  const unanswered = memo.acknowledgmentRequired
-    ? employees.filter((e) => !acks.some((a) => a.userId === e.id)).length
-    : 0;
+  const unacknowledgedEmployees = getMemoUnacknowledgedEmployees(
+    memo.id,
+    memo,
+    dataStore.users,
+    dataStore.policyAcknowledgements
+  );
+  const unanswered = unacknowledgedEmployees.length;
+  const canNudge = memo.status === 'PUBLISHED' && memo.acknowledgmentRequired && unanswered > 0;
+
+  const handleMemoNudge = (payload: MemoNudgePayload) => {
+    const sent = dataStore.sendMemoReminderToUnacknowledged({
+      policyId: memo.id,
+      ...payload,
+    });
+    toast.success(`Reminder sent (${sent} message${sent === 1 ? '' : 's'} for "${memo.title}").`);
+  };
 
   return (
+    <>
     <tr
       className={`border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer ${archived ? 'opacity-80' : ''}`}
       onClick={() => onNavigate('policy-detail', { id: memo.id })}
@@ -343,17 +359,41 @@ function MemoTableRow({
       <td className="px-3 py-2">{unanswered}</td>
       <td className="px-3 py-2 whitespace-nowrap">{formatDate(memo.updatedAt)}</td>
       <td className="px-3 py-2 text-right">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={(e) => {
-            e.stopPropagation();
-            onNavigate('policy-detail', { id: memo.id });
-          }}
-        >
-          Open
-        </Button>
+        <div className="flex justify-end gap-2">
+          {canNudge && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={(e) => {
+                e.stopPropagation();
+                setNudgeOpen(true);
+              }}
+            >
+              Nudge ({unanswered})
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={(e) => {
+              e.stopPropagation();
+              onNavigate('policy-detail', { id: memo.id });
+            }}
+          >
+            Open
+          </Button>
+        </div>
       </td>
     </tr>
+    <MemoNudgeModal
+      open={nudgeOpen}
+      onOpenChange={setNudgeOpen}
+      memo={memo}
+      recipients={unacknowledgedEmployees}
+      enableEmail={dataStore.orgSettings.enableEmail}
+      enableSms={dataStore.orgSettings.enableSMS}
+      onSend={handleMemoNudge}
+    />
+    </>
   );
 }

@@ -32,13 +32,12 @@ import { AdminPoliciesAndAnnouncements } from '@/pages/admin/AdminPoliciesAndAnn
 import { AdminPolicyDetail } from '@/pages/admin/AdminPolicyDetail';
 import { AdminAnnouncementDetail } from '@/pages/admin/AdminAnnouncementDetail';
 import { AdminPromptResponses } from '@/pages/admin/AdminPromptResponses';
-import { AdminCaseRegister } from '@/pages/admin/AdminCaseRegister';
 import { AdminPromptResponseDetail } from '@/pages/admin/AdminPromptResponseDetail';
 import { AdminCompliance } from '@/pages/admin/AdminCompliance';
 import { AdminActivity } from '@/pages/admin/AdminActivity';
 import { ManagerDashboard } from '@/pages/manager/ManagerDashboard';
 import { ClientDashboard } from '@/pages/client/ClientDashboard';
-import { buildAppUrl, parseAppLocation, type AppRole } from '@/lib/appUrl';
+import { buildAppUrl, parseAppLocation, normalizeHrNavigation, type AppRole } from '@/lib/appUrl';
 import { deferCheckInForToday } from '@/lib/checkInGate';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -107,6 +106,12 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
 
  if (isStaffRole(sessionRole) && pathname === '/admin/all-reports') {
  window.history.replaceState({}, '', `/admin/employee-prompt-responses${window.location.search}`);
+ } else if (isStaffRole(sessionRole) && pathname === '/admin/case-register') {
+ const sp = new URLSearchParams(window.location.search);
+ if (!sp.has('view')) sp.set('view', 'register');
+ if (!sp.has('register')) sp.set('register', '1');
+ if (!sp.has('channel')) sp.set('channel', 'register');
+ window.history.replaceState({}, '', `/admin/employee-prompt-responses?${sp.toString()}`);
  } else if (isStaffRole(sessionRole) && pathname === '/admin/campaigns') {
  window.history.replaceState({}, '', `/admin/prompts${window.location.search}`);
  }
@@ -155,13 +160,16 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  }
  }
  const routeParams = params ?? {};
- setActivePage(page);
- setPageParams(routeParams);
+ const normalized = isStaffRole(currentRole)
+ ? normalizeHrNavigation(page, routeParams)
+ : { page, params: routeParams };
+ setActivePage(normalized.page);
+ setPageParams(normalized.params);
  setSidebarOpen(false);
  if (params?.previewEmployee === 'true') {
  window.history.pushState({}, '', '/employee/dashboard');
  } else {
- const nextPath = buildAppUrl(page, currentRole as AppRole, routeParams);
+ const nextPath = buildAppUrl(normalized.page, currentRole as AppRole, normalized.params);
  if (window.location.pathname + window.location.search !== nextPath) {
  window.history.pushState({}, '', nextPath);
  }
@@ -286,9 +294,8 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  case 'prompts':
  return <AdminPrompts dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
  case 'prompt-responses':
- return <AdminPromptResponses dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
  case 'case-register':
- return <AdminCaseRegister dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
+ return <AdminPromptResponses dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
  case 'prompt-response-detail':
  return <AdminPromptResponseDetail dataStore={dataStore} responseId={pageParams.id ?? ''} onNavigate={handleNavigate} />;
  case 'scheduled-memos':
@@ -304,7 +311,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  case 'report-detail':
  return <AdminReportDetail dataStore={dataStore} reportId={pageParams.id ?? ''} onNavigate={handleNavigate} fromInvestigationId={pageParams.fromInvestigation} />;
  case 'employee-detail':
- return <AdminEmployeeDetail dataStore={dataStore} employeeId={pageParams.id ?? ''} onNavigate={handleNavigate} />;
+ return <AdminEmployeeDetail dataStore={dataStore} employeeId={pageParams.id ?? ''} onNavigate={handleNavigate} initialTab={pageParams.tab} />;
  case 'investigation-detail':
  return <AdminInvestigationDetail dataStore={dataStore} investigationId={pageParams.id ?? ''} onNavigate={handleNavigate} initialTab={pageParams.tab} />;
  case 'manager-dashboard':

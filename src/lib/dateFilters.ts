@@ -35,3 +35,11 @@ export function inDateRange(date: Date | string, range: DateRangeState): boolean
   const cutoff = nowMs - days * 24 * 60 * 60 * 1000;
   return d >= cutoff;
 }
+
+/** Serialize date range for deep links into registers and analytics views. */
+export function dateRangeToParams(range: DateRangeState): Record<string, string> {
+  const params: Record<string, string> = { rangePreset: range.preset };
+  if (range.startDate) params.startDate = range.startDate;
+  if (range.endDate) params.endDate = range.endDate;
+  return params;
+}

@@ -15,6 +15,8 @@ import {
 } from '@/components/ui/select';
 import { findRelatedMemos, formatDate, getMemoCategoryDisplay } from '@/lib/utils';
 import { MEMO_CATEGORY_PRESETS } from '@/lib/memoCategoryPresets';
+import { getMemoUnacknowledgedEmployees } from '@/lib/memoReminder';
+import { MemoNudgeModal, type MemoNudgePayload } from '@/components/admin/MemoNudgeModal';
 import { toast } from 'sonner';
 
 interface AdminPolicyDetailProps {
@@ -49,6 +51,7 @@ export function AdminPolicyDetail({ dataStore, policyId, onNavigate }: AdminPoli
   const [bodyAttachmentFileName, setBodyAttachmentFileName] = useState('');
   const [bodyAttachmentDataUrl, setBodyAttachmentDataUrl] = useState('');
   const [supersedeTargetId, setSupersedeTargetId] = useState<string | null>(null);
+  const [nudgeOpen, setNudgeOpen] = useState(false);
 
   useEffect(() => {
     if (isNew) {
@@ -97,6 +100,18 @@ export function AdminPolicyDetail({ dataStore, policyId, onNavigate }: AdminPoli
   );
 
   const acknowledgements = dataStore.policyAcknowledgements.filter((ack) => ack.policyId === policyId);
+  const unacknowledgedEmployees = useMemo(
+    () => getMemoUnacknowledgedEmployees(policyId, existing, dataStore.users, dataStore.policyAcknowledgements),
+    [policyId, existing, dataStore.users, dataStore.policyAcknowledgements]
+  );
+
+  const handleMemoNudge = (payload: MemoNudgePayload) => {
+    const sent = dataStore.sendMemoReminderToUnacknowledged({
+      policyId,
+      ...payload,
+    });
+    toast.success(`Reminder sent (${sent} message${sent === 1 ? '' : 's'} to employees who have not acknowledged this memo).`);
+  };
 
   const importFromLink = async () => {
     const url = bodySourceUrl.trim();
@@ -387,11 +402,26 @@ export function AdminPolicyDetail({ dataStore, policyId, onNavigate }: AdminPoli
 
       {!isNew && existing && (
         <Card className="mismo-card border border-[var(--color-border-200)]">
-          <CardContent className="p-5 space-y-2">
+          <CardContent className="p-5 space-y-4">
             <h2 className="font-semibold text-[var(--mismo-text)]">Acknowledgements</h2>
             <p className="text-sm text-[var(--mismo-text-secondary)]">
               {acknowledgements.length} employees have acknowledged this memo as of {formatDate(new Date())}.
             </p>
+            {existing.acknowledgmentRequired && existing.status === 'PUBLISHED' && unacknowledgedEmployees.length > 0 && (
+              <div className="rounded-lg border border-amber-300/60 bg-amber-50/90 p-4 space-y-3">
+                <p className="text-sm font-medium text-[var(--mismo-text)]">
+                  {unacknowledgedEmployees.length} employee{unacknowledgedEmployees.length === 1 ? '' : 's'} have not
+                  acknowledged this memo
+                </p>
+                <p className="text-xs text-[var(--mismo-text-secondary)]">
+                  Send a one-time email or SMS reminder only to those employees. The message explains why they are
+                  receiving it and links the reminder to this memo.
+                </p>
+                <Button type="button" size="sm" onClick={() => setNudgeOpen(true)}>
+                  Send reminder to unacknowledged employees
+                </Button>
+              </div>
+            )}
             {existing.supersededBy && (
               <p className="text-xs text-amber-800">
                 This memo was superseded by <code className="bg-[var(--color-surface-200)] px-1 rounded">{existing.supersededBy}</code>.
@@ -399,6 +429,18 @@ export function AdminPolicyDetail({ dataStore, policyId, onNavigate }: AdminPoli
             )}
           </CardContent>
         </Card>
+      )}
+
+      {existing && (
+        <MemoNudgeModal
+          open={nudgeOpen}
+          onOpenChange={setNudgeOpen}
+          memo={existing}
+          recipients={unacknowledgedEmployees}
+          enableEmail={dataStore.orgSettings.enableEmail}
+          enableSms={dataStore.orgSettings.enableSMS}
+          onSend={handleMemoNudge}
+        />
       )}
     </div>
   );

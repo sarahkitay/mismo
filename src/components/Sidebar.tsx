@@ -20,33 +20,13 @@ const employeeNavItems: NavItem[] = [
 
 const adminNavItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-  {
-    id: 'prompt-responses',
-    label: 'Check-in queries',
-    icon: 'reports',
-    badgeKey: 'yesResponsesNeedingReview',
-  },
-  {
-    id: 'investigations',
-    label: 'Investigations',
-    icon: 'investigations',
-    badgeKey: 'activeInvestigations',
-  },
-  {
-    id: 'policies',
-    label: "Memos & announcements",
-    icon: 'bookOpen',
-  },
-  {
-    id: 'case-register',
-    label: 'Case register',
-    icon: 'reports',
-    badgeKey: 'openCaseRegisterCount',
-  },
-  { id: 'prompts', label: 'Manage prompts', icon: 'message' },
-  { id: 'users', label: 'Manage employees', icon: 'employees', badgeKey: 'atRiskEmployees' },
+  { id: 'prompt-responses', label: 'Prompt Responses', icon: 'reports' },
+  { id: 'investigations', label: 'Investigations', icon: 'investigations', badgeKey: 'openInvestigationWorkload' },
+  { id: 'policies', label: "Memos & Announcements", icon: 'bookOpen' },
   { id: 'analytics', label: 'Analytics', icon: 'analytics' },
-  { id: 'compliance', label: 'Compliance', icon: 'shield' },
+  { id: 'compliance', label: 'State Compliance', icon: 'shield' },
+  { id: 'users', label: 'Manage Employees', icon: 'employees', badgeKey: 'atRiskEmployees' },
+  { id: 'prompts', label: 'Manage Prompts', icon: 'message' },
   { id: 'system-health', label: 'System Health', icon: 'systemHealth', badgeKey: 'criticalReports' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
@@ -89,6 +69,13 @@ function SidebarContent({
         default:
           return undefined;
       }
+    }
+    if (item.id === 'prompt-responses') {
+      const n =
+        dashboardCounts.yesResponsesNeedingReview +
+        dashboardCounts.unansweredPromptDeliveries +
+        dashboardCounts.openCaseRegisterCount;
+      return n > 0 ? n : undefined;
     }
     if (!item.badgeKey) return undefined;
     const n = dashboardCounts[item.badgeKey];
@@ -149,9 +136,9 @@ function SidebarContent({
             activePage === item.id ||
             (item.id === 'policies' && activePage === 'announcements') ||
             (item.id === 'prompt-responses' &&
-              (activePage === 'prompt-response-detail')) ||
-            (item.id === 'case-register' &&
-              (activePage === 'report-detail' || activePage === 'case-register')) ||
+              (activePage === 'prompt-response-detail' ||
+                activePage === 'report-detail' ||
+                activePage === 'case-register')) ||
             (currentRole === 'EMPLOYEE' && item.id === 'home' && (activePage === 'report-new' || activePage === 'wage-hour-report' || activePage.startsWith('wage-hour-intake/')));
 
           return (

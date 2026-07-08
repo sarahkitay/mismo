@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
+import type { UserStatus } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +9,7 @@ import { Icons } from '@/lib/icons';
 import { downloadCsv } from '@/lib/exportCsv';
 import { OutreachReminderModal } from '@/components/admin/OutreachReminderModal';
 import { ManualOutreachModal } from '@/components/admin/ManualOutreachModal';
-import { ReportBuilderDialog } from '@/components/admin/ReportBuilderDialog';
+import { EmployeeHistoryReportDialog } from '@/components/admin/EmployeeHistoryReportDialog';
 import {
  formatRelativeTime,
  formatDate,
@@ -25,11 +26,16 @@ import {
 } from '@/lib/recordLinks';
 import { formatCaseReference } from '@/lib/caseTypes';
 import { getInvestigationDisplayId } from '@/lib/investigationWorkflow';
+import {
+  buildEmployeePromptRegisterRows,
+  exportEmployeePromptRegisterCsv,
+} from '@/lib/employeePromptRegister';
 
 interface AdminEmployeeDetailProps {
- dataStore: DataStore;
- employeeId: string;
- onNavigate: (page: string, params?: Record<string, string>) => void;
+  dataStore: DataStore;
+  employeeId: string;
+  onNavigate: (page: string, params?: Record<string, string>) => void;
+  initialTab?: string;
 }
 
 function toDateInputValue(d: Date | undefined): string {
@@ -38,11 +44,11 @@ function toDateInputValue(d: Date | undefined): string {
  return date.toISOString().slice(0, 10);
 }
 
-export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: AdminEmployeeDetailProps) {
- const employee = dataStore.users.find((u) => u.id === employeeId);
- if (!employee) return <div className="text-sm text-[var(--mismo-text-secondary)]">Employee not found.</div>;
+export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initialTab }: AdminEmployeeDetailProps) {
+  const employee = dataStore.users.find((u) => u.id === employeeId);
+  if (!employee) return <div className="text-sm text-[var(--mismo-text-secondary)]">Employee not found.</div>;
 
- const [historyTab, setHistoryTab] = useState('overview');
+  const [historyTab, setHistoryTab] = useState(initialTab ?? 'overview');
  const [reminderOpen, setReminderOpen] = useState(false);
  const [manualOpen, setManualOpen] = useState(false);
  const [reportOpen, setReportOpen] = useState(false);
@@ -53,21 +59,39 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
  const [editLocation, setEditLocation] = useState(employee.location ?? '');
  const [editArchiveStart, setEditArchiveStart] = useState(toDateInputValue(employee.archiveStartDate));
  const [editArchiveEnd, setEditArchiveEnd] = useState(toDateInputValue(employee.archiveEndDate));
+ const [editStatus, setEditStatus] = useState<UserStatus>(employee.status);
 
  const manager = employee.managerId ? dataStore.users.find((u) => u.id === employee.managerId) : null;
  const potentialManagers = dataStore.users.filter(
  (u) => u.id !== employee.id && ['HR', 'ADMIN', 'MANAGER'].includes(u.role)
  );
 
- useEffect(() => {
- setEditManagerId(employee.managerId ?? '');
- setEditHiredDate(toDateInputValue(employee.hiredDate));
- setEditEmployeeId(employee.employeeId ?? '');
- setEditLocation(employee.location ?? '');
- setEditArchiveStart(toDateInputValue(employee.archiveStartDate));
- setEditArchiveEnd(toDateInputValue(employee.archiveEndDate));
- setEditingOrgInfo(false);
- }, [employeeId]);
+  useEffect(() => {
+    if (initialTab) setHistoryTab(initialTab);
+  }, [employeeId, initialTab]);
+
+  useEffect(() => {
+    setEditManagerId(employee.managerId ?? '');
+    setEditHiredDate(toDateInputValue(employee.hiredDate));
+    setEditEmployeeId(employee.employeeId ?? '');
+    setEditLocation(employee.location ?? '');
+    setEditArchiveStart(toDateInputValue(employee.archiveStartDate));
+    setEditArchiveEnd(toDateInputValue(employee.archiveEndDate));
+    setEditStatus(employee.status);
+    setEditingOrgInfo(false);
+  }, [employeeId, employee.managerId, employee.hiredDate, employee.employeeId, employee.location, employee.archiveStartDate, employee.archiveEndDate, employee.status]);
+
+  const employeePromptRows = useMemo(
+    () =>
+      buildEmployeePromptRegisterRows(
+        employee.id,
+        dataStore.users,
+        dataStore.deliveries,
+        dataStore.responses,
+        dataStore.prompts
+      ),
+    [employee.id, dataStore.users, dataStore.deliveries, dataStore.responses, dataStore.prompts]
+  );
 
  const engagement = dataStore.getEmployeeEngagement(employee.id);
  const employeeReports = dataStore.reports.filter((r) => r.createdByUserId === employee.id);
@@ -85,6 +109,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
 
  const handleSaveOrgInfo = () => {
  dataStore.updateUser(employee.id, {
+ status: editStatus,
  managerId: editManagerId || undefined,
  hiredDate: editHiredDate ? new Date(editHiredDate) : undefined,
  employeeId: editEmployeeId.trim() || undefined,
@@ -103,6 +128,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
  setEditLocation(employee.location ?? '');
  setEditArchiveStart(toDateInputValue(employee.archiveStartDate));
  setEditArchiveEnd(toDateInputValue(employee.archiveEndDate));
+ setEditStatus(employee.status);
  setEditingOrgInfo(false);
  };
 
@@ -237,11 +263,17 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
  employee.createdAt.toISOString(),
  employee.email,
  ]);
+ employeePromptRows.forEach((r) => {
+ rows.push([
+ 'Check-in',
+ r.id,
+ r.promptTitle,
+ r.date.toISOString(),
+ r.answer === 'HAS_ISSUE' ? 'Yes' : r.answer === 'NO_ISSUE' ? 'No' : 'Unanswered',
+ ]);
+ });
  employeeReports.forEach((r) => {
  rows.push(['Case', r.id, r.summary, r.createdAt.toISOString(), r.status]);
- });
- employeeResponses.forEach((r) => {
- rows.push(['Prompt response', r.id, r.answer, r.submittedAt.toISOString(), r.promptId]);
  });
  employeeInvestigations.forEach((i) => {
  rows.push(['Investigation', i.id, i.referenceNumber ?? i.id, i.openedAt.toISOString(), i.status]);
@@ -253,8 +285,11 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
  nudgesToEmployee.forEach((n) => {
  rows.push(['Outreach / nudge', n.id, n.channel, n.sentAt.toISOString(), n.message]);
  });
- downloadCsv(`mismo-employee-${employee.id}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
- toast.success('Employee report CSV downloaded.');
+ activityTimeline.forEach((item) => {
+ rows.push(['Activity', item.id, item.label, item.at.toISOString(), item.detail ?? '']);
+ });
+ downloadCsv(`mismo-employee-history-${employee.employeeId ?? employee.id}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+ toast.success('Employee history report exported.');
  };
 
  return (
@@ -264,11 +299,12 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
  <Icons.arrowLeft className="h-4 w-4 mr-2" />
  Back to Employees
  </Button>
- <Button variant="default" onClick={handleViewAsEmployee} className="ml-auto">
+ <div className="ml-auto flex flex-wrap items-center gap-2">
+ <Button variant="default" onClick={handleViewAsEmployee}>
  View as this employee
  </Button>
  <Button variant="outline" onClick={() => setReportOpen(true)}>
- Run employee report
+ Employee history report
  </Button>
  <Button
  variant="outline"
@@ -287,6 +323,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
  >
  Archive employee
  </Button>
+ </div>
  </div>
 
  <Card className="mismo-card">
@@ -338,6 +375,19 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
  </Button>
  ) : null}
  </div>
+ {editingOrgInfo && (
+ <div className="rounded-md border border-[var(--color-border-200)] bg-[var(--color-surface-100)] p-3 text-xs text-[var(--color-text-secondary)] space-y-1">
+ <p>
+ <span className="font-medium text-[var(--mismo-text)]">Optional fields</span> (location, employee ID, hire date, manager, archive dates) can be cleared: empty the field and save.
+ </p>
+ <p>
+ <span className="font-medium text-[var(--mismo-text)]">Employment status</span> is Active or Inactive below. Use Archive employee to move someone off the active roster with a retention window.
+ </p>
+ <p>
+ <span className="font-medium text-[var(--mismo-text)]">History is retained:</span> check-ins, cases, memos, and outreach on this profile are not deleted when you edit the record.
+ </p>
+ </div>
+ )}
  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
  <div className="sm:col-span-2 flex flex-col gap-1">
  <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Employee ID</p>
@@ -415,6 +465,21 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
  )}
  </div>
  <div className="flex flex-col gap-1">
+ <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Employment status</p>
+ {editingOrgInfo ? (
+ <select
+ value={editStatus}
+ onChange={(e) => setEditStatus(e.target.value as UserStatus)}
+ className="mt-0.5 h-9 w-full max-w-[180px] rounded-md border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-3 text-sm"
+ >
+ <option value="active">Active</option>
+ <option value="inactive">Inactive</option>
+ </select>
+ ) : (
+ <p className="font-medium text-[var(--color-text-primary)] capitalize">{employee.status}</p>
+ )}
+ </div>
+ <div className="flex flex-col gap-1">
  <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Hired date</p>
  {editingOrgInfo ? (
  <input
@@ -445,7 +510,13 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
  </div>
  <div className="p-3 border border-[var(--color-border-200)] rounded-[var(--radius-medium)]">
  <p className="text-xs text-[var(--color-text-secondary)] uppercase">Pending prompts</p>
- <p className="font-semibold">{engagement?.pendingPrompts ?? 0}</p>
+ <button
+ type="button"
+ className="font-semibold text-left hover:text-[var(--mismo-blue)]"
+ onClick={() => onNavigate('prompt-responses', { view: 'prompts', employeeId: employee.id, rangePreset: 'ALL', channel: 'incident' })}
+ >
+ {engagement?.pendingPrompts ?? 0}
+ </button>
  </div>
  <div className="p-3 border border-[var(--color-border-200)] rounded-[var(--radius-medium)]">
  <p className="text-xs text-[var(--color-text-secondary)] uppercase">Reports</p>
@@ -507,10 +578,40 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
  </div>
  </TabsContent>
 
- <TabsContent value="prompts" className="mt-4">
- {employeeResponses.length === 0 ? (
+ <TabsContent value="prompts" className="mt-4 space-y-4">
+ <div className="flex flex-wrap items-center justify-between gap-2">
  <p className="text-sm text-[var(--color-text-secondary)]">
- No prompt responses yet. Once this employee answers HR prompts, their responses will appear here.
+ Includes answered check-ins, pending prompts, and linked cases for reporting.
+ </p>
+ <div className="flex flex-wrap gap-2">
+ <Button
+ size="sm"
+ variant="outline"
+ onClick={() => onNavigate('prompt-responses', { view: 'prompts', employeeId: employee.id, rangePreset: 'ALL', channel: 'incident' })}
+ >
+ Open in check-in register
+ </Button>
+ <Button
+ size="sm"
+ variant="outline"
+ onClick={() => {
+ const exportData = exportEmployeePromptRegisterCsv(
+ employeePromptRows,
+ dataStore.reports,
+ `${employee.firstName} ${employee.lastName}`,
+ employee.employeeId ?? employee.id
+ );
+ downloadCsv(exportData.filename, exportData.headers, exportData.rows);
+ toast.success('Employee check-in report exported.');
+ }}
+ >
+ Export CSV
+ </Button>
+ </div>
+ </div>
+ {employeePromptRows.length === 0 ? (
+ <p className="text-sm text-[var(--color-text-secondary)]">
+ No prompt responses or pending check-ins yet for this employee.
  </p>
  ) : (
  <div className="overflow-x-auto border border-[var(--color-border-200)]">
@@ -521,32 +622,37 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
  <th className="px-3 py-2 text-left">Category</th>
  <th className="px-3 py-2 text-left">Response</th>
  <th className="px-3 py-2 text-left">Needs review</th>
- <th className="px-3 py-2 text-left">Answered</th>
+ <th className="px-3 py-2 text-left">Date</th>
  <th className="px-3 py-2 text-left">Linked case</th>
  <th className="px-3 py-2 text-left">Investigation</th>
  <th className="px-3 py-2 text-right">Link</th>
  </tr>
  </thead>
  <tbody>
- {employeeResponses.map((r) => {
- const prompt = dataStore.prompts.find((p) => p.id === r.promptId);
- const needsReview = r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false;
- const reviewer = r.reviewedByUserId ? dataStore.users.find((u) => u.id === r.reviewedByUserId) : null;
- const linkedCase = findReportForPromptResponse(r.id, dataStore.reports);
+ {employeePromptRows.map((r) => {
+ const needsReview = r.needsReview;
+ const linkedCase = r.answer === 'UNANSWERED' ? undefined : findReportForPromptResponse(r.id, dataStore.reports);
  const linkedInv = linkedCase
  ? findInvestigationForReport(linkedCase, dataStore.investigations)
  : dataStore.investigations.find((i) => i.linkedPromptResponseId === r.id);
+ const openRow = () => {
+ if (r.answer === 'UNANSWERED') {
+ onNavigate('prompt-response-detail', { id: r.id });
+ return;
+ }
+ onNavigate('prompt-response-detail', { id: r.id, type: r.answer });
+ };
  return (
  <tr
  key={r.id}
  className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer"
- onClick={() => onNavigate('prompt-response-detail', { id: r.id, type: r.answer })}
+ onClick={openRow}
  >
- <td className="px-3 py-2 font-medium">{prompt?.title ?? r.promptId}</td>
- <td className="px-3 py-2 text-[var(--color-text-secondary)]">{prompt?.type ?? '-'}</td>
- <td className="px-3 py-2">{r.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}</td>
- <td className="px-3 py-2">{needsReview ? 'Yes' : 'No'}{reviewer ? ` · ${reviewer.firstName}` : ''}</td>
- <td className="px-3 py-2 text-[var(--color-text-secondary)]">{formatDate(r.submittedAt)}</td>
+ <td className="px-3 py-2 font-medium">{r.promptTitle}</td>
+ <td className="px-3 py-2 text-[var(--color-text-secondary)]">{r.promptType}</td>
+ <td className="px-3 py-2">{r.answer === 'HAS_ISSUE' ? 'Yes' : r.answer === 'NO_ISSUE' ? 'No' : 'Unanswered'}</td>
+ <td className="px-3 py-2">{r.answer === 'UNANSWERED' ? 'Pending' : needsReview ? 'Yes' : 'No'}</td>
+ <td className="px-3 py-2 text-[var(--color-text-secondary)]">{formatDate(r.date)}</td>
  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
  {linkedCase ? (
  <button
@@ -574,7 +680,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
  )}
  </td>
  <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
- <Button size="sm" variant="outline" onClick={() => onNavigate('prompt-response-detail', { id: r.id, type: r.answer })}>
+ <Button size="sm" variant="outline" onClick={openRow}>
  Open
  </Button>
  </td>
@@ -831,15 +937,25 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate }: Admin
  }}
  />
 
- <ReportBuilderDialog
+ <EmployeeHistoryReportDialog
  open={reportOpen}
  onOpenChange={setReportOpen}
- kind="employee"
- title={`Employee report - ${employee.firstName} ${employee.lastName}`}
- preset={{ employeeId: employee.employeeId ?? employee.id, employeeName: `${employee.firstName} ${employee.lastName}` }}
- onExport={(_, format) => {
- exportEmployeeReport();
- toast.success(`${format} employee report exported.`);
+ employee={employee}
+ engagement={engagement}
+ promptRows={employeePromptRows}
+ caseCount={employeeReports.length}
+ openInvestigations={openInvestigationsCount}
+ memoAckRate={memoAckRate}
+ outreachCount={nudgesToEmployee.length}
+ timeline={activityTimeline}
+ onExportCsv={exportEmployeeReport}
+ onOpenCheckInRegister={() => {
+ setReportOpen(false);
+ onNavigate('prompt-responses', { view: 'prompts', employeeId: employee.id, rangePreset: 'ALL', channel: 'incident' });
+ }}
+ onOpenProfileTab={(tab) => {
+ setReportOpen(false);
+ setHistoryTab(tab);
  }}
  />
  </div>

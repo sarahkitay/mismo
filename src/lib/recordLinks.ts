@@ -218,8 +218,8 @@ export function relatedNavForReport(
   const links: RecordNavTarget[] = [];
   links.push({
     kind: 'register',
-    page: 'case-register',
-    params: { view: 'register', register: '1' },
+    page: 'prompt-responses',
+    params: { view: 'register', register: '1', channel: 'register' },
     label: 'Case register',
     sublabel: 'All open cases',
   });

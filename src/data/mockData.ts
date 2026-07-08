@@ -18,6 +18,7 @@ import type {
  Announcement,
  AuditLogEntry,
 } from '@/types';
+import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
 
 // Current user org ID
 const ORG_ID = 'org-mismo-1';
@@ -1179,6 +1180,12 @@ export function getDashboardCounts(): DashboardCounts {
  return inv?.status !== 'OPEN';
  }).length;
 
+ const { totalCount: openInvestigationWorkload } = computeOpenInvestigationWorkload(
+ mockInvestigations,
+ mockPromptResponses,
+ mockReports
+ );
+
  return {
  criticalReports,
  activeInvestigations,
@@ -1193,6 +1200,7 @@ export function getDashboardCounts(): DashboardCounts {
  memosNeedingClarification,
  actionRequiredTotal,
  openCaseRegisterCount,
+ openInvestigationWorkload,
  };
 }
 

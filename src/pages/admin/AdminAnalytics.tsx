@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Icons } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { formatPercent } from '@/lib/utils';
 import { mockDepartments } from '@/data/mockData';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
-import { defaultDateRange, inDateRange, type DateRangeState } from '@/lib/dateFilters';
+import { defaultDateRange, dateRangeToParams, inDateRange, type DateRangeState } from '@/lib/dateFilters';
+import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
 import { ReportBuilderDialog } from '@/components/admin/ReportBuilderDialog';
 import { downloadCsv } from '@/lib/exportCsv';
 import { toast } from 'sonner';
@@ -31,6 +32,15 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  const totalReports = reportsInWindow.length;
  const openReports = reportsInWindow.filter(r => !['RESOLVED', 'CLOSED'].includes(r.status)).length;
  const resolvedWithAge = reportsInWindow.filter((r) => ['RESOLVED', 'CLOSED'].includes(r.status));
+ const resolvedReports = resolvedWithAge.length;
+ const registerNav = (extra: Record<string, string> = {}) =>
+  onNavigate('prompt-responses', {
+   view: 'register',
+   register: '1',
+   channel: 'register',
+   ...dateRangeToParams(dateRange),
+   ...extra,
+  });
  const avgResolutionDays = resolvedWithAge.length
  ? resolvedWithAge.reduce((sum, report) => sum + (report.updatedAt.getTime() - report.createdAt.getTime()) / (1000 * 60 * 60 * 24), 0) / resolvedWithAge.length
  : 0;
@@ -58,7 +68,10 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  const myAvgResolutionDays = myResolved.length
  ? myResolved.reduce((sum, report) => sum + (report.updatedAt.getTime() - report.createdAt.getTime()) / (1000 * 60 * 60 * 24), 0) / myResolved.length
  : 0;
- const openInvestigations = investigations.filter((i) => i.status === 'OPEN').length;
+ const openInvestigations = useMemo(
+ () => computeOpenInvestigationWorkload(investigations, responses, reports),
+ [investigations, responses, reports]
+ );
  const atRiskEmployees = users.filter((u) => u.role === 'EMPLOYEE' && dataStore.getEmployeeEngagement(u.id)?.isAtRisk).length;
  const memoAckRate = (() => {
  const required = policies.filter((p) => p.status === 'PUBLISHED' && p.acknowledgmentRequired);
@@ -137,8 +150,8 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  </div>
  
  {/* Key Metrics */}
- <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
- <button type="button" className="text-left" onClick={() => onNavigate('case-register')}>
+ <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+ <button type="button" className="text-left cursor-pointer" onClick={() => registerNav()}>
  <Card className="metric-card mismo-card hover:border-[var(--mismo-blue)] transition-colors h-full">
  <CardContent className="p-5">
  <div className="flex items-center justify-between mb-3">
@@ -148,12 +161,12 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  </div>
  </div>
  <p className="text-2xl font-bold text-[var(--mismo-text)]">{totalReports}</p>
- <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">In selected date range</p>
+ <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">In selected date range · view in case register</p>
  </CardContent>
  </Card>
  </button>
  
- <button type="button" className="text-left" onClick={() => onNavigate('case-register', { status: 'OPEN' })}>
+ <button type="button" className="text-left cursor-pointer" onClick={() => registerNav({ open: '1' })}>
  <Card className="metric-card mismo-card hover:border-[var(--mismo-blue)] transition-colors h-full">
  <CardContent className="p-5">
  <div className="flex items-center justify-between mb-3">
@@ -163,12 +176,27 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  </div>
  </div>
  <p className="text-2xl font-bold text-[var(--mismo-text)]">{openReports}</p>
- <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">Awaiting resolution</p>
+ <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">Awaiting resolution · view open cases</p>
+ </CardContent>
+ </Card>
+ </button>
+
+ <button type="button" className="text-left cursor-pointer" onClick={() => registerNav({ status: 'RESOLVED,CLOSED' })}>
+ <Card className="metric-card mismo-card hover:border-[var(--mismo-blue)] transition-colors h-full">
+ <CardContent className="p-5">
+ <div className="flex items-center justify-between mb-3">
+ <p className="text-sm text-[var(--mismo-text-secondary)]">Resolved Reports</p>
+ <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+ <Icons.checkCircle className="h-4 w-4 text-emerald-600" />
+ </div>
+ </div>
+ <p className="text-2xl font-bold text-[var(--mismo-text)]">{resolvedReports}</p>
+ <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">Resolved or closed in range</p>
  </CardContent>
  </Card>
  </button>
  
- <button type="button" className="text-left" onClick={() => onNavigate('investigations', { status: 'OPEN' })}>
+ <button type="button" className="text-left cursor-pointer" onClick={() => onNavigate('investigations', { status: 'OPEN' })}>
  <Card className="metric-card mismo-card hover:border-[var(--mismo-blue)] transition-colors h-full">
  <CardContent className="p-5">
  <div className="flex items-center justify-between mb-3">
@@ -177,8 +205,12 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  <Icons.search className="h-4 w-4 text-blue-600" />
  </div>
  </div>
- <p className="text-2xl font-bold text-[var(--mismo-text)]">{openInvestigations}</p>
- <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">Active case files</p>
+ <p className="text-2xl font-bold text-[var(--mismo-text)]">{openInvestigations.totalCount}</p>
+ <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">
+ {openInvestigations.yesUnderReviewCount > 0
+ ? `${openInvestigations.formalCount} formal · ${openInvestigations.yesUnderReviewCount} Yes under review`
+ : 'Formal investigation files in progress'}
+ </p>
  </CardContent>
  </Card>
  </button>
@@ -214,7 +246,7 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  </CardContent>
  </Card>
  </button>
- <button type="button" className="text-left" onClick={() => onNavigate('case-register')}>
+ <button type="button" className="text-left cursor-pointer" onClick={() => registerNav()}>
  <Card className="metric-card mismo-card hover:border-[var(--mismo-blue)] transition-colors h-full">
  <CardContent className="p-5">
  <p className="text-sm text-[var(--mismo-text-secondary)]">Reports this month</p>
@@ -344,7 +376,15 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  <button
  type="button"
  className="text-center p-4 border border-[var(--color-border-200)] bg-transparent shadow-[var(--shadow-1)] enterprise-interactive"
- onClick={() => onNavigate('case-register')}
+ onClick={() => {
+ const now = new Date();
+ const start = new Date(now.getFullYear(), now.getMonth(), 1);
+ registerNav({
+ rangePreset: 'CUSTOM',
+ startDate: start.toISOString().slice(0, 10),
+ endDate: now.toISOString().slice(0, 10),
+ });
+ }}
  >
  <p className="text-4xl font-bold text-[var(--color-primary-900)]">{displayMetrics.reportsThisMonth}</p>
  <p className="text-sm font-medium text-[var(--color-text-primary)] mt-1">Reports this month</p>
@@ -386,7 +426,8 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  downloadCsv(`mismo-analytics-${new Date().toISOString().slice(0, 10)}.csv`, headers, [
  ['Total reports', totalReports],
  ['Open reports', openReports],
- ['Open investigations', openInvestigations],
+ ['Resolved reports', resolvedReports],
+ ['Open investigations', openInvestigations.totalCount],
  ['Avg resolution days', avgResolutionDays.toFixed(1)],
  ['Memo ack rate', formatPercent(memoAckRate)],
  ['Prompt response rate', formatPercent(responseRate)],

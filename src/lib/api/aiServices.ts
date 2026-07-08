@@ -5,7 +5,17 @@ import type {
  OutreachCoachResponse,
 } from '@/types/aiServices';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL as string | undefined;
+function resolveApiBase(): string | undefined {
+  const explicit = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  if (explicit?.trim()) return explicit.replace(/\/$/, '');
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  if (supabaseUrl?.trim()) {
+    return `${supabaseUrl.replace(/\/$/, '')}/functions/v1/mismo-api`;
+  }
+  return undefined;
+}
+
+const API_BASE = resolveApiBase();
 const AI_ENABLED = import.meta.env.VITE_AI_FEATURES_ENABLED === 'true';
 
 function apiUrl(path: string): string {
@@ -133,7 +143,7 @@ export type DashboardSnapshot = {
 export async function fetchHrNextTasks(
  orgId: string,
  snapshot?: DashboardSnapshot
-): Promise<{ tasks: HrNextTask[] }> {
+): Promise<{ tasks: HrNextTask[]; aiEnabled?: boolean; dataSource?: string }> {
  if (!API_BASE) return { tasks: [] };
  const params = new URLSearchParams({ orgId });
  if (snapshot) {
@@ -143,5 +153,5 @@ export async function fetchHrNextTasks(
  }
  const res = await fetch(apiUrl(`/hr/next-tasks?${params}`));
  if (!res.ok) return { tasks: [] };
- return res.json() as Promise<{ tasks: HrNextTask[] }>;
+ return res.json() as Promise<{ tasks: HrNextTask[]; aiEnabled?: boolean; dataSource?: string }>;
 }
