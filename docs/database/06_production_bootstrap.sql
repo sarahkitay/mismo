@@ -52,3 +52,7 @@ SET
 -- ON CONFLICT (org_id, email) DO NOTHING;
 --
 -- After sign-in, auth_user_id is linked automatically when emails match.
+--
+-- For demo directory logins (no sample cases): run 07_demo_logins.sql then
+--   npm run demo:provision-auth
+-- To wipe old mock workflow data: run 08_clear_business_data.sql

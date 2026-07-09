@@ -54,6 +54,7 @@ import {
 } from '@/data/orgDefaults';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { findAppUserByEmail, loadOrgDataFromSupabase } from '@/lib/supabase/loadOrgData';
+import { normalizeDemoEmail, resolveDemoPassword } from '@/data/demoLogins';
 import { INDUSTRY_CHECKLIST_SECTIONS } from '@/data/industryChecklist';
 
 function formatAuditFieldValue(value: unknown): string {
@@ -211,8 +212,9 @@ export function useDataStore() {
  if (!USE_SUPABASE) {
  return { ok: false, message: 'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.' };
  }
- const trimmed = email.trim().toLowerCase();
- if (!trimmed || !password) {
+ const trimmed = normalizeDemoEmail(email);
+ const effectivePassword = resolveDemoPassword(trimmed, password);
+ if (!trimmed || !effectivePassword) {
  return { ok: false, message: 'Email and password are required.' };
  }
 
@@ -220,7 +222,7 @@ export function useDataStore() {
  const supabase = getSupabaseClient();
  const { data, error } = await supabase.auth.signInWithPassword({
  email: trimmed,
- password,
+ password: effectivePassword,
  });
  if (error || !data.session) {
  return { ok: false, message: error?.message ?? 'Sign in failed.' };
