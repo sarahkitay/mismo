@@ -79,9 +79,9 @@ export default defineConfig([
   - Auth uses Supabase (`signInWithPassword`); session is stored in `localStorage` under `mismo_session`.
   - Main state source is `src/hooks/useDataStore.ts`.
 - Bootstrap:
-  - Run SQL in `docs/database/` (including `06_production_bootstrap.sql` for an empty org).
-  - Create HR users in Supabase Auth and link rows in `public.users` (see bootstrap comments).
-  - Set `VITE_ORG_ID` to match `organizations.id`.
+  - Run SQL in `docs/database/` (`06` org, `07` demo user directory, `08` clear old mock data).
+  - Create Auth users: `npm run demo:provision-auth` (password `MismoDemo1!`).
+  - Demo logins: `hr@mismo.com`, `employee@mismo.com` (password optional on sign-in).
 - Portal switching:
   - Use the top-right `View as` dropdown.
   - Roles supported: `Employee`, `Manager`, `Admin`, `Client`.
