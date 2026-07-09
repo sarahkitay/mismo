@@ -1,4 +1,5 @@
 import { getSupabaseAdmin, isSupabaseConfigured } from './supabase.ts';
+import { hashLawSummary, researchStateLaws } from './hr-law-research.ts';
 
 export async function listHrLawsForState(stateCode: string, topic?: string) {
   if (!isSupabaseConfigured()) return [];
@@ -71,18 +72,88 @@ export async function listHrLawUpdates(orgId?: string, limit = 20) {
   }));
 }
 
-/** Law sync with OpenAI research is available via the local API until full sync is ported here. */
-export async function syncStateLawsPlaceholder(stateCode: string, stateName: string) {
-  const existing = await listHrLawsForState(stateCode);
-  return {
-    ok: true,
-    stateCode: stateCode.toUpperCase(),
-    lawCount: existing.length,
-    inserted: 0,
-    updated: 0,
-    message:
-      existing.length > 0
-        ? `Loaded ${existing.length} law record(s) from Supabase for ${stateName}.`
-        : `No laws in database for ${stateName} yet. Run SQL seed (02_ai_hr_laws.sql) or sync via local API with OpenAI.`,
-  };
+export async function syncStateLawsToDb(
+  stateCode: string,
+  stateName: string,
+  orgId?: string
+): Promise<{ inserted: number; updated: number; lawCount: number }> {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Database not configured');
+  }
+
+  const supabase = getSupabaseAdmin();
+  const { laws } = await researchStateLaws(stateCode, stateName);
+
+  const { data: jurisdiction, error: jErr } = await supabase
+    .from('hr_law_jurisdictions')
+    .select('id')
+    .eq('state_code', stateCode.toUpperCase())
+    .single();
+
+  if (jErr || !jurisdiction) {
+    throw new Error(`Jurisdiction not found for ${stateCode}. Run docs/database/02_ai_hr_laws.sql.`);
+  }
+
+  let inserted = 0;
+  let updated = 0;
+
+  for (const law of laws) {
+    const contentHash = await hashLawSummary(law.summary, law.citation);
+
+    const { data: existing } = await supabase
+      .from('hr_law_records')
+      .select('id, content_hash')
+      .eq('jurisdiction_id', jurisdiction.id)
+      .eq('citation', law.citation)
+      .eq('is_current', true)
+      .maybeSingle();
+
+    if (existing?.content_hash === contentHash) continue;
+
+    if (existing) {
+      await supabase.from('hr_law_records').update({ is_current: false }).eq('id', existing.id);
+      updated += 1;
+
+      await supabase.from('hr_law_updates').insert({
+        org_id: orgId ?? null,
+        jurisdiction_id: jurisdiction.id,
+        law_record_id: existing.id,
+        change_type: 'AMENDED',
+        title: law.title,
+        summary: law.summary,
+        previous_hash: existing.content_hash,
+        new_hash: contentHash,
+      });
+    } else {
+      inserted += 1;
+      await supabase.from('hr_law_updates').insert({
+        org_id: orgId ?? null,
+        jurisdiction_id: jurisdiction.id,
+        change_type: 'NEW',
+        title: law.title,
+        summary: law.summary,
+        new_hash: contentHash,
+      });
+    }
+
+    await supabase.from('hr_law_records').insert({
+      jurisdiction_id: jurisdiction.id,
+      topic: law.topic,
+      source_type: law.source_type,
+      title: law.title,
+      summary: law.summary,
+      citation: law.citation,
+      source_url: law.source_url,
+      effective_date: law.effective_date,
+      content_hash: contentHash,
+      is_current: true,
+    });
+  }
+
+  await supabase
+    .from('hr_law_jurisdictions')
+    .update({ last_synced_at: new Date().toISOString() })
+    .eq('id', jurisdiction.id);
+
+  return { inserted, updated, lawCount: laws.length };
 }

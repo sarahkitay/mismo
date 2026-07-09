@@ -70,6 +70,9 @@ function normalizeUserRoles(list: User[]): User[] {
 /** Production: Supabase is source of truth; localStorage is not used for org data. */
 const USE_SUPABASE = isSupabaseAppConfigured();
 
+/** Roles that receive the mandatory daily yes/no check-in prompt. */
+const DAILY_CHECKIN_ROLES: UserRole[] = ['EMPLOYEE', 'HR', 'MANAGER', 'ADMIN', 'SUPER_ADMIN'];
+
 function parseJwtClaims(accessToken: string): {
  orgId?: string;
  appUserId?: string;
@@ -429,16 +432,17 @@ export function useDataStore() {
  wageHourAcknowledgements,
  ]);
 
- // Ensure employee has a daily prompt when they open the app (new day = new prompt)
+ // Ensure staff and employees get a daily prompt when they open the app (new day = new prompt)
  useEffect(() => {
- if (!session || session.role !== 'EMPLOYEE') return;
+ if (!session || !DAILY_CHECKIN_ROLES.includes(session.role)) return;
  const orgId = session.orgId;
  const userId = session.userId;
  const startOfToday = new Date();
  startOfToday.setHours(0, 0, 0, 0);
  const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
  const dayKey = startOfToday.toDateString();
- if (lastDailyDeliveryDateRef.current === dayKey) return;
+ const dayUserKey = `${userId}:${dayKey}`;
+ if (lastDailyDeliveryDateRef.current === dayUserKey) return;
  const orgDeliveries = deliveries.filter((d) => d.orgId === orgId);
  const hasPendingDueToday = orgDeliveries.some(
  (d) => d.userId === userId && d.status === 'PENDING' && d.dueAt && d.dueAt <= endOfToday
@@ -458,7 +462,7 @@ export function useDataStore() {
  updatedAt: new Date(),
  };
  setDeliveries((prev) => [...prev, newDelivery]);
- lastDailyDeliveryDateRef.current = dayKey;
+ lastDailyDeliveryDateRef.current = dayUserKey;
  }, [session, deliveries, prompts]);
 
  // Org-scoped data when session exists (each company sees only their data)
@@ -2471,8 +2475,10 @@ export function useDataStore() {
  e.setHours(23, 59, 59, 999);
  return e;
  })();
- const pendingPromptsForEmployee =
- effectiveCurrentRole === 'EMPLOYEE'
+ const receivesDailyCheckIn =
+ effectiveCurrentRole === 'EMPLOYEE' ||
+ (!previewUserId && session != null && DAILY_CHECKIN_ROLES.includes(session.role));
+ const pendingPromptsForEmployee = receivesDailyCheckIn
  ? effectiveDeliveries
  .filter(
  (d) =>
@@ -2482,6 +2488,7 @@ export function useDataStore() {
  d.dueAt <= endOfToday
  )
  .map((d) => ({ ...d, prompt: effectivePrompts.find((p) => p.id === d.promptId)! }))
+ .filter((d) => Boolean(d.prompt))
  : [];
  const employeeReports =
  effectiveCurrentRole === 'EMPLOYEE' ? effectiveReports.filter((r) => r.createdByUserId === currentUser.id) : [];

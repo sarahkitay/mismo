@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Icons } from '@/lib/icons';
 import { fetchHrNextTasks, isAiFeaturesEnabled, type HrNextTask } from '@/lib/api/aiServices';
 import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
+import { DailyCheckInGate, useDailyCheckInViewState } from '@/components/DailyCheckInGate';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 interface AdminDashboardProps {
@@ -50,6 +51,7 @@ function ActionLine({
 
 export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  const dc = dataStore.dashboardCounts;
+ const { showCheckInGate } = useDailyCheckInViewState(dataStore);
  const { policies, policyAcknowledgements, responses, deliveries, investigations, activities, users, reports, prompts, currentUser } = dataStore;
  const [hrNextTasks, setHrNextTasks] = useState<HrNextTask[]>([]);
  const [loadingHrTasks, setLoadingHrTasks] = useState(false);
@@ -179,6 +181,9 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
 
  return (
  <div className="space-y-6">
+ <DailyCheckInGate dataStore={dataStore} onNavigate={onNavigate} portal="staff" />
+ {!showCheckInGate && (
+ <>
  <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-6 py-5 rounded-[var(--radius-medium)]">
  <h1 className="font-command text-[28px] sm:text-[32px] font-medium text-[var(--color-primary-900)]">Risk Command Center</h1>
  <p className="mt-1 text-base text-[var(--color-text-secondary)]">
@@ -665,6 +670,8 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  <Icons.mail className="h-4 w-4" /> Email service: Ready
  </span>
  </div>
+ </>
+ )}
  </div>
  );
 }

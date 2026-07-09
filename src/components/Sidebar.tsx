@@ -27,7 +27,6 @@ const adminNavItems: NavItem[] = [
   { id: 'compliance', label: 'State Compliance', icon: 'shield' },
   { id: 'users', label: 'Manage Employees', icon: 'employees', badgeKey: 'atRiskEmployees' },
   { id: 'prompts', label: 'Manage Prompts', icon: 'message' },
-  { id: 'system-health', label: 'System Health', icon: 'systemHealth', badgeKey: 'criticalReports' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
@@ -69,6 +68,9 @@ function SidebarContent({
         default:
           return undefined;
       }
+    }
+    if (item.id === 'dashboard' && dataStore.pendingPromptsForEmployee.length > 0) {
+      return dataStore.pendingPromptsForEmployee.length;
     }
     if (item.id === 'prompt-responses') {
       const n =

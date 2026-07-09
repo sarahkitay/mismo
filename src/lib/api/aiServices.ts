@@ -16,15 +16,39 @@ function resolveApiBase(): string | undefined {
 }
 
 const API_BASE = resolveApiBase();
-const AI_ENABLED = import.meta.env.VITE_AI_FEATURES_ENABLED === 'true';
+const AI_ENABLED = import.meta.env.VITE_AI_FEATURES_ENABLED !== 'false';
 
 function apiUrl(path: string): string {
  const base = API_BASE?.replace(/\/$/, '') ?? '';
  return `${base}${path}`;
 }
 
+export function getApiBaseUrl(): string | undefined {
+ return API_BASE;
+}
+
+export type ApiHealthStatus = {
+ ok: boolean;
+ apiBase?: string;
+ database?: boolean;
+ openai?: boolean;
+ runtime?: string;
+};
+
+export async function fetchApiHealth(): Promise<ApiHealthStatus> {
+ if (!API_BASE) return { ok: false };
+ try {
+ const res = await fetch(apiUrl('/health'));
+ if (!res.ok) return { ok: false, apiBase: API_BASE };
+ const data = (await res.json()) as ApiHealthStatus;
+ return { ...data, ok: true, apiBase: API_BASE };
+ } catch {
+ return { ok: false, apiBase: API_BASE };
+ }
+}
+
 export function isAiFeaturesEnabled(): boolean {
- return AI_ENABLED && Boolean(API_BASE);
+ return Boolean(API_BASE) && AI_ENABLED;
 }
 
 export async function coachOutreachDraft(req: OutreachCoachRequest): Promise<OutreachCoachResponse> {
