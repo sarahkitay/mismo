@@ -148,12 +148,10 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  }, [currentRole]);
 
  const handleNavigate = (page: string, params?: Record<string, string>) => {
- if (
- currentRole === 'EMPLOYEE' &&
- activePage === 'home' &&
- page !== 'home' &&
- pendingPromptsForEmployee.length > 0
- ) {
+ const pendingCheckInPage =
+ (currentRole === 'EMPLOYEE' && activePage === 'home') ||
+ (isStaffRole(currentRole) && activePage === 'dashboard');
+ if (pendingCheckInPage && page !== activePage && pendingPromptsForEmployee.length > 0) {
  const pending = pendingPromptsForEmployee[0];
  if (pending) {
  deferCheckInForToday(dataStore.currentUser.id, pending.id);

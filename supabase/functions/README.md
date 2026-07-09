@@ -71,7 +71,7 @@ cd services/api && npm run dev
 | POST | `/ai/outreach/coach` | Outreach tone coach (OpenAI + Supabase persist) |
 | GET | `/hr-laws` | Laws from Supabase |
 | GET | `/hr-laws/updates` | Law updates from Supabase |
-| POST | `/hr-laws/sync` | Read existing laws (full AI sync via local API) |
+| POST | `/hr-laws/sync` | OpenAI research + persist to Supabase |
 | GET | `/hr/next-tasks` | HR queue from Supabase counts + optional AI |
 
 HR next tasks **always load from Supabase** when configured. AI suggestions are additive and fail gracefully if OpenAI quota is exceeded.

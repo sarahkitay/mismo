@@ -1,16 +1,21 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { formatPercent } from '@/lib/utils';
 import { downloadCsv } from '@/lib/exportCsv';
 import {
+ fetchApiHealth,
  fetchHrLawUpdates,
  fetchHrLaws,
+ getApiBaseUrl,
  isAiFeaturesEnabled,
  syncHrLawsForState,
+ type ApiHealthStatus,
 } from '@/lib/api/aiServices';
 import type { HrLawRecord, HrLawUpdate } from '@/types/aiServices';
+import { filterStates, findStateByCode, resolveDefaultStateCode, US_STATES } from '@/lib/usStates';
 import { toast } from 'sonner';
 
 interface AdminComplianceProps {
@@ -19,22 +24,24 @@ interface AdminComplianceProps {
  initialFilters?: Record<string, string>;
 }
 
-const WATCHED_STATES = [
- { code: 'CA', name: 'California' },
- { code: 'NY', name: 'New York' },
- { code: 'TX', name: 'Texas' },
-];
-
 export function AdminCompliance({ dataStore, onNavigate, initialFilters }: AdminComplianceProps) {
  const [tab, setTab] = useState<'DASHBOARD' | 'STATE_NEXUS'>(
  initialFilters?.tab === 'STATE_NEXUS' ? 'STATE_NEXUS' : 'DASHBOARD'
  );
  const [priority, setPriority] = useState<'ALL' | 'URGENT' | 'HIGH' | 'MEDIUM' | 'LOW'>('ALL');
- const [selectedState, setSelectedState] = useState('CA');
+ const [selectedState, setSelectedState] = useState(() =>
+ resolveDefaultStateCode(dataStore.currentUser.state)
+ );
+ const [stateQuery, setStateQuery] = useState('');
  const [laws, setLaws] = useState<HrLawRecord[]>([]);
  const [updates, setUpdates] = useState<HrLawUpdate[]>([]);
  const [loadingLaws, setLoadingLaws] = useState(false);
  const [syncing, setSyncing] = useState(false);
+ const [syncingAll, setSyncingAll] = useState(false);
+ const [apiHealth, setApiHealth] = useState<ApiHealthStatus | null>(null);
+
+ const filteredStates = useMemo(() => filterStates(stateQuery), [stateQuery]);
+ const selectedStateInfo = findStateByCode(selectedState);
 
  const policyAckRate = dataStore.policies.length
  ? dataStore.policyAcknowledgements.length / (dataStore.policies.length * dataStore.users.filter((u) => u.role === 'EMPLOYEE').length)
@@ -49,6 +56,7 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  ].filter((item) => priority === 'ALL' || item.priority === priority);
 
  const loadStateData = useCallback(async (stateCode: string) => {
+ if (!getApiBaseUrl()) return;
  setLoadingLaws(true);
  try {
  const [{ laws: nextLaws }, { updates: nextUpdates }] = await Promise.all([
@@ -64,26 +72,78 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  }
  }, [dataStore.currentUser.orgId]);
 
+ const refreshApiHealth = useCallback(async () => {
+ const health = await fetchApiHealth();
+ setApiHealth(health);
+ }, []);
+
  useEffect(() => {
- if (tab === 'STATE_NEXUS' && isAiFeaturesEnabled()) {
+ if (tab !== 'STATE_NEXUS') return;
+ void refreshApiHealth();
+ }, [tab, refreshApiHealth]);
+
+ useEffect(() => {
+ if (tab === 'STATE_NEXUS' && getApiBaseUrl()) {
  void loadStateData(selectedState);
  }
  }, [tab, selectedState, loadStateData]);
 
- const handleSync = async () => {
- const state = WATCHED_STATES.find((s) => s.code === selectedState);
- if (!state) return;
+ const handleSync = async (stateCode = selectedState) => {
+ const state = findStateByCode(stateCode);
+ if (!state) {
+ toast.error('Select a valid US state.');
+ return;
+ }
  setSyncing(true);
  try {
  const result = await syncHrLawsForState(state.code, state.name, dataStore.currentUser.orgId);
- toast.success(`Synced ${result.lawCount} laws (${result.inserted} new, ${result.updated} updated).`);
+ toast.success(
+ `OpenAI research saved ${result.lawCount} laws for ${state.name} (${result.inserted} new, ${result.updated} updated).`
+ );
+ if (state.code === selectedState) {
  await loadStateData(selectedState);
+ }
+ await refreshApiHealth();
  } catch (err) {
  toast.error(err instanceof Error ? err.message : 'Law sync failed');
  } finally {
  setSyncing(false);
  }
  };
+
+ const handleSyncAll = async () => {
+ if (!window.confirm(`Research and sync HR laws for all ${US_STATES.length} states via OpenAI? This may take several minutes.`)) {
+ return;
+ }
+ setSyncingAll(true);
+ let success = 0;
+ try {
+ for (const state of US_STATES) {
+ toast.message(`Syncing ${state.name}…`);
+ await syncHrLawsForState(state.code, state.name, dataStore.currentUser.orgId);
+ success += 1;
+ }
+ toast.success(`Synced ${success} states to the database.`);
+ await loadStateData(selectedState);
+ await refreshApiHealth();
+ } catch (err) {
+ toast.error(err instanceof Error ? err.message : `Stopped after ${success} states`);
+ await loadStateData(selectedState);
+ } finally {
+ setSyncingAll(false);
+ }
+ };
+
+ const apiStatusLabel = (() => {
+ if (!getApiBaseUrl()) {
+ return 'Not configured — set VITE_SUPABASE_URL (and redeploy on Vercel).';
+ }
+ if (!apiHealth) return 'Checking API…';
+ if (!apiHealth.ok) return `Unreachable at ${apiHealth.apiBase}`;
+ if (!apiHealth.openai) return 'Connected — OpenAI key missing on Edge Function (run supabase secrets set OPENAI_API_KEY=…)';
+ if (!apiHealth.database) return 'Connected — database not configured on API';
+ return 'Connected — OpenAI research + Supabase storage ready';
+ })();
 
  return (
  <div className="space-y-5">
@@ -176,31 +236,63 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  <>
  <Card className="mismo-card">
  <CardContent className="p-4 space-y-4">
- <div className="flex flex-wrap items-center justify-between gap-3">
  <div>
  <h2 className="font-semibold">State HR law monitor</h2>
  <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
- Laws are stored in your database after sync. Use sync to research and persist current summaries for each state.
+ Search any US state, then sync to research current employment-law summaries with OpenAI and store them in Supabase.
+ {dataStore.currentUser.state ? (
+ <> Your profile state: <strong>{dataStore.currentUser.state}</strong>.</>
+ ) : null}
  </p>
  </div>
- <div className="flex flex-wrap gap-2">
- {WATCHED_STATES.map((state) => (
+
+ <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+ <div className="space-y-2">
+ <label htmlFor="state-search" className="text-sm font-medium">Find your state</label>
+ <Input
+ id="state-search"
+ placeholder="Search by name or code (e.g. California, CA, NY)"
+ value={stateQuery}
+ onChange={(e) => setStateQuery(e.target.value)}
+ />
+ <div className="max-h-40 overflow-y-auto border rounded-md divide-y">
+ {filteredStates.map((state) => (
  <button
  key={state.code}
  type="button"
- className={`interactive-control px-3 py-2 border text-sm ${selectedState === state.code ? 'bg-[var(--mismo-blue)] text-white' : ''}`}
- onClick={() => setSelectedState(state.code)}
+ className={`w-full text-left px-3 py-2 text-sm hover:bg-[var(--color-surface-200)] ${selectedState === state.code ? 'bg-[var(--mismo-blue)]/10 font-medium' : ''}`}
+ onClick={() => {
+ setSelectedState(state.code);
+ setStateQuery(state.name);
+ }}
  >
- {state.name}
+ {state.name} ({state.code})
  </button>
  ))}
- <Button type="button" onClick={() => void handleSync()} disabled={syncing || !isAiFeaturesEnabled()}>
- {syncing ? 'Syncing…' : 'Sync laws to database'}
+ </div>
+ </div>
+ <div className="flex flex-col gap-2">
+ <Button
+ type="button"
+ onClick={() => void handleSync()}
+ disabled={syncing || syncingAll || !isAiFeaturesEnabled()}
+ >
+ {syncing ? 'Researching…' : `Sync ${selectedStateInfo?.name ?? selectedState}`}
+ </Button>
+ <Button
+ type="button"
+ variant="outline"
+ onClick={() => void handleSyncAll()}
+ disabled={syncing || syncingAll || !isAiFeaturesEnabled()}
+ >
+ {syncingAll ? 'Syncing all states…' : 'Sync all states (OpenAI)'}
  </Button>
  </div>
  </div>
+
  <p className="text-xs text-[var(--color-text-muted)]">
- API status: {isAiFeaturesEnabled() ? 'Connected - laws load from database after sync' : 'Set VITE_API_BASE_URL in .env.local'}
+ API: {apiStatusLabel}
+ {apiHealth?.apiBase ? <> · <span className="font-mono">{apiHealth.apiBase}</span></> : null}
  </p>
  </CardContent>
  </Card>
@@ -208,13 +300,13 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  <Card className="mismo-card">
  <CardContent className="p-4">
  <h2 className="font-semibold mb-3">
- {WATCHED_STATES.find((s) => s.code === selectedState)?.name ?? selectedState} - current laws
+ {selectedStateInfo?.name ?? selectedState} — current laws
  </h2>
  {loadingLaws ? (
  <p className="text-sm text-[var(--mismo-text-secondary)]">Loading from database…</p>
  ) : laws.length === 0 ? (
  <p className="text-sm text-[var(--mismo-text-secondary)]">
- No laws stored yet for {selectedState}. Click &quot;Sync laws to database&quot; to research and save summaries.
+ No laws stored yet for {selectedStateInfo?.name ?? selectedState}. Click sync to run OpenAI research and save summaries.
  </p>
  ) : (
  <div className="space-y-3">
@@ -246,7 +338,7 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  {updates.length > 0 && (
  <Card className="mismo-card">
  <CardContent className="p-4">
- <h2 className="font-semibold mb-3">Recent law changes</h2>
+ <h2 className="font-semibold mb-3">Recent law changes — {selectedStateInfo?.name ?? selectedState}</h2>
  <div className="space-y-2">
  {updates.map((update) => (
  <div key={update.id} className="flex justify-between gap-4 text-sm border-b pb-2">
@@ -261,38 +353,6 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  </CardContent>
  </Card>
  )}
-
- <Card className="mismo-card">
- <CardContent className="p-4">
- <h2 className="font-semibold mb-3">State Nexus summary</h2>
- <div className="mt-3 space-y-2 text-sm">
- {WATCHED_STATES.map((state) => {
- const stateLawCount = state.code === selectedState ? laws.length : undefined;
- const pendingUpdates = updates.filter((u) => u.stateCode === state.code).length;
- const status =
- state.code === selectedState && loadingLaws
- ? 'Loading…'
- : pendingUpdates > 0
- ? `${pendingUpdates} update(s) to review`
- : stateLawCount && stateLawCount > 0
- ? `${stateLawCount} laws on file`
- : 'Run sync to populate';
- return (
- <div key={state.code} className="flex justify-between border-b pb-2">
- <button
- type="button"
- className="text-left hover:text-[var(--mismo-blue)]"
- onClick={() => setSelectedState(state.code)}
- >
- {state.name}
- </button>
- <span>{status}</span>
- </div>
- );
- })}
- </div>
- </CardContent>
- </Card>
  </>
  )}
  </div>

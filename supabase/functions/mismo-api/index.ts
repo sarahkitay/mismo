@@ -2,7 +2,7 @@ import { corsHeaders, jsonResponse, normalizePath } from '../_shared/cors.ts';
 import { isSupabaseConfigured } from '../_shared/supabase.ts';
 import { isOpenAiConfigured } from '../_shared/openai.ts';
 import { computeHrNextTasks } from '../_shared/hr-next-tasks.ts';
-import { listHrLawUpdates, listHrLawsForState, syncStateLawsPlaceholder } from '../_shared/hr-laws.ts';
+import { listHrLawUpdates, listHrLawsForState, syncStateLawsToDb } from '../_shared/hr-laws.ts';
 import { runOutreachCoach } from '../_shared/outreach-coach.ts';
 
 Deno.serve(async (req) => {
@@ -47,8 +47,9 @@ Deno.serve(async (req) => {
       const body = (await req.json()) as { stateCode: string; stateName?: string; orgId?: string };
       const code = body.stateCode?.toUpperCase();
       if (!code) throw new Error('stateCode is required');
-      const result = await syncStateLawsPlaceholder(code, body.stateName ?? code);
-      return jsonResponse(200, result);
+      const name = body.stateName ?? code;
+      const result = await syncStateLawsToDb(code, name, body.orgId);
+      return jsonResponse(200, { ok: true, stateCode: code, ...result });
     }
 
     if (path === '/hr/next-tasks' && req.method === 'GET') {
