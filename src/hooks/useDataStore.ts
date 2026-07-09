@@ -55,6 +55,7 @@ import {
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { findAppUserByEmail, loadOrgDataFromSupabase } from '@/lib/supabase/loadOrgData';
 import { normalizeDemoEmail, resolveDemoPassword } from '@/data/demoLogins';
+import { mergeCorePrompts, resolveDailyCheckInPrompt, isLockedCorePrompt } from '@/lib/corePrompts';
 import { INDUSTRY_CHECKLIST_SECTIONS } from '@/data/industryChecklist';
 
 function formatAuditFieldValue(value: unknown): string {
@@ -367,7 +368,7 @@ export function useDataStore() {
  setDepartments(snapshot.departments);
  setUsers(normalizeUserRoles(snapshot.users));
  setReports(snapshot.reports);
- setPrompts(snapshot.prompts);
+ setPrompts(snapshot.prompts.length ? mergeCorePrompts(snapshot.prompts, orgId, session?.userId ?? 'system') : mergeCorePrompts([], orgId, session?.userId ?? 'system'));
  setDeliveries(snapshot.deliveries);
  setResponses(snapshot.responses);
  setInvestigations(snapshot.investigations);
@@ -432,6 +433,19 @@ export function useDataStore() {
  wageHourAcknowledgements,
  ]);
 
+ useEffect(() => {
+ if (!session?.orgId) return;
+ setPrompts((prev) => {
+ const orgPrompts = prev.filter((p) => p.orgId === session.orgId);
+ const otherOrgs = prev.filter((p) => p.orgId !== session.orgId);
+ const merged = mergeCorePrompts(orgPrompts, session.orgId, session.userId);
+ if (merged.length === orgPrompts.length && merged.every((p, i) => p.id === orgPrompts[i]?.id && p.status === orgPrompts[i]?.status)) {
+ return prev;
+ }
+ return [...otherOrgs, ...merged];
+ });
+ }, [session?.orgId, session?.userId]);
+
  // Ensure staff and employees get a daily prompt when they open the app (new day = new prompt)
  useEffect(() => {
  if (!session || !DAILY_CHECKIN_ROLES.includes(session.role)) return;
@@ -448,7 +462,7 @@ export function useDataStore() {
  (d) => d.userId === userId && d.status === 'PENDING' && d.dueAt && d.dueAt <= endOfToday
  );
  if (hasPendingDueToday) return;
- const firstPrompt = prompts.find((p) => p.orgId === orgId && p.status === 'ACTIVE') ?? prompts.find((p) => p.orgId === orgId);
+ const firstPrompt = resolveDailyCheckInPrompt(prompts, orgId);
  if (!firstPrompt) return;
  const newDelivery: PromptDelivery = {
  id: `delivery-daily-${userId}-${startOfToday.getTime()}`,
@@ -1973,7 +1987,23 @@ export function useDataStore() {
  }, [users, currentUser.id]);
 
  const updatePrompt = useCallback((promptId: string, updates: Partial<Prompt>) => {
- setPrompts((prev) => prev.map((prompt) => (prompt.id === promptId ? { ...prompt, ...updates, updatedAt: new Date() } : prompt)));
+ setPrompts((prev) =>
+ prev.map((prompt) => {
+ if (prompt.id !== promptId) return prompt;
+ if (isLockedCorePrompt(prompt)) {
+ const { status: _s, includeFinancialQuestion: _f, type: _t, id: _i, ...safe } = updates;
+ return {
+ ...prompt,
+ ...safe,
+ status: 'ACTIVE',
+ type: 'INCIDENT',
+ includeFinancialQuestion: true,
+ updatedAt: new Date(),
+ };
+ }
+ return { ...prompt, ...updates, updatedAt: new Date() };
+ })
+ );
  }, []);
 
  const createPolicy = useCallback((payload: Omit<Policy, 'id' | 'orgId' | 'createdAt' | 'updatedAt'>) => {
