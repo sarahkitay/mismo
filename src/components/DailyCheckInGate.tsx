@@ -29,7 +29,7 @@ const FINANCIAL_SCREENING_QUESTION =
  'Are you aware of any issue related to pay, bonuses, reimbursements, benefits, or other compensation that you believe may be incorrect, withheld without proper explanation, or inconsistent with company policy or applicable law?';
 
 const FINANCIAL_SCREENING_NOTE =
- 'This question is included because your organization turned on the optional financial screening for this check-in. Your answer is stored with your check-in response.';
+ 'This pay and compensation screening is part of your organization\'s daily check-in. Your answer is stored with your check-in response.';
 
 function formatEqcHeaderDate(d: Date): string {
  const mm = String(d.getMonth() + 1).padStart(2, '0');

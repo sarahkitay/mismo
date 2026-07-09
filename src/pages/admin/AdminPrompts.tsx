@@ -27,7 +27,13 @@ import {
   getPromptTypeLabel,
   truncateText 
 } from '@/lib/utils';
-import type { PromptType, PromptCadence, PromptAudience, ReportSeverity } from '@/types';
+import type { PromptType, PromptCadence, PromptAudience, ReportSeverity, Prompt } from '@/types';
+import {
+ CORE_FINANCIAL_DESCRIPTION,
+ CORE_FINANCIAL_LABEL,
+ isLockedCorePrompt,
+ isOptionalPrompt,
+} from '@/lib/corePrompts';
 import { toast } from 'sonner';
 
 interface AdminPromptsProps {
@@ -37,7 +43,6 @@ interface AdminPromptsProps {
 }
 
 const promptTypes: { value: PromptType; label: string }[] = [
-  { value: 'INCIDENT', label: 'Incident Query' },
   { value: 'TEAM_DYNAMIC', label: 'Team Dynamic Check-In' },
   { value: 'MONTHLY_CHECKIN', label: 'Monthly Health Check' },
   { value: 'CUSTOM', label: 'Company-made' },
@@ -68,14 +73,14 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
   
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [viewPromptId, setViewPromptId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'SCHEDULED' | 'DRAFT'>(
-    (initialFilters?.filter?.toUpperCase() as 'ALL' | 'ACTIVE' | 'SCHEDULED' | 'DRAFT') ?? 'ALL'
+  const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE' | 'SCHEDULED' | 'DRAFT'>(
+    (initialFilters?.filter?.toUpperCase() as 'ALL' | 'ACTIVE' | 'INACTIVE' | 'SCHEDULED' | 'DRAFT') ?? 'ALL'
   );
   const [searchQuery, setSearchQuery] = useState('');
   
   // Form state
   const [newPrompt, setNewPrompt] = useState({
-    type: 'INCIDENT' as PromptType,
+    type: 'CUSTOM' as PromptType,
     title: '',
     description: '',
     cadence: 'ONCE' as PromptCadence,
@@ -88,23 +93,139 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
     endAt: '',
   });
   
-  // Filter prompts
-  const filteredPrompts = prompts.filter(prompt => {
-    const matchesFilter = 
+  const coreIncidentPrompt = prompts.find((p) => p.type === 'INCIDENT');
+  const optionalPrompts = prompts.filter((p) => isOptionalPrompt(p));
+
+  const matchesPromptFilter = (prompt: Prompt) => {
+    const matchesFilter =
       filter === 'ALL' ||
-      (filter === 'ACTIVE' && prompt.status === 'ACTIVE') ||
+      (filter === 'ACTIVE' && (prompt.status === 'ACTIVE' || prompt.status === 'SCHEDULED')) ||
+      (filter === 'INACTIVE' && prompt.status === 'ARCHIVED') ||
       (filter === 'SCHEDULED' && prompt.status === 'SCHEDULED') ||
       (filter === 'DRAFT' && prompt.status === 'DRAFT');
-    
-    const matchesSearch = 
+
+    const matchesSearch =
       searchQuery === '' ||
       prompt.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       prompt.description.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     return matchesFilter && matchesSearch;
-  });
-  const coreTemplateCount = filteredPrompts.filter((prompt) => prompt.type !== 'CUSTOM').length;
-  const customTemplateCount = filteredPrompts.filter((prompt) => prompt.type === 'CUSTOM').length;
+  };
+
+  const filteredOptionalPrompts = optionalPrompts.filter(matchesPromptFilter);
+  const showCoreSection =
+    coreIncidentPrompt &&
+    (filter === 'ALL' || filter === 'ACTIVE' || filter === 'SCHEDULED') &&
+    (!searchQuery || matchesPromptFilter(coreIncidentPrompt));
+  const coreTemplateCount = 2;
+  const customTemplateCount = optionalPrompts.length;
+
+  const setPromptActive = (prompt: Prompt, active: boolean) => {
+    if (isLockedCorePrompt(prompt)) {
+      toast.message('Incident Query and financial follow-up stay on for daily compliance.');
+      return;
+    }
+    updatePrompt(prompt.id, { status: active ? 'ACTIVE' : 'ARCHIVED' });
+    toast.success(active ? 'Prompt activated' : 'Prompt set to inactive');
+  };
+
+  const renderPromptCard = (prompt: Prompt, options?: { locked?: boolean; subtitle?: string }) => {
+    const stats = getPromptStats(prompt.id);
+    const locked = options?.locked ?? isLockedCorePrompt(prompt);
+    const isActive = prompt.status === 'ACTIVE' || prompt.status === 'SCHEDULED';
+
+    return (
+      <Card key={prompt.id} className="prompt-card mismo-card relative overflow-hidden">
+        {isActive && (
+          <div className="absolute top-3 left-4 z-10 pointer-events-none">
+            <p className="text-[11px] uppercase tracking-[0.12em] font-semibold text-[var(--color-emerald-600)] [text-shadow:0_1px_2px_rgba(15,27,42,0.22)]">
+              Active
+            </p>
+          </div>
+        )}
+        <CardContent className="p-5">
+          <div className="flex flex-col lg:flex-row lg:items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-[var(--mismo-blue-light)] flex items-center justify-center flex-shrink-0">
+              <Icons.message className="h-6 w-6 text-[var(--mismo-blue)]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                {locked ? (
+                  <Badge variant="outline" className="border-[var(--color-primary-700)]">Core</Badge>
+                ) : prompt.type === 'CUSTOM' ? (
+                  <Badge variant="outline">Company-made</Badge>
+                ) : (
+                  <Badge variant="outline">{getPromptTypeLabel(prompt.type)}</Badge>
+                )}
+                {!isActive && !locked && <Badge className="status-chip status-chip--neutral">Inactive</Badge>}
+                {prompt.type === 'INCIDENT' ? (
+                  <Badge variant="outline">{getPromptTypeLabel(prompt.type)}</Badge>
+                ) : null}
+                {prompt.includeFinancialQuestion ? (
+                  <Badge variant="outline" className="border-[var(--color-primary-700)] text-[var(--color-primary-800)]">
+                    Financial follow-up
+                  </Badge>
+                ) : null}
+              </div>
+              <h3 className="font-semibold text-[var(--mismo-text)] text-lg">{prompt.title}</h3>
+              {options?.subtitle ? (
+                <p className="text-sm text-[var(--color-primary-800)] mt-1 font-medium">{options.subtitle}</p>
+              ) : null}
+              <p className="text-[var(--mismo-text-secondary)] mt-1">{truncateText(prompt.description, 120)}</p>
+              <div className="flex flex-wrap items-center gap-4 mt-3 text-sm">
+                <span className="text-[var(--mismo-text-secondary)]">
+                  <span className="font-medium text-[var(--mismo-text)]">{stats.total}</span> recipients
+                </span>
+                <span className="text-[var(--mismo-text-secondary)]">
+                  <span className="font-medium text-green-600">{stats.completed}</span> completed
+                </span>
+                <span className="text-[var(--mismo-text-secondary)]">
+                  <span className="font-medium text-amber-600">{stats.pending}</span> pending
+                </span>
+                <span className="text-[var(--mismo-text-secondary)]">
+                  <span className="font-medium text-[var(--mismo-blue)]">{Math.round(stats.completionRate)}%</span> completion
+                </span>
+              </div>
+              <div className="mt-3">
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-[var(--mismo-blue)] rounded-full transition-all" style={{ width: `${stats.completionRate}%` }} />
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-[var(--mismo-text-secondary)]">
+                <span className="flex items-center gap-1.5">
+                  <Icons.calendar className="h-4 w-4" />
+                  Daily · started {formatDate(prompt.schedule.startAt)}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Icons.employees className="h-4 w-4" />
+                  {audienceOptions.find((a) => a.value === prompt.targeting.audience)?.label ?? prompt.targeting.audience}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-3 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <Label htmlFor={`active-${prompt.id}`} className="text-sm text-[var(--mismo-text-secondary)]">
+                  {locked ? 'Always on' : isActive ? 'Active' : 'Inactive'}
+                </Label>
+                <Switch
+                  id={`active-${prompt.id}`}
+                  checked={locked ? true : isActive}
+                  disabled={locked}
+                  onCheckedChange={(checked) => setPromptActive(prompt, checked)}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setViewPromptId(prompt.id)}>
+                  <Icons.eye className="h-4 w-4 mr-1.5" />
+                  View
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
   
   // Get prompt stats
   const getPromptStats = (promptId: string) => {
@@ -146,7 +267,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
     toast.success('Prompt created successfully');
     setIsCreateDialogOpen(false);
     setNewPrompt({
-      type: 'INCIDENT',
+      type: 'CUSTOM',
       title: '',
       description: '',
       cadence: 'ONCE',
@@ -384,7 +505,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
         
         {/* Status Filter */}
         <div className="flex gap-2">
-          {(['ALL', 'ACTIVE', 'SCHEDULED', 'DRAFT'] as const).map((f) => (
+          {(['ALL', 'ACTIVE', 'INACTIVE', 'SCHEDULED', 'DRAFT'] as const).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -408,121 +529,46 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
             <span className="text-sm px-3 py-2 border">Company-made prompts: {customTemplateCount}</span>
           </CardContent>
         </Card>
-        {filteredPrompts.map((prompt) => {
-          const stats = getPromptStats(prompt.id);
-          
-          return (
-            <Card key={prompt.id} className="prompt-card mismo-card relative overflow-hidden">
-              {prompt.status === 'ACTIVE' && (
-                <div className="absolute top-3 left-4 z-10 pointer-events-none">
-                  <p className="text-[11px] uppercase tracking-[0.12em] font-semibold text-[var(--color-emerald-600)] [text-shadow:0_1px_2px_rgba(15,27,42,0.22)]">
-                    Active
+
+        {showCoreSection && coreIncidentPrompt && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+              Core daily check-in (always on)
+            </h2>
+            {renderPromptCard(coreIncidentPrompt, { locked: true })}
+            <Card className="mismo-card border border-[var(--color-primary-700)]/30">
+              <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <Badge variant="outline" className="border-[var(--color-primary-700)]">Core</Badge>
+                    <Badge variant="outline" className="border-[var(--color-primary-700)] text-[var(--color-primary-800)]">
+                      Financial follow-up
+                    </Badge>
+                    <Badge variant="outline">Money</Badge>
+                  </div>
+                  <h3 className="font-semibold text-lg">{CORE_FINANCIAL_LABEL}</h3>
+                  <p className="text-sm text-[var(--mismo-text-secondary)] mt-2">{CORE_FINANCIAL_DESCRIPTION}</p>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-2">
+                    Bundled with Incident Query — runs as question 2 of 2 before the check-in is saved.
                   </p>
                 </div>
-              )}
-              <CardContent className="p-5">
-                <div className="flex flex-col lg:flex-row lg:items-start gap-4">
-                  {/* Icon */}
-                  <div className="w-12 h-12 rounded-xl bg-[var(--mismo-blue-light)] flex items-center justify-center flex-shrink-0">
-                    <Icons.message className="h-6 w-6 text-[var(--mismo-blue)]" />
-                  </div>
-                  
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      {prompt.status !== 'ACTIVE' && (
-                        <Badge className={
-                          prompt.status === 'SCHEDULED' ? 'status-chip status-chip--info' :
-                          prompt.status === 'DRAFT' ? 'status-chip status-chip--neutral' :
-                          'status-chip status-chip--neutral'
-                        }>
-                          {prompt.status}
-                        </Badge>
-                      )}
-                      {prompt.type === 'CUSTOM' ? (
-                        <Badge variant="outline">Company-made</Badge>
-                      ) : (
-                        <>
-                          <Badge variant="outline">Core</Badge>
-                          <Badge variant="outline">{getPromptTypeLabel(prompt.type)}</Badge>
-                        </>
-                      )}
-                      {prompt.includeFinancialQuestion ? (
-                        <Badge variant="outline" className="border-[var(--color-primary-700)] text-[var(--color-primary-800)]">
-                          Financial follow-up
-                        </Badge>
-                      ) : null}
-                    </div>
-                    
-                    <h3 className="font-semibold text-[var(--mismo-text)] text-lg">
-                      {prompt.title}
-                    </h3>
-                    <p className="text-[var(--mismo-text-secondary)] mt-1">
-                      {truncateText(prompt.description, 120)}
-                    </p>
-                    
-                    {/* Stats */}
-                    <div className="flex flex-wrap items-center gap-4 mt-3 text-sm">
-                      <span className="text-[var(--mismo-text-secondary)]">
-                        <span className="font-medium text-[var(--mismo-text)]">{stats.total}</span> recipients
-                      </span>
-                      <span className="text-[var(--mismo-text-secondary)]">
-                        <span className="font-medium text-green-600">{stats.completed}</span> completed
-                      </span>
-                      <span className="text-[var(--mismo-text-secondary)]">
-                        <span className="font-medium text-amber-600">{stats.pending}</span> pending
-                      </span>
-                      <span className="text-[var(--mismo-text-secondary)]">
-                        <span className="font-medium text-[var(--mismo-blue)]">{Math.round(stats.completionRate)}%</span> completion
-                      </span>
-                    </div>
-                    
-                    {/* Progress Bar */}
-                    <div className="mt-3">
-                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-[var(--mismo-blue)] rounded-full transition-all"
-                          style={{ width: `${stats.completionRate}%` }}
-                        />
-                      </div>
-                    </div>
-                    
-                    {/* Schedule Info */}
-                    <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-[var(--mismo-text-secondary)]">
-                      <span className="flex items-center gap-1.5">
-                        <Icons.calendar className="h-4 w-4" />
-                        Started {formatDate(prompt.schedule.startAt)}
-                      </span>
-                      {prompt.schedule.endAt && (
-                        <span className="flex items-center gap-1.5">
-                          <Icons.clock className="h-4 w-4" />
-                          Ends {formatDate(prompt.schedule.endAt)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Actions */}
-                  <div className="flex gap-2 flex-shrink-0">
-                    <Button variant="outline" size="sm" onClick={() => setViewPromptId(prompt.id)}>
-                      <Icons.eye className="h-4 w-4 mr-1.5" />
-                      View
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => updatePrompt(prompt.id, { status: prompt.status === 'ARCHIVED' ? 'ACTIVE' : 'ARCHIVED' })}
-                    >
-                      {prompt.status === 'ARCHIVED' ? 'Activate' : 'Archive'}
-                    </Button>
-                  </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Label className="text-sm text-[var(--mismo-text-secondary)]">Always on</Label>
+                  <Switch checked disabled />
                 </div>
               </CardContent>
             </Card>
-          );
-        })}
-        
-        {filteredPrompts.length === 0 && (
+          </div>
+        )}
+
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+            Optional prompts
+          </h2>
+          {filteredOptionalPrompts.map((prompt) => renderPromptCard(prompt))}
+        </div>
+
+        {filteredOptionalPrompts.length === 0 && !showCoreSection && filter !== 'ALL' && (
           <Card className="mismo-card">
             <CardContent className="p-12 text-center">
               <Icons.message className="h-16 w-16 text-gray-300 mx-auto mb-4" />
