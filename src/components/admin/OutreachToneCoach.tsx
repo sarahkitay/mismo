@@ -9,6 +9,7 @@ import {
  type OutreachCoachResponse,
 } from '@/types/aiServices';
 import { Icons } from '@/lib/icons';
+import { sanitizeInfraError } from '@/lib/infraMessaging';
 import { toast } from 'sonner';
 
 interface OutreachToneCoachProps {
@@ -65,7 +66,7 @@ export function OutreachToneCoach({
  setResult(res);
  setExpanded(true);
  } catch (e) {
- toast.error(e instanceof Error ? e.message : 'Tone coach unavailable');
+ toast.error(sanitizeInfraError(e instanceof Error ? e.message : 'Tone coach unavailable'));
  } finally {
  setLoading(false);
  }

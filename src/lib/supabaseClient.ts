@@ -1,11 +1,12 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { isSupabaseAppConfigured } from '@/data/orgDefaults';
+import { INFRA_NOT_CONFIGURED } from '@/lib/infraMessaging';
 
 let client: SupabaseClient | null = null;
 
 export function getSupabaseClient(): SupabaseClient {
   if (!isSupabaseAppConfigured()) {
-    throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+    throw new Error(INFRA_NOT_CONFIGURED);
   }
   if (!client) {
     client = createClient(

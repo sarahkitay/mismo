@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { DEMO_PASSWORD, PRIMARY_DEMO_LOGINS } from '@/data/demoLogins';
+import { sanitizeInfraError } from '@/lib/infraMessaging';
 
 interface LoginProps {
   dataStore: DataStore;
@@ -25,7 +26,7 @@ export function Login({ dataStore }: LoginProps) {
     if (result.ok) {
       toast.success('Signed in.');
     } else {
-      toast.error(result.message ?? 'Sign in failed.');
+      toast.error(sanitizeInfraError(result.message ?? 'Sign in failed.'));
     }
   };
 

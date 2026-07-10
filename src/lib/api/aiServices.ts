@@ -4,6 +4,7 @@ import type {
  OutreachCoachRequest,
  OutreachCoachResponse,
 } from '@/types/aiServices';
+import { API_NOT_CONFIGURED, sanitizeInfraError } from '@/lib/infraMessaging';
 
 function resolveApiBase(): string | undefined {
   const explicit = import.meta.env.VITE_API_BASE_URL as string | undefined;
@@ -53,7 +54,7 @@ export function isAiFeaturesEnabled(): boolean {
 
 export async function coachOutreachDraft(req: OutreachCoachRequest): Promise<OutreachCoachResponse> {
  if (!API_BASE) {
- throw new Error('Mismo API is not configured. Set VITE_SUPABASE_URL or VITE_API_BASE_URL.');
+ throw new Error(API_NOT_CONFIGURED);
  }
 
  const res = await fetch(apiUrl('/ai/outreach/coach'), {
@@ -64,7 +65,7 @@ export async function coachOutreachDraft(req: OutreachCoachRequest): Promise<Out
 
  if (!res.ok) {
  const err = (await res.json().catch(() => ({}))) as { error?: string };
- throw new Error(err.error ?? `Coach request failed (${res.status})`);
+ throw new Error(sanitizeInfraError(err.error ?? `Coach request failed (${res.status})`));
  }
 
  return res.json() as Promise<OutreachCoachResponse>;
@@ -91,7 +92,7 @@ export async function syncHrLawsForState(
  stateName: string,
  orgId?: string
 ): Promise<{ ok: boolean; lawCount: number; inserted: number; updated: number }> {
- if (!API_BASE) throw new Error('API not configured');
+ if (!API_BASE) throw new Error(API_NOT_CONFIGURED);
  const res = await fetch(apiUrl('/hr-laws/sync'), {
  method: 'POST',
  headers: { 'Content-Type': 'application/json' },
@@ -99,7 +100,7 @@ export async function syncHrLawsForState(
  });
  if (!res.ok) {
  const err = (await res.json().catch(() => ({}))) as { error?: string };
- throw new Error(err.error ?? 'Law sync failed');
+ throw new Error(sanitizeInfraError(err.error ?? 'Law sync failed'));
  }
  return res.json() as Promise<{ ok: boolean; lawCount: number; inserted: number; updated: number }>;
 }
