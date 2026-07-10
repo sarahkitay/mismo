@@ -35,7 +35,7 @@ export interface OutreachCoachRequest {
  stateCode?: string;
  caseCategory?: string;
  caseType?: string;
- /** Desired tone 1 (empathetic) – 6 (harsh). Omit for AI recommendation. */
+ /** Desired tone 1 (empathetic) to 6 (harsh). Omit for AI recommendation. */
  toneTarget?: number;
  createdBy?: string;
  applicableLaws?: { citation: string; summary: string }[];

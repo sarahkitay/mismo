@@ -1,4 +1,4 @@
-/** Demo sign-in accounts — directory users only; no sample cases or prompts. */
+/** Demo sign-in accounts. Directory users only; no sample cases or prompts. */
 export const DEMO_ORG_ID = 'org-mismo-1';
 
 /** Shared demo password (must match Supabase Auth users from scripts/provision-demo-auth.mjs). */

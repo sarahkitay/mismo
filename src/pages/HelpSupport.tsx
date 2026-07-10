@@ -10,7 +10,7 @@ interface HelpSupportProps {
 
 const SUPPORT_EMAIL = 'support@mismo.com';
 const SUPPORT_PHONE = '1-800-555-0100';
-const HOURS = 'Monday–Friday, 8am–6pm (your timezone)';
+const HOURS = 'Monday-Friday, 8am-6pm (your timezone)';
 
 const faqs = [
   {

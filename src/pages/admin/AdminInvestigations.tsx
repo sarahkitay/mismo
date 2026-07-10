@@ -221,7 +221,7 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
         </Card>
       )}
 
-      {/* Risk Summary Bar – clickable tiles deep-link to filtered list */}
+      {/* Risk Summary Bar - clickable tiles deep-link to filtered list */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3" role="group" aria-label="Risk summary filters">
         <button
           type="button"

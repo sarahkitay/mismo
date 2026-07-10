@@ -310,7 +310,7 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  <Card className="mismo-card">
  <CardContent className="p-4">
  <h2 className="font-semibold mb-3">
- {selectedStateInfo?.name ?? selectedState} — current laws
+ {selectedStateInfo?.name ?? selectedState}: current laws
  </h2>
  {loadingLaws ? (
  <p className="text-sm text-[var(--mismo-text-secondary)]">Loading from database…</p>
@@ -348,7 +348,7 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  {updates.length > 0 && (
  <Card className="mismo-card">
  <CardContent className="p-4">
- <h2 className="font-semibold mb-3">Recent law changes — {selectedStateInfo?.name ?? selectedState}</h2>
+ <h2 className="font-semibold mb-3">Recent law changes for {selectedStateInfo?.name ?? selectedState}</h2>
  <div className="space-y-2">
  {updates.map((update) => (
  <div key={update.id} className="flex justify-between gap-4 text-sm border-b pb-2">

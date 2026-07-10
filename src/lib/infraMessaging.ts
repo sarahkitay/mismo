@@ -1,4 +1,4 @@
-/** User-facing infrastructure copy — never mention vendor names in the product UI. */
+/** User-facing infrastructure copy. Never mention vendor names in the product UI. */
 
 export const INFRA_NOT_CONFIGURED =
   'Cloud database and authentication are not configured. Contact your administrator to connect AWS services.';
@@ -12,13 +12,13 @@ export const API_UNREACHABLE =
 export const API_CHECKING = 'Checking API connection…';
 
 export const API_CONNECTED_DATABASE_MISSING =
-  'Connected — database credentials are not configured on the API server.';
+  'Connected. Database credentials are not configured on the API server.';
 
 export const API_CONNECTED_OPENAI_MISSING =
-  'Connected — OpenAI key is missing on the API server. Ask your administrator to configure OPENAI_API_KEY.';
+  'Connected. OpenAI key is missing on the API server. Ask your administrator to configure OPENAI_API_KEY.';
 
 export const API_CONNECTED_READY =
-  'Connected — OpenAI research and AWS database storage are ready.';
+  'Connected. OpenAI research and AWS database storage are ready.';
 
 export const API_ENDPOINT_LABEL = 'Mismo API (AWS-hosted)';
 

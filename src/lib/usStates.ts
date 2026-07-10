@@ -1,4 +1,4 @@
-/** US states + DC — matches hr_law_jurisdictions seed in docs/database/02_ai_hr_laws.sql */
+/** US states + DC. Matches hr_law_jurisdictions seed in docs/database/02_ai_hr_laws.sql */
 export const US_STATES = [
   { code: 'AL', name: 'Alabama' },
   { code: 'AK', name: 'Alaska' },
