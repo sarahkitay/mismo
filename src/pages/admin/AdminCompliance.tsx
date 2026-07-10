@@ -16,6 +16,16 @@ import {
 } from '@/lib/api/aiServices';
 import type { HrLawRecord, HrLawUpdate } from '@/types/aiServices';
 import { filterStates, findStateByCode, resolveDefaultStateCode, US_STATES } from '@/lib/usStates';
+import {
+ API_CHECKING,
+ API_CONNECTED_DATABASE_MISSING,
+ API_CONNECTED_OPENAI_MISSING,
+ API_CONNECTED_READY,
+ API_ENDPOINT_LABEL,
+ API_NOT_CONFIGURED,
+ API_UNREACHABLE,
+ sanitizeInfraError,
+} from '@/lib/infraMessaging';
 import { toast } from 'sonner';
 
 interface AdminComplianceProps {
@@ -105,7 +115,7 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  }
  await refreshApiHealth();
  } catch (err) {
- toast.error(err instanceof Error ? err.message : 'Law sync failed');
+ toast.error(sanitizeInfraError(err instanceof Error ? err.message : 'Law sync failed'));
  } finally {
  setSyncing(false);
  }
@@ -127,7 +137,7 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  await loadStateData(selectedState);
  await refreshApiHealth();
  } catch (err) {
- toast.error(err instanceof Error ? err.message : `Stopped after ${success} states`);
+ toast.error(sanitizeInfraError(err instanceof Error ? err.message : `Stopped after ${success} states`));
  await loadStateData(selectedState);
  } finally {
  setSyncingAll(false);
@@ -136,13 +146,13 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
 
  const apiStatusLabel = (() => {
  if (!getApiBaseUrl()) {
- return 'Not configured — set VITE_SUPABASE_URL (and redeploy on Vercel).';
+ return API_NOT_CONFIGURED;
  }
- if (!apiHealth) return 'Checking API…';
- if (!apiHealth.ok) return `Unreachable at ${apiHealth.apiBase}`;
- if (!apiHealth.openai) return 'Connected — OpenAI key missing on Edge Function (run supabase secrets set OPENAI_API_KEY=…)';
- if (!apiHealth.database) return 'Connected — database not configured on API';
- return 'Connected — OpenAI research + Supabase storage ready';
+ if (!apiHealth) return API_CHECKING;
+ if (!apiHealth.ok) return API_UNREACHABLE;
+ if (!apiHealth.openai) return API_CONNECTED_OPENAI_MISSING;
+ if (!apiHealth.database) return API_CONNECTED_DATABASE_MISSING;
+ return API_CONNECTED_READY;
  })();
 
  return (
@@ -239,7 +249,7 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  <div>
  <h2 className="font-semibold">State HR law monitor</h2>
  <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
- Search any US state, then sync to research current employment-law summaries with OpenAI and store them in Supabase.
+ Search any US state, then sync to research current employment-law summaries with OpenAI and store them in the AWS database.
  {dataStore.currentUser.state ? (
  <> Your profile state: <strong>{dataStore.currentUser.state}</strong>.</>
  ) : null}
@@ -292,7 +302,7 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
 
  <p className="text-xs text-[var(--color-text-muted)]">
  API: {apiStatusLabel}
- {apiHealth?.apiBase ? <> · <span className="font-mono">{apiHealth.apiBase}</span></> : null}
+ {apiHealth?.apiBase ? <> · <span>{API_ENDPOINT_LABEL}</span></> : null}
  </p>
  </CardContent>
  </Card>

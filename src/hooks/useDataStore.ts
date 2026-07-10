@@ -57,6 +57,7 @@ import { findAppUserByEmail, loadOrgDataFromSupabase } from '@/lib/supabase/load
 import { normalizeDemoEmail, resolveDemoPassword } from '@/data/demoLogins';
 import { mergeCorePrompts, resolveDailyCheckInPrompt, isLockedCorePrompt } from '@/lib/corePrompts';
 import { INDUSTRY_CHECKLIST_SECTIONS } from '@/data/industryChecklist';
+import { INFRA_NOT_CONFIGURED, sanitizeInfraError } from '@/lib/infraMessaging';
 
 function formatAuditFieldValue(value: unknown): string {
  if (value === undefined || value === null) return '';
@@ -214,7 +215,7 @@ export function useDataStore() {
 
  const login = useCallback(async (email: string, password: string): Promise<{ ok: boolean; message?: string }> => {
  if (!USE_SUPABASE) {
- return { ok: false, message: 'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.' };
+ return { ok: false, message: INFRA_NOT_CONFIGURED };
  }
  const trimmed = normalizeDemoEmail(email);
  const effectivePassword = resolveDemoPassword(trimmed, password);
@@ -229,7 +230,7 @@ export function useDataStore() {
  password: effectivePassword,
  });
  if (error || !data.session) {
- return { ok: false, message: error?.message ?? 'Sign in failed.' };
+ return { ok: false, message: sanitizeInfraError(error?.message ?? 'Sign in failed.') };
  }
 
  const claims = parseJwtClaims(data.session.access_token);
@@ -274,7 +275,7 @@ export function useDataStore() {
  }
  return { ok: true };
  } catch (err) {
- return { ok: false, message: err instanceof Error ? err.message : 'Sign in failed.' };
+ return { ok: false, message: sanitizeInfraError(err instanceof Error ? err.message : 'Sign in failed.') };
  }
  }, [setSession]);
 
