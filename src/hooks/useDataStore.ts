@@ -69,8 +69,10 @@ function normalizeUserRoles(list: User[]): User[] {
  return list;
 }
 
-/** Production: Supabase is source of truth; localStorage is not used for org data. */
-const USE_SUPABASE = isSupabaseAppConfigured();
+/** Production: cloud database is source of truth; localStorage is not used for org data. */
+function useCloudBackend(): boolean {
+ return isSupabaseAppConfigured();
+}
 
 /** Roles that receive the mandatory daily yes/no check-in prompt. */
 const DAILY_CHECKIN_ROLES: UserRole[] = ['EMPLOYEE', 'HR', 'MANAGER', 'ADMIN', 'SUPER_ADMIN'];
@@ -172,7 +174,7 @@ function createIndustryChecklistForReport(): ReportChecklistItem[] {
 
 // Data store hook
 export function useDataStore() {
- const persisted = !USE_SUPABASE && typeof window !== 'undefined' ? readPersistedState() : null;
+ const persisted = !useCloudBackend() && typeof window !== 'undefined' ? readPersistedState() : null;
  const [dataLoading, setDataLoading] = useState(false);
  const [departments, setDepartments] = useState<Department[]>([]);
  const [orgSettings, setOrgSettings] = useState(DEFAULT_ORG_SETTINGS);
@@ -214,7 +216,7 @@ export function useDataStore() {
  }, []);
 
  const login = useCallback(async (email: string, password: string): Promise<{ ok: boolean; message?: string }> => {
- if (!USE_SUPABASE) {
+ if (!useCloudBackend()) {
  return { ok: false, message: INFRA_NOT_CONFIGURED };
  }
  const trimmed = normalizeDemoEmail(email);
@@ -280,7 +282,7 @@ export function useDataStore() {
  }, [setSession]);
 
  const logout = useCallback(async () => {
- if (USE_SUPABASE) {
+ if (useCloudBackend()) {
  await getSupabaseClient().auth.signOut();
  }
  setSession(null);
@@ -288,7 +290,7 @@ export function useDataStore() {
  }, [setSession]);
 
  const resolveAppSession = useCallback(async (): Promise<Session | null> => {
- if (!USE_SUPABASE) return readSession();
+ if (!useCloudBackend()) return readSession();
  const supabase = getSupabaseClient();
  const { data: authData } = await supabase.auth.getSession();
  const authSession = authData.session;
@@ -324,7 +326,7 @@ export function useDataStore() {
  }, []);
 
  useEffect(() => {
- if (!USE_SUPABASE) return;
+ if (!useCloudBackend()) return;
  const supabase = getSupabaseClient();
 
  void (async () => {
@@ -355,12 +357,12 @@ export function useDataStore() {
  }, [resolveAppSession]);
 
  useEffect(() => {
- if (!USE_SUPABASE) return;
+ if (!useCloudBackend()) return;
  localStorage.removeItem(STORAGE_KEY);
  }, []);
 
  const hydrateFromSupabase = useCallback(async (orgId: string) => {
- if (!USE_SUPABASE) return;
+ if (!useCloudBackend()) return;
  setDataLoading(true);
  try {
  const snapshot = await loadOrgDataFromSupabase(orgId);
@@ -390,12 +392,12 @@ export function useDataStore() {
  }, []);
 
  useEffect(() => {
- if (!session?.orgId || !USE_SUPABASE) return;
+ if (!session?.orgId || !useCloudBackend()) return;
  void hydrateFromSupabase(session.orgId);
  }, [session?.orgId, hydrateFromSupabase]);
 
  useEffect(() => {
- if (USE_SUPABASE) return;
+ if (useCloudBackend()) return;
  localStorage.setItem(
  STORAGE_KEY,
  JSON.stringify({

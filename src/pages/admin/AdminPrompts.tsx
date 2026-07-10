@@ -549,7 +549,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                   <h3 className="font-semibold text-lg">{CORE_FINANCIAL_LABEL}</h3>
                   <p className="text-sm text-[var(--mismo-text-secondary)] mt-2">{CORE_FINANCIAL_DESCRIPTION}</p>
                   <p className="text-xs text-[var(--color-text-muted)] mt-2">
-                    Bundled with Incident Query — runs as question 2 of 2 before the check-in is saved.
+                    Bundled with Incident Query. Runs as question 2 of 2 before the check-in is saved.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

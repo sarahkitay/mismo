@@ -77,7 +77,7 @@ export function Login({ dataStore }: LoginProps) {
               </Button>
             </form>
             <div className="text-xs text-center text-[var(--color-text-muted)] border-t border-[var(--color-border-200)] pt-4 space-y-1">
-              <p>Demo logins (password optional — defaults to {DEMO_PASSWORD}):</p>
+              <p>Demo logins (password optional; defaults to {DEMO_PASSWORD}):</p>
               <p>
                 {PRIMARY_DEMO_LOGINS.map((account, index) => (
                   <span key={account.email}>

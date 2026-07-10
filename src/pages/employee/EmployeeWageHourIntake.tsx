@@ -207,7 +207,7 @@ export function EmployeeWageHourIntake({ dataStore, reportId, onNavigate }: Empl
  <div className="grid sm:grid-cols-2 gap-4">
  <div className="space-y-2">
  <Label htmlFor="wh-periods">Relevant pay period(s)</Label>
- <Input id="wh-periods" value={payPeriods} onChange={(e) => setPayPeriods(e.target.value)} placeholder="e.g. Jan 1–15, 2026" />
+ <Input id="wh-periods" value={payPeriods} onChange={(e) => setPayPeriods(e.target.value)} placeholder="e.g. Jan 1-15, 2026" />
  </div>
  <div className="space-y-2">
  <Label htmlFor="wh-dates">Approximate date(s)</Label>
