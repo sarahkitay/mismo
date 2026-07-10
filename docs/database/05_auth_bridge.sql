@@ -97,3 +97,36 @@ $$;
 GRANT EXECUTE ON FUNCTION public.custom_access_token_hook TO supabase_auth_admin;
 GRANT EXECUTE ON FUNCTION public.app_user_for_auth TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.link_auth_user_to_app_user TO service_role;
+
+CREATE OR REPLACE FUNCTION public.resolve_app_session_for_auth()
+RETURNS TABLE (app_user_id TEXT, org_id TEXT, user_role TEXT)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  auth_email TEXT;
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RETURN;
+  END IF;
+
+  auth_email := lower(trim(coalesce(auth.jwt() ->> 'email', '')));
+
+  IF auth_email <> '' THEN
+    UPDATE public.users u
+    SET auth_user_id = auth.uid(), updated_at = now()
+    WHERE u.auth_user_id IS NULL
+      AND lower(trim(u.email)) = auth_email;
+  END IF;
+
+  RETURN QUERY
+  SELECT u.id, u.org_id, u.role::text
+  FROM public.users u
+  WHERE u.auth_user_id = auth.uid()
+  LIMIT 1;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.resolve_app_session_for_auth() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.resolve_app_session_for_auth() TO authenticated;

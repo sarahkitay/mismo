@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Create Supabase Auth users for demo directory emails (password: MismoDemo1!).
- * Reads SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY from services/api/.env
+ * Demo bootstrap: Auth users + link public.users.auth_user_id by email.
+ * Reads SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY from services/api/.env or .env.local
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -11,21 +11,21 @@ import { createClient } from '@supabase/supabase-js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD?.trim() || 'MismoDemo1!';
 
-const DEMO_EMAILS = [
-  'hr@mismo.com',
-  'michael.rodriguez@mismo.com',
-  'sarah.kitay@mismo.com',
-  'jordan.lee@mismo.com',
-  'pat.campbell@clientco.com',
-  'sarahkitay@mismo.com',
-  'employee@mismo.com',
-  'jordan.taylor@mismo.com',
-  'casey.williams@mismo.com',
-  'riley.johnson@mismo.com',
-  'morgan.davis@mismo.com',
-  'quinn.brown@mismo.com',
-  'avery.wilson@mismo.com',
-  'sam.garcia@mismo.com',
+const DEMO_USERS = [
+  { id: 'user-admin-1', email: 'hr@mismo.com', role: 'HR' },
+  { id: 'user-admin-2', email: 'michael.rodriguez@mismo.com', role: 'ADMIN' },
+  { id: 'user-hr-sarah', email: 'sarah.kitay@mismo.com', role: 'HR' },
+  { id: 'user-manager-1', email: 'jordan.lee@mismo.com', role: 'MANAGER' },
+  { id: 'user-client-1', email: 'pat.campbell@clientco.com', role: 'CLIENT' },
+  { id: 'user-emp-sarah', email: 'sarahkitay@mismo.com', role: 'EMPLOYEE' },
+  { id: 'user-emp-1', email: 'employee@mismo.com', role: 'EMPLOYEE' },
+  { id: 'user-emp-2', email: 'jordan.taylor@mismo.com', role: 'EMPLOYEE' },
+  { id: 'user-emp-3', email: 'casey.williams@mismo.com', role: 'EMPLOYEE' },
+  { id: 'user-emp-4', email: 'riley.johnson@mismo.com', role: 'EMPLOYEE' },
+  { id: 'user-emp-5', email: 'morgan.davis@mismo.com', role: 'EMPLOYEE' },
+  { id: 'user-emp-6', email: 'quinn.brown@mismo.com', role: 'EMPLOYEE' },
+  { id: 'user-emp-7', email: 'avery.wilson@mismo.com', role: 'EMPLOYEE' },
+  { id: 'user-emp-8', email: 'sam.garcia@mismo.com', role: 'EMPLOYEE' },
 ];
 
 function loadEnvFile(path) {
@@ -41,12 +41,19 @@ function loadEnvFile(path) {
   return out;
 }
 
-const apiEnv = loadEnvFile(resolve(__dirname, '../services/api/.env'));
-const url = process.env.SUPABASE_URL || apiEnv.SUPABASE_URL;
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || apiEnv.SUPABASE_SERVICE_ROLE_KEY;
+const root = resolve(__dirname, '..');
+const apiEnv = loadEnvFile(resolve(root, 'services/api/.env'));
+const localEnv = loadEnvFile(resolve(root, '.env.local'));
+const merged = { ...apiEnv, ...localEnv };
+
+const url =
+  process.env.SUPABASE_URL ||
+  merged.SUPABASE_URL ||
+  merged.VITE_SUPABASE_URL;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || merged.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!url || !serviceKey) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY (services/api/.env).');
+  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY (.env.local or services/api/.env).');
   process.exit(1);
 }
 
@@ -64,24 +71,38 @@ async function ensureAuthUser(email) {
       email_confirm: true,
     });
     if (updateErr) throw updateErr;
-    console.log(`updated  ${email}`);
-    return;
+    return existing.id;
   }
-  const { error: createErr } = await supabase.auth.admin.createUser({
+  const { data: created, error: createErr } = await supabase.auth.admin.createUser({
     email,
     password: DEMO_PASSWORD,
     email_confirm: true,
   });
   if (createErr) throw createErr;
-  console.log(`created  ${email}`);
+  return created.user.id;
+}
+
+async function linkAppUser(appUserId, authUserId) {
+  const { error } = await supabase
+    .from('users')
+    .update({ auth_user_id: authUserId, updated_at: new Date().toISOString() })
+    .eq('id', appUserId);
+  if (error) throw error;
 }
 
 async function main() {
-  console.log(`Provisioning ${DEMO_EMAILS.length} demo auth users (password: ${DEMO_PASSWORD})…`);
-  for (const email of DEMO_EMAILS) {
-    await ensureAuthUser(email);
+  console.log(`Provisioning ${DEMO_USERS.length} demo auth users (password: ${DEMO_PASSWORD})…`);
+  for (const user of DEMO_USERS) {
+    const authUserId = await ensureAuthUser(user.email);
+    try {
+      await linkAppUser(user.id, authUserId);
+      console.log(`linked    ${user.email} → ${user.id}`);
+    } catch (err) {
+      console.warn(`skip link ${user.email}: ${err instanceof Error ? err.message : err}`);
+      console.warn('  Run docs/database/07_demo_logins.sql if public.users rows are missing.');
+    }
   }
-  console.log('Done. Run 07_demo_logins.sql if public.users rows are missing.');
+  console.log('Done.');
 }
 
 main().catch((err) => {

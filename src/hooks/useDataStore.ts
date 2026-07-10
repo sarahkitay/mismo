@@ -53,7 +53,8 @@ import {
  isSupabaseAppConfigured,
 } from '@/data/orgDefaults';
 import { getSupabaseClient } from '@/lib/supabaseClient';
-import { findAppUserByEmail, loadOrgDataFromSupabase } from '@/lib/supabase/loadOrgData';
+import { loadOrgDataFromSupabase } from '@/lib/supabase/loadOrgData';
+import { resolveAppSessionFromAuth } from '@/lib/supabase/resolveAppSession';
 import { normalizeDemoEmail, resolveDemoPassword } from '@/data/demoLogins';
 import { mergeCorePrompts, resolveDailyCheckInPrompt, isLockedCorePrompt } from '@/lib/corePrompts';
 import { INDUSTRY_CHECKLIST_SECTIONS } from '@/data/industryChecklist';
@@ -241,27 +242,18 @@ export function useDataStore() {
  let role = claims.role;
 
  if (!appUserId || !orgId || !role) {
- const { data: userRow, error: userErr } = await supabase
- .from('users')
- .select('*')
- .eq('auth_user_id', data.session.user.id)
- .maybeSingle();
- if (userErr || !userRow) {
- const byEmail = await findAppUserByEmail(trimmed);
- if (!byEmail) {
+ const resolved = await resolveAppSessionFromAuth(supabase, data.session.access_token);
+ if (!resolved) {
  return {
  ok: false,
- message: 'Account signed in but no employee profile is linked. Ask HR to provision your user record.',
+ message:
+ 'Account signed in but no employee profile is linked. Ask HR to provision your user record.',
  };
  }
- appUserId = byEmail.id;
- orgId = byEmail.orgId;
- role = byEmail.role;
- } else {
- appUserId = String(userRow.id);
- orgId = String(userRow.org_id);
- role = userRow.role as UserRole;
- }
+ appUserId = resolved.appUserId;
+ orgId = resolved.orgId;
+ role = resolved.role;
+ await supabase.auth.refreshSession();
  }
 
  setSession({ userId: appUserId!, orgId: orgId!, role: role! });
@@ -302,22 +294,11 @@ export function useDataStore() {
  let role = claims.role;
 
  if (!appUserId || !orgId || !role) {
- const { data: userRow } = await supabase
- .from('users')
- .select('*')
- .eq('auth_user_id', authSession.user.id)
- .maybeSingle();
- if (userRow) {
- appUserId = String(userRow.id);
- orgId = String(userRow.org_id);
- role = userRow.role as UserRole;
- } else if (authSession.user.email) {
- const byEmail = await findAppUserByEmail(authSession.user.email);
- if (byEmail) {
- appUserId = byEmail.id;
- orgId = byEmail.orgId;
- role = byEmail.role;
- }
+ const resolved = await resolveAppSessionFromAuth(supabase, authSession.access_token);
+ if (resolved) {
+ appUserId = resolved.appUserId;
+ orgId = resolved.orgId;
+ role = resolved.role;
  }
  }
 

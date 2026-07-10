@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "demo:provision-auth": "node scripts/provision-demo-auth.mjs"
+    "demo:provision-auth": "node scripts/provision-demo-auth.mjs",
+    "demo:bootstrap": "node scripts/demo-bootstrap.mjs"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
