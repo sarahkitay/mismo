@@ -88,6 +88,29 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
   const [editArchiveEnd, setEditArchiveEnd] = useState('');
   const [editStatus, setEditStatus] = useState<UserStatus>('active');
 
+ const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+ const [newFirstName, setNewFirstName] = useState('');
+ const [newLastName, setNewLastName] = useState('');
+ const [newEmail, setNewEmail] = useState('');
+ const [newPhone, setNewPhone] = useState('');
+ const [newEmployeeId, setNewEmployeeId] = useState('');
+ const [newLocation, setNewLocation] = useState('');
+ const [newDepartment, setNewDepartment] = useState('UNASSIGNED');
+ const [newRole, setNewRole] = useState<UserRole>('EMPLOYEE');
+ const [newStatus, setNewStatus] = useState<UserStatus>('active');
+
+ const resetAddForm = () => {
+ setNewFirstName('');
+ setNewLastName('');
+ setNewEmail('');
+ setNewPhone('');
+ setNewEmployeeId('');
+ setNewLocation('');
+ setNewDepartment('UNASSIGNED');
+ setNewRole('EMPLOYEE');
+ setNewStatus('active');
+ };
+
  const [importHeaders, setImportHeaders] = useState<string[]>([]);
  const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
  const [fieldMap, setFieldMap] = useState<Record<string, string>>({
@@ -189,6 +212,43 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  });
  toast.success('Employee record updated.');
  setEditingUserId(null);
+ };
+
+ const handleAddEmployee = () => {
+ const firstName = newFirstName.trim();
+ const lastName = newLastName.trim();
+ const email = newEmail.trim().toLowerCase();
+
+ if (!firstName || !lastName || !email) {
+ toast.error('First name, last name, and email are required.');
+ return;
+ }
+ if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+ toast.error('Enter a valid email address.');
+ return;
+ }
+ if (users.some((u) => u.email.toLowerCase() === email)) {
+ toast.error('An employee with this email already exists.');
+ return;
+ }
+
+ createUsers([
+ {
+ role: newRole,
+ firstName,
+ lastName,
+ email,
+ status: newStatus,
+ phone: newPhone.trim() || undefined,
+ employeeId: newEmployeeId.trim() || undefined,
+ location: newLocation.trim() || undefined,
+ departmentId: newDepartment === 'UNASSIGNED' ? undefined : newDepartment,
+ },
+ ]);
+
+ toast.success(`${firstName} ${lastName} added to the directory.`);
+ resetAddForm();
+ setIsAddDialogOpen(false);
  };
 
  const parseCsv = (csvText: string) => {
@@ -358,11 +418,25 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <div className="employees-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
  <div>
  <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Employees</h1>
- <p className="text-[var(--mismo-text-secondary)] mt-1">Directory, locations, archive dates, and secure bulk onboarding</p>
+ <p className="text-[var(--mismo-text-secondary)] mt-1">
+ Add employees one at a time or use bulk import for CSV onboarding
+ </p>
  </div>
+ <div className="flex flex-wrap items-center gap-2">
+ <Button
+ className="bg-[var(--mismo-blue)] hover:bg-blue-600"
+ onClick={() => {
+ resetAddForm();
+ setIsAddDialogOpen(true);
+ }}
+ >
+ <Icons.add className="h-4 w-4 mr-2" />
+ Add employee
+ </Button>
  <span className="text-sm text-[var(--mismo-text-secondary)]">
  {filteredEmployees.length} shown {importedCount > 0 ? `(+${importedCount} imported)` : ''}
  </span>
+ </div>
  </div>
 
  <div className="flex items-center gap-2 border-b border-[var(--color-border-200)] pb-3">
@@ -533,7 +607,17 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  {activeTab === 'BULK_IMPORT' && (
  <Card className="mismo-card">
  <CardContent className="p-6 space-y-5">
+ <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+ <div>
  <h2 className="mismo-heading text-2xl text-[var(--color-primary-900)]">Bulk Import</h2>
+ <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
+ Upload a CSV to onboard many employees at once. For a single hire, use Add employee on the Directory tab.
+ </p>
+ </div>
+ <Button variant="outline" onClick={() => setActiveTab('DIRECTORY')}>
+ Add one employee
+ </Button>
+ </div>
  <div className="space-y-2">
  <Label>Step 1: Upload CSV</Label>
  <Input type="file" accept=".csv,text/csv" onChange={(e) => {
@@ -671,6 +755,94 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  </CardContent>
  </Card>
  )}
+
+ <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+ setIsAddDialogOpen(open);
+ if (!open) resetAddForm();
+ }}>
+ <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+ <DialogHeader>
+ <DialogTitle>Add employee</DialogTitle>
+ </DialogHeader>
+ <div className="space-y-3">
+ <p className="text-xs text-[var(--color-text-secondary)]">
+ Creates a directory record immediately. Use bulk import for large CSV uploads.
+ </p>
+ <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+ <div className="space-y-1.5">
+ <Label>First name</Label>
+ <Input value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} placeholder="Alex" />
+ </div>
+ <div className="space-y-1.5">
+ <Label>Last name</Label>
+ <Input value={newLastName} onChange={(e) => setNewLastName(e.target.value)} placeholder="Morgan" />
+ </div>
+ </div>
+ <div className="space-y-1.5">
+ <Label>Email</Label>
+ <Input
+ type="email"
+ value={newEmail}
+ onChange={(e) => setNewEmail(e.target.value)}
+ placeholder="alex.morgan@company.com"
+ />
+ </div>
+ <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+ <div className="space-y-1.5">
+ <Label>Employee ID (optional)</Label>
+ <Input value={newEmployeeId} onChange={(e) => setNewEmployeeId(e.target.value)} placeholder="EMP-1003" />
+ </div>
+ <div className="space-y-1.5">
+ <Label>Phone (optional)</Label>
+ <Input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="+1-555-0100" />
+ </div>
+ </div>
+ <div className="space-y-1.5">
+ <Label>Location (optional)</Label>
+ <Input value={newLocation} onChange={(e) => setNewLocation(e.target.value)} placeholder="San Francisco HQ" />
+ </div>
+ <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+ <div className="space-y-1.5">
+ <Label>Role</Label>
+ <Select value={newRole} onValueChange={(v) => setNewRole(v as UserRole)}>
+ <SelectTrigger><SelectValue /></SelectTrigger>
+ <SelectContent>
+ {ASSIGNABLE_ROLES.map((role) => (
+ <SelectItem key={role} value={role}>{roleLabel(role)}</SelectItem>
+ ))}
+ </SelectContent>
+ </Select>
+ </div>
+ <div className="space-y-1.5">
+ <Label>Department</Label>
+ <Select value={newDepartment} onValueChange={setNewDepartment}>
+ <SelectTrigger><SelectValue /></SelectTrigger>
+ <SelectContent>
+ <SelectItem value="UNASSIGNED">Unassigned</SelectItem>
+ {departments.map((dept) => (
+ <SelectItem key={dept.id} value={dept.id}>{dept.name}</SelectItem>
+ ))}
+ </SelectContent>
+ </Select>
+ </div>
+ </div>
+ <div className="space-y-1.5">
+ <Label>Employment status</Label>
+ <Select value={newStatus} onValueChange={(v) => setNewStatus(v as UserStatus)}>
+ <SelectTrigger><SelectValue /></SelectTrigger>
+ <SelectContent>
+ <SelectItem value="active">Active</SelectItem>
+ <SelectItem value="inactive">Inactive</SelectItem>
+ </SelectContent>
+ </Select>
+ </div>
+ <div className="flex justify-end gap-2 pt-2">
+ <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
+ <Button onClick={handleAddEmployee}>Add employee</Button>
+ </div>
+ </div>
+ </DialogContent>
+ </Dialog>
 
  <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUserId(null)}>
  <DialogContent>
