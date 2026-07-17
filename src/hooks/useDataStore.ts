@@ -55,6 +55,18 @@ import {
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { loadOrgDataFromSupabase } from '@/lib/supabase/loadOrgData';
 import { resolveAppSessionFromAuth } from '@/lib/supabase/resolveAppSession';
+import {
+ persistUsers,
+ persistUserUpdate,
+ persistReport,
+ persistPrompt,
+ persistPromptUpdate,
+ persistPromptResponse,
+ persistReportChange,
+ persistInvestigation,
+ persistPolicy,
+ persistPolicyAck,
+} from '@/lib/supabase/writeOrgData';
 import { normalizeDemoEmail, resolveDemoPassword } from '@/data/demoLogins';
 import { mergeCorePrompts, resolveDailyCheckInPrompt, isLockedCorePrompt } from '@/lib/corePrompts';
 import { INDUSTRY_CHECKLIST_SECTIONS } from '@/data/industryChecklist';
@@ -548,12 +560,16 @@ export function useDataStore() {
  };
  
  setResponses(prev => [...prev, newResponse]);
- 
- setDeliveries(prev => prev.map(d => 
- d.id === deliveryId 
- ? { ...d, status: 'COMPLETED', completedAt: now, updatedAt: now }
- : d
- ));
+
+ const completedDelivery: PromptDelivery = {
+ ...delivery,
+ status: 'COMPLETED',
+ completedAt: now,
+ updatedAt: now,
+ };
+ setDeliveries(prev => prev.map(d => (d.id === deliveryId ? completedDelivery : d)));
+
+ void persistPromptResponse(newResponse, completedDelivery);
  
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
@@ -667,6 +683,7 @@ export function useDataStore() {
  },
  ...prev,
  ]);
+ void persistReport(newReport);
  return newReport;
  },
  [prompts, reports, effectiveOrgId, users]
@@ -733,7 +750,9 @@ export function useDataStore() {
  };
  
  setActivities(prev => [newActivity, ...prev]);
- 
+
+ void persistReport(newReport);
+
  return newReport;
  }, [effectiveOrgId, reports, users]);
 
@@ -1030,18 +1049,15 @@ export function useDataStore() {
  
  const now = new Date();
  const oldStatus = report.status;
- 
- setReports(prev => prev.map(r => 
- r.id === reportId 
- ? { 
- ...r, 
- status: newStatus, 
- assignedTo: assignedTo || r.assignedTo,
- updatedAt: now 
- }
- : r
- ));
- 
+
+ const updatedReport: Report = {
+ ...report,
+ status: newStatus,
+ assignedTo: assignedTo || report.assignedTo,
+ updatedAt: now,
+ };
+ setReports(prev => prev.map(r => (r.id === reportId ? updatedReport : r)));
+
  // Add activity event
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
@@ -1065,7 +1081,8 @@ export function useDataStore() {
  updatedAt: now,
  };
  setReportStatusEvents((prev) => [statusEvent, ...prev]);
- }, [reports, currentUser.id]);
+ void persistReportChange(updatedReport, statusEvent);
+ }, [reports, currentUser.id, effectiveOrgId]);
  
  // Assign report
  const assignReport = useCallback((reportId: string, adminId: string) => {
@@ -1073,13 +1090,15 @@ export function useDataStore() {
  if (!report) return;
  
  const now = new Date();
- 
- setReports(prev => prev.map(r => 
- r.id === reportId 
- ? { ...r, assignedTo: adminId, status: 'ASSIGNED', updatedAt: now }
- : r
- ));
- 
+
+ const updatedReport: Report = {
+ ...report,
+ assignedTo: adminId,
+ status: 'ASSIGNED',
+ updatedAt: now,
+ };
+ setReports(prev => prev.map(r => (r.id === reportId ? updatedReport : r)));
+
  // Add activity event
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
@@ -1091,8 +1110,9 @@ export function useDataStore() {
  };
  
  setActivities(prev => [newActivity, ...prev]);
+ let statusEvent: ReportStatusEvent | undefined;
  if (report.status !== 'ASSIGNED') {
- const statusEvent: ReportStatusEvent = {
+ statusEvent = {
  id: `status-event-${Date.now()}`,
  orgId: effectiveOrgId,
  reportId,
@@ -1103,9 +1123,10 @@ export function useDataStore() {
  createdAt: now,
  updatedAt: now,
  };
- setReportStatusEvents((prev) => [statusEvent, ...prev]);
+ setReportStatusEvents((prev) => [statusEvent!, ...prev]);
  }
- }, [reports, currentUser.id]);
+ void persistReportChange(updatedReport, statusEvent);
+ }, [reports, currentUser.id, effectiveOrgId]);
  
  // Create investigation
  const createInvestigation = useCallback((reportId: string, ownerId: string) => {
@@ -1157,17 +1178,17 @@ export function useDataStore() {
  setInvestigations(prev => [...prev, newInvestigation]);
  
  const checklist = (report.responseChecklist ?? []).length > 0 ? report.responseChecklist : createIndustryChecklistForReport();
- setReports(prev => prev.map(r => 
- r.id === reportId 
- ? {
- ...r,
+ const updatedReport: Report = {
+ ...report,
  investigationId: newInvestigation.id,
- referenceNumber: r.referenceNumber ?? refNum,
+ referenceNumber: report.referenceNumber ?? refNum,
  responseChecklist: checklist,
  updatedAt: now,
- }
- : r
- ));
+ };
+ setReports(prev => prev.map(r => (r.id === reportId ? updatedReport : r)));
+
+ void persistInvestigation(newInvestigation);
+ void persistReportChange(updatedReport);
  
  // Add activity event
  const newActivity: ActivityEvent = {
@@ -1966,17 +1987,21 @@ export function useDataStore() {
  };
  
  setActivities(prev => [newActivity, ...prev]);
- 
+
+ void persistPrompt(newPrompt, newDeliveries);
+
  return newPrompt;
- }, [users, currentUser.id]);
+ }, [users, currentUser.id, effectiveOrgId]);
 
  const updatePrompt = useCallback((promptId: string, updates: Partial<Prompt>) => {
+ let persistTarget: Prompt | null = null;
  setPrompts((prev) =>
  prev.map((prompt) => {
  if (prompt.id !== promptId) return prompt;
+ let next: Prompt;
  if (isLockedCorePrompt(prompt)) {
  const { status: _s, includeFinancialQuestion: _f, type: _t, id: _i, ...safe } = updates;
- return {
+ next = {
  ...prompt,
  ...safe,
  status: 'ACTIVE',
@@ -1984,10 +2009,14 @@ export function useDataStore() {
  includeFinancialQuestion: true,
  updatedAt: new Date(),
  };
+ } else {
+ next = { ...prompt, ...updates, updatedAt: new Date() };
  }
- return { ...prompt, ...updates, updatedAt: new Date() };
+ persistTarget = next;
+ return next;
  })
  );
+ if (persistTarget) void persistPromptUpdate(persistTarget);
  }, []);
 
  const createPolicy = useCallback((payload: Omit<Policy, 'id' | 'orgId' | 'createdAt' | 'updatedAt'>) => {
@@ -2000,11 +2029,21 @@ export function useDataStore() {
  updatedAt: now,
  };
  setPolicies((prev) => [policy, ...prev]);
+ void persistPolicy(policy);
  return policy;
- }, []);
+ }, [effectiveOrgId]);
 
  const updatePolicy = useCallback((id: string, updates: Partial<Policy>) => {
- setPolicies((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates, updatedAt: new Date() } : p)));
+ let persistTarget: Policy | null = null;
+ setPolicies((prev) =>
+ prev.map((p) => {
+ if (p.id !== id) return p;
+ const next = { ...p, ...updates, updatedAt: new Date() };
+ persistTarget = next;
+ return next;
+ })
+ );
+ if (persistTarget) void persistPolicy(persistTarget);
  }, []);
 
  const acknowledgePolicy = useCallback(
@@ -2017,33 +2056,35 @@ export function useDataStore() {
  clarificationNote?: string;
  }
  ) => {
+ let persistTarget: PolicyAcknowledgement | null = null;
  setPolicyAcknowledgements((prev) => {
  const existing = prev.find((ack) => ack.policyId === policyId && ack.userId === userId);
  if (existing) {
- return prev.map((ack) =>
- ack.policyId === policyId && ack.userId === userId
- ? {
+ return prev.map((ack) => {
+ if (ack.policyId !== policyId || ack.userId !== userId) return ack;
+ const next: PolicyAcknowledgement = {
  ...ack,
  acknowledgedAt: new Date(),
  outcome: opts?.outcome ?? ack.outcome ?? 'READ_UNDERSTOOD',
  signatureDataUrl: opts?.signatureDataUrl ?? ack.signatureDataUrl,
  clarificationNote: opts?.clarificationNote ?? ack.clarificationNote,
+ };
+ persistTarget = next;
+ return next;
+ });
  }
- : ack
- );
- }
- return [
- ...prev,
- {
+ const created: PolicyAcknowledgement = {
  policyId,
  userId,
  acknowledgedAt: new Date(),
  outcome: opts?.outcome ?? 'READ_UNDERSTOOD',
  signatureDataUrl: opts?.signatureDataUrl,
  clarificationNote: opts?.clarificationNote,
- },
- ];
+ };
+ persistTarget = created;
+ return [...prev, created];
  });
+ if (persistTarget) void persistPolicyAck(persistTarget);
  },
  []
  );
@@ -2252,6 +2293,7 @@ export function useDataStore() {
  'hiredDate',
  'state',
  ];
+ let persistTarget: User | null = null;
  setUsers((prev) => {
  const prevUser = prev.find((u) => u.id === userId);
  if (!prevUser) return prev;
@@ -2282,21 +2324,20 @@ export function useDataStore() {
  createdAt: now,
  });
  }
+ persistTarget = next;
  return prev.map((user) => (user.id === userId ? next : user));
  });
  if (auditEntries.length) {
  setAuditLogs((prev) => [...auditEntries, ...prev]);
  }
- }, [currentUser.id]);
+ if (persistTarget) void persistUserUpdate(persistTarget);
+ }, [currentUser.id, effectiveOrgId]);
 
  const createUsers = useCallback((newUsers: Array<Omit<User, 'id' | 'orgId' | 'createdAt' | 'updatedAt'> & { id?: string }>) => {
  const now = new Date();
  const slug = (s: string) => s.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'user';
- setUsers((prev) => {
- const existingIds = new Set(prev.map((u) => u.id));
- return [
- ...prev,
- ...newUsers.map((user, index) => {
+ const existingIds = new Set(users.map((u) => u.id));
+ const created: User[] = newUsers.map((user, index) => {
  let id: string;
  if (user.id && String(user.id).trim()) {
  id = String(user.id).trim();
@@ -2319,10 +2360,11 @@ export function useDataStore() {
  createdAt: now,
  updatedAt: now,
  };
- }),
- ];
  });
- }, []);
+ setUsers((prev) => [...prev, ...created]);
+ void persistUsers(created);
+ return created;
+ }, [users, effectiveOrgId]);
  
  // Get filtered reports (org-scoped)
  const getFilteredReports = useCallback((filters: {

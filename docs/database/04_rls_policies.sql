@@ -13,28 +13,48 @@
 -- =============================================================================
 
 -- Helper functions
+-- These resolve tenant context from JWT custom claims when present (set by the
+-- optional access-token hook), and otherwise fall back to looking up the signed
+-- in user in public.users via auth.uid(). SECURITY DEFINER lets the fallback
+-- lookup bypass RLS so the app works whether or not the hook is enabled and
+-- avoids recursion when evaluated inside a users policy. See 11_rls_claims_fallback.sql.
 CREATE OR REPLACE FUNCTION public.current_org_id()
 RETURNS TEXT
 LANGUAGE sql
 STABLE
+SECURITY DEFINER
+SET search_path = public
 AS $$
-  SELECT NULLIF(auth.jwt() ->> 'org_id', '');
+  SELECT COALESCE(
+    NULLIF(auth.jwt() ->> 'org_id', ''),
+    (SELECT u.org_id FROM public.users u WHERE u.auth_user_id = auth.uid() LIMIT 1)
+  );
 $$;
 
 CREATE OR REPLACE FUNCTION public.current_app_user_id()
 RETURNS TEXT
 LANGUAGE sql
 STABLE
+SECURITY DEFINER
+SET search_path = public
 AS $$
-  SELECT NULLIF(auth.jwt() ->> 'app_user_id', '');
+  SELECT COALESCE(
+    NULLIF(auth.jwt() ->> 'app_user_id', ''),
+    (SELECT u.id FROM public.users u WHERE u.auth_user_id = auth.uid() LIMIT 1)
+  );
 $$;
 
 CREATE OR REPLACE FUNCTION public.current_user_role()
 RETURNS TEXT
 LANGUAGE sql
 STABLE
+SECURITY DEFINER
+SET search_path = public
 AS $$
-  SELECT NULLIF(auth.jwt() ->> 'user_role', '');
+  SELECT COALESCE(
+    NULLIF(auth.jwt() ->> 'user_role', ''),
+    (SELECT u.role::text FROM public.users u WHERE u.auth_user_id = auth.uid() LIMIT 1)
+  );
 $$;
 
 CREATE OR REPLACE FUNCTION public.is_admin_or_hr()
@@ -120,11 +140,43 @@ CREATE POLICY users_org_member ON users
     AND public.is_admin_or_hr()
   );
 
--- Reports: employees see own; HR/admin see org register
+-- Reports: employees see own; HR/admin see org register.
+-- Split by command so employees can file anonymous reports (null creator)
+-- without being able to read the org-wide register.
 ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS reports_access ON reports;
-CREATE POLICY reports_access ON reports
-  FOR ALL TO authenticated
+DROP POLICY IF EXISTS reports_select ON reports;
+DROP POLICY IF EXISTS reports_insert ON reports;
+DROP POLICY IF EXISTS reports_update ON reports;
+DROP POLICY IF EXISTS reports_delete ON reports;
+
+-- Read: HR/admin see the whole org; employees see only cases they filed.
+CREATE POLICY reports_select ON reports
+  FOR SELECT TO authenticated
+  USING (
+    org_id = public.current_org_id()
+    AND (
+      public.is_admin_or_hr()
+      OR created_by_user_id = public.current_app_user_id()
+    )
+  );
+
+-- Insert: HR/admin unrestricted; any org member may file their own case or an
+-- anonymous case (created_by_user_id must be null when anonymous).
+CREATE POLICY reports_insert ON reports
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    org_id = public.current_org_id()
+    AND (
+      public.is_admin_or_hr()
+      OR created_by_user_id = public.current_app_user_id()
+      OR (is_anonymous = true AND created_by_user_id IS NULL)
+    )
+  );
+
+-- Update: HR/admin, or the creator of a non-anonymous case they filed.
+CREATE POLICY reports_update ON reports
+  FOR UPDATE TO authenticated
   USING (
     org_id = public.current_org_id()
     AND (
@@ -139,6 +191,11 @@ CREATE POLICY reports_access ON reports
       OR created_by_user_id = public.current_app_user_id()
     )
   );
+
+-- Delete: HR/admin only.
+CREATE POLICY reports_delete ON reports
+  FOR DELETE TO authenticated
+  USING (org_id = public.current_org_id() AND public.is_admin_or_hr());
 
 -- HR law corpus is platform-wide read; writes service-role only
 ALTER TABLE hr_law_jurisdictions ENABLE ROW LEVEL SECURITY;
