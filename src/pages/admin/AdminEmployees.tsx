@@ -87,6 +87,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  const [editArchiveStart, setEditArchiveStart] = useState('');
   const [editArchiveEnd, setEditArchiveEnd] = useState('');
   const [editStatus, setEditStatus] = useState<UserStatus>('active');
+  const [editError, setEditError] = useState<string | null>(null);
 
  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
  const [newFirstName, setNewFirstName] = useState('');
@@ -98,6 +99,11 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  const [newDepartment, setNewDepartment] = useState('UNASSIGNED');
  const [newRole, setNewRole] = useState<UserRole>('EMPLOYEE');
  const [newStatus, setNewStatus] = useState<UserStatus>('active');
+ const [addErrors, setAddErrors] = useState<{ firstName?: string; lastName?: string; email?: string }>({});
+
+ const clearAddError = (field: keyof typeof addErrors) => {
+ setAddErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
+ };
 
  const resetAddForm = () => {
  setNewFirstName('');
@@ -109,6 +115,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  setNewDepartment('UNASSIGNED');
  setNewRole('EMPLOYEE');
  setNewStatus('active');
+ setAddErrors({});
  };
 
  const [importHeaders, setImportHeaders] = useState<string[]>([]);
@@ -196,10 +203,16 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
     setEditArchiveStart(toDateInput(user.archiveStartDate));
     setEditArchiveEnd(toDateInput(user.archiveEndDate));
     setEditStatus(user.status);
+    setEditError(null);
   };
 
  const saveUserEdits = () => {
  if (!editingUser) return;
+ if (editArchiveStart && editArchiveEnd && new Date(editArchiveEnd) < new Date(editArchiveStart)) {
+ setEditError('Archive end date cannot be before the start date.');
+ return;
+ }
+ setEditError(null);
     updateUser(editingUser.id, {
       role: editRole,
       status: editStatus,
@@ -219,18 +232,22 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  const lastName = newLastName.trim();
  const email = newEmail.trim().toLowerCase();
 
- if (!firstName || !lastName || !email) {
- toast.error('First name, last name, and email are required.');
+ const errors: typeof addErrors = {};
+ if (!firstName) errors.firstName = 'First name is required.';
+ if (!lastName) errors.lastName = 'Last name is required.';
+ if (!email) {
+ errors.email = 'Email is required.';
+ } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+ errors.email = 'Enter a valid email address.';
+ } else if (users.some((u) => u.email.toLowerCase() === email)) {
+ errors.email = 'An employee with this email already exists.';
+ }
+
+ if (errors.firstName || errors.lastName || errors.email) {
+ setAddErrors(errors);
  return;
  }
- if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
- toast.error('Enter a valid email address.');
- return;
- }
- if (users.some((u) => u.email.toLowerCase() === email)) {
- toast.error('An employee with this email already exists.');
- return;
- }
+ setAddErrors({});
 
  createUsers([
  {
@@ -771,11 +788,29 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
  <div className="space-y-1.5">
  <Label>First name</Label>
- <Input value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} placeholder="Alex" />
+ <Input
+ value={newFirstName}
+ onChange={(e) => { setNewFirstName(e.target.value); clearAddError('firstName'); }}
+ placeholder="Alex"
+ aria-invalid={!!addErrors.firstName}
+ className={addErrors.firstName ? 'border-[var(--color-alert-600)] focus-visible:ring-[var(--color-alert-600)]' : undefined}
+ />
+ {addErrors.firstName && (
+ <p className="text-xs text-[var(--color-alert-600)]">{addErrors.firstName}</p>
+ )}
  </div>
  <div className="space-y-1.5">
  <Label>Last name</Label>
- <Input value={newLastName} onChange={(e) => setNewLastName(e.target.value)} placeholder="Morgan" />
+ <Input
+ value={newLastName}
+ onChange={(e) => { setNewLastName(e.target.value); clearAddError('lastName'); }}
+ placeholder="Morgan"
+ aria-invalid={!!addErrors.lastName}
+ className={addErrors.lastName ? 'border-[var(--color-alert-600)] focus-visible:ring-[var(--color-alert-600)]' : undefined}
+ />
+ {addErrors.lastName && (
+ <p className="text-xs text-[var(--color-alert-600)]">{addErrors.lastName}</p>
+ )}
  </div>
  </div>
  <div className="space-y-1.5">
@@ -783,9 +818,14 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <Input
  type="email"
  value={newEmail}
- onChange={(e) => setNewEmail(e.target.value)}
+ onChange={(e) => { setNewEmail(e.target.value); clearAddError('email'); }}
  placeholder="alex.morgan@company.com"
+ aria-invalid={!!addErrors.email}
+ className={addErrors.email ? 'border-[var(--color-alert-600)] focus-visible:ring-[var(--color-alert-600)]' : undefined}
  />
+ {addErrors.email && (
+ <p className="text-xs text-[var(--color-alert-600)]">{addErrors.email}</p>
+ )}
  </div>
  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
  <div className="space-y-1.5">
@@ -837,14 +877,14 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  </Select>
  </div>
  <div className="flex justify-end gap-2 pt-2">
- <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
- <Button onClick={handleAddEmployee}>Add employee</Button>
+ <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancel</Button>
+ <Button type="button" onClick={handleAddEmployee}>Add employee</Button>
  </div>
  </div>
  </DialogContent>
  </Dialog>
 
- <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUserId(null)}>
+ <Dialog open={!!editingUser} onOpenChange={(open) => { if (!open) { setEditingUserId(null); setEditError(null); } }}>
  <DialogContent>
  <DialogHeader>
  <DialogTitle>Edit employee</DialogTitle>
@@ -865,13 +905,22 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
  <div className="space-y-1.5">
  <Label>Archive start</Label>
- <Input type="date" value={editArchiveStart} onChange={(e) => setEditArchiveStart(e.target.value)} />
+ <Input type="date" value={editArchiveStart} onChange={(e) => { setEditArchiveStart(e.target.value); setEditError(null); }} />
  </div>
  <div className="space-y-1.5">
  <Label>Archive end</Label>
- <Input type="date" value={editArchiveEnd} onChange={(e) => setEditArchiveEnd(e.target.value)} />
+ <Input
+ type="date"
+ value={editArchiveEnd}
+ onChange={(e) => { setEditArchiveEnd(e.target.value); setEditError(null); }}
+ aria-invalid={!!editError}
+ className={editError ? 'border-[var(--color-alert-600)] focus-visible:ring-[var(--color-alert-600)]' : undefined}
+ />
  </div>
  </div>
+ {editError && (
+ <p className="text-xs text-[var(--color-alert-600)]">{editError}</p>
+ )}
           <div className="space-y-1.5">
             <Label>Employment status</Label>
             <Select value={editStatus} onValueChange={(v) => setEditStatus(v as UserStatus)}>
@@ -912,7 +961,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
  </div>
  <div className="flex justify-end">
- <Button onClick={saveUserEdits}>Save Changes</Button>
+ <Button type="button" onClick={saveUserEdits}>Save Changes</Button>
  </div>
  </div>
  </DialogContent>
