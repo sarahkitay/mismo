@@ -23,6 +23,7 @@ import { formatRelativeTime, formatPercent, formatDate, getInitials } from '@/li
 import { compareByLastFirstName } from '@/lib/sortUsers';
 import type { User, UserRole, UserStatus } from '@/types';
 import { ASSIGNABLE_ROLES, roleLabel } from '@/lib/roleLabels';
+import { inviteEmployeeToMismo } from '@/lib/api/employees';
 import { toast } from 'sonner';
 
 interface AdminEmployeesProps {
@@ -99,7 +100,41 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  const [newDepartment, setNewDepartment] = useState('UNASSIGNED');
  const [newRole, setNewRole] = useState<UserRole>('EMPLOYEE');
  const [newStatus, setNewStatus] = useState<UserStatus>('active');
+ const todayInput = () => new Date().toISOString().slice(0, 10);
+ const [newHiredDate, setNewHiredDate] = useState(todayInput());
  const [addErrors, setAddErrors] = useState<{ firstName?: string; lastName?: string; email?: string }>({});
+ const [inviteLink, setInviteLink] = useState<string | null>(null);
+ const [inviteLinkName, setInviteLinkName] = useState('');
+ const [invitingUserId, setInvitingUserId] = useState<string | null>(null);
+
+ const handleGenerateInviteLink = (employee: User) => {
+ setInvitingUserId(employee.id);
+ void inviteEmployeeToMismo(employee.email)
+ .then((result) => {
+ if (result.actionLink) {
+ setInviteLinkName(`${employee.firstName} ${employee.lastName}`);
+ setInviteLink(result.actionLink);
+ } else {
+ toast.info('No shareable link was returned.');
+ }
+ })
+ .catch((err) => {
+ toast.error(
+ `Could not generate an invite link. ${err instanceof Error ? err.message : ''}`.trim()
+ );
+ })
+ .finally(() => setInvitingUserId(null));
+ };
+
+ const copyInviteLink = async () => {
+ if (!inviteLink) return;
+ try {
+ await navigator.clipboard.writeText(inviteLink);
+ toast.success('Invite link copied to clipboard.');
+ } catch {
+ toast.error('Could not copy automatically. Select the link and copy it manually.');
+ }
+ };
 
  const clearAddError = (field: keyof typeof addErrors) => {
  setAddErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
@@ -115,6 +150,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  setNewDepartment('UNASSIGNED');
  setNewRole('EMPLOYEE');
  setNewStatus('active');
+ setNewHiredDate(todayInput());
  setAddErrors({});
  };
 
@@ -260,12 +296,32 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  employeeId: newEmployeeId.trim() || undefined,
  location: newLocation.trim() || undefined,
  departmentId: newDepartment === 'UNASSIGNED' ? undefined : newDepartment,
+ hiredDate: newHiredDate ? new Date(newHiredDate) : new Date(),
  },
  ]);
 
  toast.success(`${firstName} ${lastName} added to the directory.`);
  resetAddForm();
  setIsAddDialogOpen(false);
+
+ // Fire off the login invite (email + shareable link) without blocking the add.
+ void inviteEmployeeToMismo(email)
+ .then((result) => {
+ if (result.actionLink) {
+ setInviteLinkName(`${firstName} ${lastName}`);
+ setInviteLink(result.actionLink);
+ }
+ if (result.status === 'already_registered') {
+ toast.info(`${firstName} ${lastName} already has a login.`);
+ } else {
+ toast.success(`Invite email sent to ${email}.`);
+ }
+ })
+ .catch((err) => {
+ toast.error(
+ `Employee added, but the invite could not be generated. ${err instanceof Error ? err.message : ''}`.trim()
+ );
+ });
  };
 
  const parseCsv = (csvText: string) => {
@@ -555,16 +611,19 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  className={`employee-card mismo-card relative ${reportedIssueViaPrompt ? 'border-[var(--color-alert-600)]' : ''}`}
  >
  <CardContent className="p-5">
+ <div className="absolute top-3 right-3 flex items-center gap-1.5">
  {reportedIssueViaPrompt && (
- <div className="absolute top-3 right-3">
  <Badge className="status-chip status-chip--alert">At Risk</Badge>
- </div>
  )}
+ <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${employee.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>
+ {employee.status === 'active' ? 'Active' : 'Inactive'}
+ </span>
+ </div>
  <div className="flex items-start gap-4">
  <div className="w-12 h-12 rounded-full bg-[var(--mismo-blue-light)] flex items-center justify-center">
  <span className="text-lg font-semibold text-[var(--mismo-blue)]">{getInitials(employee.firstName, employee.lastName)}</span>
  </div>
- <div className="flex-1 min-w-0">
+ <div className="flex-1 min-w-0 pr-16">
  <div className="flex items-center gap-2">
  <h3 className="font-semibold text-[var(--mismo-text)] truncate">{employee.firstName} {employee.lastName}</h3>
  </div>
@@ -572,9 +631,6 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <p className="text-sm text-[var(--mismo-text-secondary)]">{getDepartmentName(employee.departmentId)}</p>
  <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">
  Role: {roleLabel(employee.role)}
- <span className={`ml-2 px-1.5 py-0.5 rounded ${employee.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>
- {employee.status === 'active' ? 'Active' : 'Inactive'}
- </span>
  </p>
  </div>
  </div>
@@ -611,6 +667,14 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  </Button>
                     <Button variant="outline" size="sm" onClick={() => openEditUser(employee.id)}>
                       Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleGenerateInviteLink(employee)}
+                      disabled={invitingUserId === employee.id}
+                    >
+                      {invitingUserId === employee.id ? 'Generating…' : 'Invite link'}
                     </Button>
                   </div>
  </CardContent>
@@ -837,9 +901,16 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <Input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="+1-555-0100" />
  </div>
  </div>
+ <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
  <div className="space-y-1.5">
  <Label>Location (optional)</Label>
  <Input value={newLocation} onChange={(e) => setNewLocation(e.target.value)} placeholder="San Francisco HQ" />
+ </div>
+ <div className="space-y-1.5">
+ <Label>Date started</Label>
+ <Input type="date" value={newHiredDate} onChange={(e) => setNewHiredDate(e.target.value)} />
+ <p className="text-xs text-[var(--color-text-secondary)]">Defaults to today if left blank.</p>
+ </div>
  </div>
  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
  <div className="space-y-1.5">
@@ -963,6 +1034,32 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <div className="flex justify-end">
  <Button type="button" onClick={saveUserEdits}>Save Changes</Button>
  </div>
+ </div>
+ </DialogContent>
+ </Dialog>
+
+ <Dialog open={!!inviteLink} onOpenChange={(open) => { if (!open) setInviteLink(null); }}>
+ <DialogContent>
+ <DialogHeader>
+ <DialogTitle>Invite link for {inviteLinkName}</DialogTitle>
+ </DialogHeader>
+ <div className="space-y-3">
+ <p className="text-sm text-[var(--color-text-secondary)]">
+ Share this link so they can set up their Mismo login. If email delivery is configured, an
+ invite email was also sent automatically.
+ </p>
+ <div className="flex gap-2">
+ <Input
+ readOnly
+ value={inviteLink ?? ''}
+ onFocus={(e) => e.currentTarget.select()}
+ className="font-mono text-xs"
+ />
+ <Button type="button" onClick={copyInviteLink}>Copy</Button>
+ </div>
+ <p className="text-xs text-[var(--color-text-secondary)]">
+ This link is single use and expires. If it stops working, resend the invite to generate a new one.
+ </p>
  </div>
  </DialogContent>
  </Dialog>

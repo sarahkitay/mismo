@@ -4,6 +4,7 @@ import { isOpenAiConfigured } from '../_shared/openai.ts';
 import { computeHrNextTasks } from '../_shared/hr-next-tasks.ts';
 import { listHrLawUpdates, listHrLawsForState, syncStateLawsToDb } from '../_shared/hr-laws.ts';
 import { runOutreachCoach } from '../_shared/outreach-coach.ts';
+import { inviteEmployee } from '../_shared/employees.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -22,6 +23,16 @@ Deno.serve(async (req) => {
         database: isSupabaseConfigured(),
         openai: isOpenAiConfigured(),
       });
+    }
+
+    if (path === '/employees/invite' && req.method === 'POST') {
+      const body = (await req.json()) as { email: string; redirectTo?: string };
+      const result = await inviteEmployee({
+        email: body.email,
+        redirectTo: body.redirectTo,
+        authHeader: req.headers.get('Authorization'),
+      });
+      return jsonResponse(200, result);
     }
 
     if (path === '/ai/outreach/coach' && req.method === 'POST') {
@@ -73,6 +84,16 @@ Deno.serve(async (req) => {
     return jsonResponse(404, { error: 'Not found' });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error';
+    const authCodes: Record<string, { status: number; error: string }> = {
+      AUTH_REQUIRED: { status: 401, error: 'Sign in to perform this action.' },
+      AUTH_INVALID: { status: 401, error: 'Your session has expired. Sign in again.' },
+      AUTH_NO_PROFILE: { status: 403, error: 'No employee profile is linked to your account.' },
+      FORBIDDEN: { status: 403, error: 'Only HR and administrators can invite employees.' },
+    };
+    if (authCodes[message]) {
+      const mapped = authCodes[message];
+      return jsonResponse(mapped.status, { error: mapped.error });
+    }
     const status = message.includes('OPENAI') || message.includes('quota') ? 503 : 400;
     return jsonResponse(status, { error: message });
   }
