@@ -557,7 +557,7 @@ export function useDataStore() {
  };
  setDeliveries((prev) => (prev.some((d) => d.id === deliveryId) ? prev : [...prev, newDelivery]));
  lastDailyDeliveryDateRef.current = dayUserKey;
- void persistPromptDelivery(newDelivery);
+ void persistPromptDelivery(newDelivery, firstPrompt);
  }, [session, deliveries, prompts, responses, dataLoading]);
 
  // Org-scoped data when session exists (each company sees only their data)
