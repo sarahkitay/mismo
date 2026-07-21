@@ -78,7 +78,8 @@ function promptRow(prompt: Prompt): Record<string, unknown> {
     status: prompt.status,
     route_to_payroll: Boolean(prompt.routeToPayroll),
     include_financial_question: Boolean(prompt.includeFinancialQuestion),
-    created_by: prompt.createdBy || null,
+    created_by:
+      prompt.createdBy && prompt.createdBy !== 'system' ? prompt.createdBy : null,
     updated_at: iso(prompt.updatedAt) ?? new Date().toISOString(),
   };
 }
@@ -149,11 +150,24 @@ export async function persistReport(report: Report): Promise<void> {
   }
 }
 
-/** Persist a single prompt delivery (e.g. daily check-in). */
-export async function persistPromptDelivery(delivery: PromptDelivery): Promise<void> {
+/** Persist a single prompt delivery (e.g. daily check-in).
+ * Pass `prompt` when the delivery may reference a core prompt that is not yet in the DB. */
+export async function persistPromptDelivery(
+  delivery: PromptDelivery,
+  prompt?: Prompt
+): Promise<void> {
   if (!reportPersistEnabled()) return;
   try {
     const supabase = getSupabaseClient();
+    if (prompt) {
+      const { error: promptErr } = await supabase
+        .from('prompts')
+        .upsert(promptRow(prompt), { onConflict: 'id' });
+      if (promptErr) {
+        notify('prompt', promptErr);
+        return;
+      }
+    }
     const { error } = await supabase
       .from('prompt_deliveries')
       .upsert(deliveryRow(delivery), { onConflict: 'id' });
