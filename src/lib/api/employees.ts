@@ -26,13 +26,18 @@ export async function inviteEmployeeToMismo(email: string): Promise<InviteEmploy
   const token = data.session?.access_token;
   if (!token) throw new Error('Sign in again to send invites.');
 
+  // Prefer an explicit public app URL so shared links never point at a local
+  // dev origin. Falls back to the current origin when not configured.
+  const publicAppUrl = (import.meta.env.VITE_PUBLIC_APP_URL as string | undefined)?.trim();
+  const redirectTo = publicAppUrl ? publicAppUrl.replace(/\/$/, '') : window.location.origin;
+
   const res = await fetch(`${apiBase.replace(/\/$/, '')}/employees/invite`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ email, redirectTo: window.location.origin }),
+    body: JSON.stringify({ email, redirectTo }),
   });
 
   if (!res.ok) {
