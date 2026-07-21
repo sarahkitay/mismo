@@ -24,6 +24,7 @@ import { compareByLastFirstName } from '@/lib/sortUsers';
 import type { User, UserRole, UserStatus } from '@/types';
 import { ASSIGNABLE_ROLES, roleLabel } from '@/lib/roleLabels';
 import { inviteEmployeeToMismo } from '@/lib/api/employees';
+import { sanitizeInfraError } from '@/lib/infraMessaging';
 import { toast } from 'sonner';
 
 interface AdminEmployeesProps {
@@ -54,8 +55,36 @@ function displayEmployeeId(user: User): string {
  return user.employeeId?.trim() || '-';
 }
 
+const CUSTOM_ROLE_PREFIX = 'custom::';
+
+function roleSelectValue(role: UserRole, jobTitle?: string) {
+  return jobTitle?.trim() ? `${CUSTOM_ROLE_PREFIX}${jobTitle.trim()}` : role;
+}
+
+function parseRoleSelect(value: string): { role: UserRole; jobTitle?: string } {
+  if (value.startsWith(CUSTOM_ROLE_PREFIX)) {
+    return { role: 'EMPLOYEE', jobTitle: value.slice(CUSTOM_ROLE_PREFIX.length) };
+  }
+  return { role: value as UserRole };
+}
+
+function displayRole(user: User): string {
+  return user.jobTitle?.trim() || roleLabel(user.role);
+}
+
 export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminEmployeesProps) {
-  const { users, responses, atRiskEmployees, orgSettings, getEmployeeEngagement, createUsers, updateUser, departments } = dataStore;
+  const {
+    users,
+    responses,
+    atRiskEmployees,
+    orgSettings,
+    getEmployeeEngagement,
+    createUsers,
+    updateUser,
+    departments,
+    createDepartment,
+    addCustomRole,
+  } = dataStore;
 
  /** Prompt "I have an issue" / HAS_ISSUE: show corner badge; not for no-response / low-engagement alone */
  const userIdsWithReportedIssue = useMemo(() => {
@@ -81,6 +110,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  const [editingUserId, setEditingUserId] = useState<string | null>(null);
  const editingUser = directoryUsers.find((u) => u.id === editingUserId) ?? null;
  const [editRole, setEditRole] = useState<UserRole>('EMPLOYEE');
+ const [editJobTitle, setEditJobTitle] = useState<string | undefined>(undefined);
  const [editDepartment, setEditDepartment] = useState('UNASSIGNED');
  const [editPhone, setEditPhone] = useState('');
  const [editEmployeeId, setEditEmployeeId] = useState('');
@@ -99,6 +129,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  const [newLocation, setNewLocation] = useState('');
  const [newDepartment, setNewDepartment] = useState('UNASSIGNED');
  const [newRole, setNewRole] = useState<UserRole>('EMPLOYEE');
+ const [newJobTitle, setNewJobTitle] = useState<string | undefined>(undefined);
  const [newStatus, setNewStatus] = useState<UserStatus>('active');
  const todayInput = () => new Date().toISOString().slice(0, 10);
  const [newHiredDate, setNewHiredDate] = useState(todayInput());
@@ -106,6 +137,58 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  const [inviteLink, setInviteLink] = useState<string | null>(null);
  const [inviteLinkName, setInviteLinkName] = useState('');
  const [invitingUserId, setInvitingUserId] = useState<string | null>(null);
+
+ /** Quick-add dialogs for Role / Department on employee forms */
+ const [quickAddTarget, setQuickAddTarget] = useState<'add' | 'edit' | null>(null);
+ const [quickAddKind, setQuickAddKind] = useState<'role' | 'department' | null>(null);
+ const [quickAddName, setQuickAddName] = useState('');
+ const [quickAddError, setQuickAddError] = useState<string | null>(null);
+
+ const customRoles = orgSettings.customRoles ?? [];
+
+ const openQuickAdd = (kind: 'role' | 'department', target: 'add' | 'edit') => {
+   setQuickAddKind(kind);
+   setQuickAddTarget(target);
+   setQuickAddName('');
+   setQuickAddError(null);
+ };
+
+ const closeQuickAdd = () => {
+   setQuickAddKind(null);
+   setQuickAddTarget(null);
+   setQuickAddName('');
+   setQuickAddError(null);
+ };
+
+ const submitQuickAdd = () => {
+   if (!quickAddKind || !quickAddTarget) return;
+   if (quickAddKind === 'department') {
+     const result = createDepartment(quickAddName);
+     if ('error' in result) {
+       setQuickAddError(result.error);
+       return;
+     }
+     if (quickAddTarget === 'add') setNewDepartment(result.id);
+     else setEditDepartment(result.id);
+     toast.success(`Department "${result.name}" added.`);
+     closeQuickAdd();
+     return;
+   }
+   const result = addCustomRole(quickAddName);
+   if (typeof result !== 'string') {
+     setQuickAddError(result.error);
+     return;
+   }
+   if (quickAddTarget === 'add') {
+     setNewRole('EMPLOYEE');
+     setNewJobTitle(result);
+   } else {
+     setEditRole('EMPLOYEE');
+     setEditJobTitle(result);
+   }
+   toast.success(`Role "${result}" added.`);
+   closeQuickAdd();
+ };
 
  const handleGenerateInviteLink = (employee: User) => {
  setInvitingUserId(employee.id);
@@ -120,7 +203,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  })
  .catch((err) => {
  toast.error(
- `Could not generate an invite link. ${err instanceof Error ? err.message : ''}`.trim()
+ `Could not generate an invite link. ${sanitizeInfraError(err instanceof Error ? err.message : '')}`.trim()
  );
  })
  .finally(() => setInvitingUserId(null));
@@ -149,6 +232,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  setNewLocation('');
  setNewDepartment('UNASSIGNED');
  setNewRole('EMPLOYEE');
+ setNewJobTitle(undefined);
  setNewStatus('active');
  setNewHiredDate(todayInput());
  setAddErrors({});
@@ -232,6 +316,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  if (!user) return;
  setEditingUserId(user.id);
  setEditRole(user.role ?? 'EMPLOYEE');
+ setEditJobTitle(user.jobTitle);
  setEditDepartment(user.departmentId ?? 'UNASSIGNED');
  setEditPhone(user.phone ?? '');
  setEditEmployeeId(user.employeeId ?? '');
@@ -251,6 +336,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  setEditError(null);
     updateUser(editingUser.id, {
       role: editRole,
+      jobTitle: editJobTitle,
       status: editStatus,
       departmentId: editDepartment === 'UNASSIGNED' ? undefined : editDepartment,
  phone: editPhone || undefined,
@@ -288,6 +374,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  createUsers([
  {
  role: newRole,
+ jobTitle: newJobTitle,
  firstName,
  lastName,
  email,
@@ -319,7 +406,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  })
  .catch((err) => {
  toast.error(
- `Employee added, but the invite could not be generated. ${err instanceof Error ? err.message : ''}`.trim()
+ `Employee added, but the invite could not be generated. ${sanitizeInfraError(err instanceof Error ? err.message : '')}`.trim()
  );
  });
  };
@@ -630,7 +717,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <p className="text-sm text-[var(--mismo-text-secondary)] truncate">{employee.email}</p>
  <p className="text-sm text-[var(--mismo-text-secondary)]">{getDepartmentName(employee.departmentId)}</p>
  <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">
- Role: {roleLabel(employee.role)}
+ Role: {displayRole(employee)}
  </p>
  </div>
  </div>
@@ -914,18 +1001,57 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  </div>
  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
  <div className="space-y-1.5">
+ <div className="flex items-center justify-between gap-2">
  <Label>Role</Label>
- <Select value={newRole} onValueChange={(v) => setNewRole(v as UserRole)}>
+ <Button
+ type="button"
+ variant="outline"
+ size="sm"
+ className="h-7 px-2 text-xs"
+ onClick={() => openQuickAdd('role', 'add')}
+ >
+ <Icons.add className="size-3.5" />
+ Add role
+ </Button>
+ </div>
+ <Select
+ value={roleSelectValue(newRole, newJobTitle)}
+ onValueChange={(v) => {
+ const parsed = parseRoleSelect(v);
+ setNewRole(parsed.role);
+ setNewJobTitle(parsed.jobTitle);
+ }}
+ >
  <SelectTrigger><SelectValue /></SelectTrigger>
  <SelectContent>
  {ASSIGNABLE_ROLES.map((role) => (
  <SelectItem key={role} value={role}>{roleLabel(role)}</SelectItem>
  ))}
+ {customRoles.map((title) => (
+ <SelectItem key={`custom-${title}`} value={`${CUSTOM_ROLE_PREFIX}${title}`}>
+ {title}
+ </SelectItem>
+ ))}
+ {newJobTitle && !customRoles.includes(newJobTitle) && (
+ <SelectItem value={`${CUSTOM_ROLE_PREFIX}${newJobTitle}`}>{newJobTitle}</SelectItem>
+ )}
  </SelectContent>
  </Select>
  </div>
  <div className="space-y-1.5">
+ <div className="flex items-center justify-between gap-2">
  <Label>Department</Label>
+ <Button
+ type="button"
+ variant="outline"
+ size="sm"
+ className="h-7 px-2 text-xs"
+ onClick={() => openQuickAdd('department', 'add')}
+ >
+ <Icons.add className="size-3.5" />
+ Add department
+ </Button>
+ </div>
  <Select value={newDepartment} onValueChange={setNewDepartment}>
  <SelectTrigger><SelectValue /></SelectTrigger>
  <SelectContent>
@@ -1003,8 +1129,27 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Role</Label>
- <Select value={editRole} onValueChange={(v) => setEditRole(v as UserRole)}>
+            <div className="flex items-center justify-between gap-2">
+              <Label>Role</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => openQuickAdd('role', 'edit')}
+              >
+                <Icons.add className="size-3.5" />
+                Add role
+              </Button>
+            </div>
+ <Select
+ value={roleSelectValue(editRole, editJobTitle)}
+ onValueChange={(v) => {
+ const parsed = parseRoleSelect(v);
+ setEditRole(parsed.role);
+ setEditJobTitle(parsed.jobTitle);
+ }}
+ >
  <SelectTrigger><SelectValue /></SelectTrigger>
  <SelectContent>
  {ASSIGNABLE_ROLES.map((role) => (
@@ -1012,11 +1157,31 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  {roleLabel(role)}
  </SelectItem>
  ))}
+ {customRoles.map((title) => (
+ <SelectItem key={`edit-custom-${title}`} value={`${CUSTOM_ROLE_PREFIX}${title}`}>
+ {title}
+ </SelectItem>
+ ))}
+ {editJobTitle && !customRoles.includes(editJobTitle) && (
+ <SelectItem value={`${CUSTOM_ROLE_PREFIX}${editJobTitle}`}>{editJobTitle}</SelectItem>
+ )}
  </SelectContent>
  </Select>
  </div>
  <div className="space-y-1.5">
+ <div className="flex items-center justify-between gap-2">
  <Label>Department</Label>
+ <Button
+ type="button"
+ variant="outline"
+ size="sm"
+ className="h-7 px-2 text-xs"
+ onClick={() => openQuickAdd('department', 'edit')}
+ >
+ <Icons.add className="size-3.5" />
+ Add department
+ </Button>
+ </div>
  <Select value={editDepartment} onValueChange={setEditDepartment}>
  <SelectTrigger><SelectValue /></SelectTrigger>
  <SelectContent>
@@ -1060,6 +1225,41 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <p className="text-xs text-[var(--color-text-secondary)]">
  This link is single use and expires. If it stops working, resend the invite to generate a new one.
  </p>
+ </div>
+ </DialogContent>
+ </Dialog>
+
+ <Dialog open={!!quickAddKind} onOpenChange={(open) => { if (!open) closeQuickAdd(); }}>
+ <DialogContent>
+ <DialogHeader>
+ <DialogTitle>{quickAddKind === 'role' ? 'Add role' : 'Add department'}</DialogTitle>
+ </DialogHeader>
+ <div className="space-y-3">
+ <div className="space-y-1.5">
+ <Label>{quickAddKind === 'role' ? 'Role name' : 'Department name'}</Label>
+ <Input
+ value={quickAddName}
+ onChange={(e) => { setQuickAddName(e.target.value); setQuickAddError(null); }}
+ placeholder={quickAddKind === 'role' ? 'e.g. Shift Lead' : 'e.g. Operations'}
+ onKeyDown={(e) => {
+ if (e.key === 'Enter') {
+ e.preventDefault();
+ submitQuickAdd();
+ }
+ }}
+ aria-invalid={!!quickAddError}
+ className={quickAddError ? 'border-[var(--color-alert-600)] focus-visible:ring-[var(--color-alert-600)]' : undefined}
+ />
+ {quickAddError && (
+ <p className="text-xs text-[var(--color-alert-600)]">{quickAddError}</p>
+ )}
+ </div>
+ <div className="flex justify-end gap-2">
+ <Button type="button" variant="outline" onClick={closeQuickAdd}>Cancel</Button>
+ <Button type="button" onClick={submitQuickAdd}>
+ {quickAddKind === 'role' ? 'Add role' : 'Add department'}
+ </Button>
+ </div>
  </div>
  </DialogContent>
  </Dialog>

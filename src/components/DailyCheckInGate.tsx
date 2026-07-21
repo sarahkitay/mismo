@@ -371,8 +371,8 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  )}
  <p className="text-sm text-[var(--color-text-secondary)] mt-6">
  {portal === 'staff'
- ? 'Please answer today\'s incident query before using the Risk Command Center. You can defer and return from the sidebar.'
- : 'Please answer today\'s incident query. You can use other sections of the app and return to finish this later.'}
+ ? 'Please answer today\'s incident query before using the Risk Command Center. It stays on your dashboard until you respond.'
+ : 'Please answer today\'s incident query. It stays on Home until you respond.'}
  </p>
  <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
  <Button variant="outline" className="h-14 border-[var(--color-emerald-600)] text-[var(--color-emerald-600)]" onClick={() => handleNoIssues(heroPrompt.id)}>

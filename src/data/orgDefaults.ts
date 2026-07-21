@@ -13,6 +13,7 @@ export const DEFAULT_ORG_SETTINGS: Organization['settings'] = {
     atRiskMinResponseRate: 0.7,
     criticalSLAHours: 24,
   },
+  customRoles: [],
 };
 
 export const DEFAULT_ORG_NAME = (import.meta.env.VITE_ORG_NAME as string | undefined)?.trim() || 'Organization';

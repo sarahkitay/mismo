@@ -56,6 +56,7 @@ export function buildAppUrl(page: string, role: AppRole, routeParams: Record<str
     announcements: '/admin/announcements',
     users: '/admin/users',
     employees: '/admin/users',
+    clients: '/admin/clients',
     prompts: '/admin/prompts',
     'prompt-responses': '/admin/employee-prompt-responses',
     compliance: '/admin/compliance',
@@ -94,6 +95,7 @@ export function buildAppUrl(page: string, role: AppRole, routeParams: Record<str
   if (page === 'policy-detail') return `/admin/policy-manager/${id}${tail}`;
   if (page === 'announcement-detail') return `/admin/announcements/${id}${tail}`;
   if (page === 'prompt-response-detail') return `/admin/employee-prompt-responses/${id}${tail}`;
+  if (page === 'client-detail') return `/admin/clients/${id}${tail}`;
 
   if (role === 'CLIENT') return `${adminMap[page] ?? '/admin/client-dashboard'}${tail}`;
   return `${adminMap[page] ?? '/admin/dashboard'}${tail}`;
@@ -158,6 +160,11 @@ export function parseAppLocation(
   if (pathname.startsWith('/admin/users/')) {
     const rid = pathname.split('/admin/users/')[1]?.split('?')[0] ?? '';
     return merge({ role: 'HR', page: 'employee-detail', params: { id: rid } });
+  }
+  if (pathname === '/admin/clients') return merge({ role: 'HR', page: 'clients', params: {} });
+  if (pathname.startsWith('/admin/clients/')) {
+    const rid = pathname.split('/admin/clients/')[1]?.split('?')[0] ?? '';
+    return merge({ role: 'HR', page: 'client-detail', params: { id: rid } });
   }
   if (pathname === '/admin/prompts') return merge({ role: 'HR', page: 'prompts', params: {} });
   if (pathname === '/admin/prompts/scheduled') return merge({ role: 'HR', page: 'scheduled-memos', params: {} });

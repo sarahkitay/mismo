@@ -34,6 +34,7 @@ function mapUser(row: Record<string, unknown>): User {
     id: String(row.id),
     orgId: String(row.org_id),
     role: row.role as User['role'],
+    jobTitle: row.job_title ? String(row.job_title) : undefined,
     firstName: String(row.first_name),
     lastName: String(row.last_name),
     email: String(row.email),
@@ -361,7 +362,15 @@ export async function loadOrgDataFromSupabase(orgId: string): Promise<OrgDataSna
 
   if (orgErr) throw new Error(orgErr.message);
 
-  const orgSettings = (orgRow?.settings as Organization['settings'] | null) ?? DEFAULT_ORG_SETTINGS;
+  const rawSettings = orgRow?.settings as Organization['settings'] | null;
+  const orgSettings = rawSettings
+    ? {
+        ...DEFAULT_ORG_SETTINGS,
+        ...rawSettings,
+        thresholds: { ...DEFAULT_ORG_SETTINGS.thresholds, ...rawSettings.thresholds },
+        customRoles: rawSettings.customRoles ?? [],
+      }
+    : DEFAULT_ORG_SETTINGS;
   const organizationName = orgRow?.name ?? 'Organization';
 
   const q = (table: string) => supabase.from(table).select('*').eq('org_id', orgId);

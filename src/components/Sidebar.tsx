@@ -26,6 +26,7 @@ const adminNavItems: NavItem[] = [
   { id: 'analytics', label: 'Analytics', icon: 'analytics' },
   { id: 'compliance', label: 'State Compliance', icon: 'shield' },
   { id: 'users', label: 'Manage Employees', icon: 'employees', badgeKey: 'atRiskEmployees' },
+  { id: 'clients', label: 'Clients', icon: 'building' },
   { id: 'prompts', label: 'Manage Prompts', icon: 'message' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];

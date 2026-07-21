@@ -1,4 +1,5 @@
 import type {
+  Department,
   Investigation,
   Policy,
   PolicyAcknowledgement,
@@ -43,6 +44,7 @@ function userRow(user: User): Record<string, unknown> {
     id: user.id,
     org_id: user.orgId,
     role: user.role,
+    job_title: user.jobTitle ?? null,
     first_name: user.firstName,
     last_name: user.lastName,
     email: user.email,
@@ -144,6 +146,20 @@ export async function persistReport(report: Report): Promise<void> {
     if (error) notify('report', error);
   } catch (err) {
     notify('report', { message: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+/** Persist a single prompt delivery (e.g. daily check-in). */
+export async function persistPromptDelivery(delivery: PromptDelivery): Promise<void> {
+  if (!reportPersistEnabled()) return;
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from('prompt_deliveries')
+      .upsert(deliveryRow(delivery), { onConflict: 'id' });
+    if (error) notify('prompt delivery', error);
+  } catch (err) {
+    notify('prompt delivery', { message: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -358,5 +374,56 @@ export async function persistPolicyAck(ack: PolicyAcknowledgement): Promise<void
     if (error) notify('acknowledgement', error);
   } catch (err) {
     notify('acknowledgement', { message: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+function departmentRow(dept: Department): Record<string, unknown> {
+  return {
+    id: dept.id,
+    org_id: dept.orgId,
+    name: dept.name,
+    updated_at: iso(dept.updatedAt) ?? new Date().toISOString(),
+  };
+}
+
+/** Persist a department (create or rename). */
+export async function persistDepartment(dept: Department): Promise<void> {
+  if (!reportPersistEnabled()) return;
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from('departments').upsert(departmentRow(dept), { onConflict: 'id' });
+    if (error) notify('department', error);
+  } catch (err) {
+    notify('department', { message: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+/** Persist organization settings (including custom roles). */
+export async function persistOrgSettings(
+  orgId: string,
+  settings: import('@/types').Organization['settings']
+): Promise<void> {
+  if (!reportPersistEnabled()) return;
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from('organizations')
+      .update({ settings, updated_at: new Date().toISOString() })
+      .eq('id', orgId);
+    if (error) notify('organization settings', error);
+  } catch (err) {
+    notify('organization settings', { message: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+/** Delete a department. Employees assigned to it become unassigned. */
+export async function deleteDepartmentRecord(departmentId: string): Promise<void> {
+  if (!reportPersistEnabled()) return;
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from('departments').delete().eq('id', departmentId);
+    if (error) notify('department', error);
+  } catch (err) {
+    notify('department', { message: err instanceof Error ? err.message : String(err) });
   }
 }
