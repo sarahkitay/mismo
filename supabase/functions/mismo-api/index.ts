@@ -5,6 +5,12 @@ import { computeHrNextTasks } from '../_shared/hr-next-tasks.ts';
 import { listHrLawUpdates, listHrLawsForState, syncStateLawsToDb } from '../_shared/hr-laws.ts';
 import { runOutreachCoach } from '../_shared/outreach-coach.ts';
 import { inviteEmployee } from '../_shared/employees.ts';
+import {
+  sendIncidentYesNotices,
+  sendWageHourYesNotices,
+  isResendConfigured,
+} from '../_shared/resend.ts';
+import { getSupabaseAdmin } from '../_shared/supabase.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -33,6 +39,64 @@ Deno.serve(async (req) => {
         authHeader: req.headers.get('Authorization'),
       });
       return jsonResponse(200, result);
+    }
+
+    if (path === '/notifications/incident-yes' && req.method === 'POST') {
+      const body = (await req.json()) as {
+        employeeEmail: string;
+        orgId: string;
+        caseUrl?: string;
+        dashboardUrl?: string;
+      };
+      if (!body.employeeEmail || !body.orgId) {
+        return jsonResponse(400, { error: 'employeeEmail and orgId are required' });
+      }
+      const admin = getSupabaseAdmin();
+      const { data: admins } = await admin
+        .from('users')
+        .select('email')
+        .eq('org_id', body.orgId)
+        .in('role', ['HR', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'])
+        .eq('status', 'active');
+      const adminEmails = (admins ?? [])
+        .map((u) => String(u.email))
+        .filter((e) => e && e.toLowerCase() !== body.employeeEmail.toLowerCase());
+      const result = await sendIncidentYesNotices({
+        employeeEmail: body.employeeEmail,
+        adminEmails,
+        dashboardUrl: body.dashboardUrl ?? '',
+        caseUrl: body.caseUrl ?? '',
+      });
+      return jsonResponse(200, { ok: true, resendConfigured: isResendConfigured(), ...result });
+    }
+
+    if (path === '/notifications/wage-hour-yes' && req.method === 'POST') {
+      const body = (await req.json()) as {
+        employeeEmail: string;
+        orgId: string;
+        caseUrl?: string;
+        dashboardUrl?: string;
+      };
+      if (!body.employeeEmail || !body.orgId) {
+        return jsonResponse(400, { error: 'employeeEmail and orgId are required' });
+      }
+      const admin = getSupabaseAdmin();
+      const { data: payroll } = await admin
+        .from('users')
+        .select('email')
+        .eq('org_id', body.orgId)
+        .in('role', ['HR', 'ADMIN', 'SUPER_ADMIN'])
+        .eq('status', 'active');
+      const payrollEmails = (payroll ?? [])
+        .map((u) => String(u.email))
+        .filter((e) => e && e.toLowerCase() !== body.employeeEmail.toLowerCase());
+      const result = await sendWageHourYesNotices({
+        employeeEmail: body.employeeEmail,
+        payrollEmails,
+        dashboardUrl: body.dashboardUrl ?? '',
+        caseUrl: body.caseUrl ?? '',
+      });
+      return jsonResponse(200, { ok: true, resendConfigured: isResendConfigured(), ...result });
     }
 
     if (path === '/ai/outreach/coach' && req.method === 'POST') {

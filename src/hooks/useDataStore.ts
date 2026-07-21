@@ -38,6 +38,12 @@ import type {
  InvestigationNoteType,
  WageHourIntakeData,
  WageHourScreeningAcknowledgement,
+ ClientCompany,
+ ClientContact,
+ ClientDocument,
+ ClientNote,
+ ClientPayment,
+ ClientSupportEntry,
 } from '@/types';
 import {
  buildDefaultChecklistStages,
@@ -62,11 +68,27 @@ import {
  persistPrompt,
  persistPromptUpdate,
  persistPromptResponse,
+ persistPromptDelivery,
  persistReportChange,
  persistInvestigation,
  persistPolicy,
  persistPolicyAck,
+ persistDepartment,
+ deleteDepartmentRecord,
+ persistOrgSettings,
 } from '@/lib/supabase/writeOrgData';
+import { notifyIncidentYes, notifyWageHourYes } from '@/lib/api/notifications';
+import {
+ loadClientData,
+ persistClientCompany,
+ persistClientContact,
+ deleteClientContactRecord,
+ persistClientDocument,
+ deleteClientDocumentRecord,
+ persistClientNote,
+ persistClientPayment,
+ persistClientSupportEntry,
+} from '@/lib/supabase/clientCompanies';
 import { normalizeDemoEmail, resolveDemoPassword } from '@/data/demoLogins';
 import { mergeCorePrompts, resolveDailyCheckInPrompt, isLockedCorePrompt } from '@/lib/corePrompts';
 import { INDUSTRY_CHECKLIST_SECTIONS } from '@/data/industryChecklist';
@@ -209,6 +231,12 @@ export function useDataStore() {
  );
  const [policies, setPolicies] = useState<Policy[]>(persisted?.policies ?? []);
  const [companyResources, setCompanyResources] = useState<CompanyResource[]>([]);
+ const [clientCompanies, setClientCompanies] = useState<ClientCompany[]>([]);
+ const [clientContacts, setClientContacts] = useState<ClientContact[]>([]);
+ const [clientDocuments, setClientDocuments] = useState<ClientDocument[]>([]);
+ const [clientNotes, setClientNotes] = useState<ClientNote[]>([]);
+ const [clientPayments, setClientPayments] = useState<ClientPayment[]>([]);
+ const [clientSupportEntries, setClientSupportEntries] = useState<ClientSupportEntry[]>([]);
  const [emergencyHotlines, setEmergencyHotlines] = useState<EmergencyHotline[]>([]);
  const [policyAcknowledgements, setPolicyAcknowledgements] = useState<PolicyAcknowledgement[]>(
  persisted?.policyAcknowledgements ?? []
@@ -377,6 +405,17 @@ export function useDataStore() {
  setAuditLogs(snapshot.auditLogs);
  setCompanyResources(snapshot.companyResources);
  setEmergencyHotlines(snapshot.emergencyHotlines);
+ try {
+ const clients = await loadClientData(orgId);
+ setClientCompanies(clients.companies);
+ setClientContacts(clients.contacts);
+ setClientDocuments(clients.documents);
+ setClientNotes(clients.notes);
+ setClientPayments(clients.payments);
+ setClientSupportEntries(clients.supportEntries);
+ } catch (clientErr) {
+ console.error('Failed to load client companies:', clientErr);
+ }
  } catch (err) {
  console.error('Failed to load organization data:', err);
  } finally {
@@ -442,26 +481,71 @@ export function useDataStore() {
  });
  }, [session?.orgId, session?.userId]);
 
- // Ensure staff and employees get a daily prompt when they open the app (new day = new prompt)
+ // Ensure staff and employees get a daily prompt when they open the app (new day = new prompt).
+ // Wait for cloud hydrate so an ephemeral delivery is not wiped; persist so it survives reloads.
  useEffect(() => {
  if (!session || !DAILY_CHECKIN_ROLES.includes(session.role)) return;
+ if (useCloudBackend() && dataLoading) return;
+
  const orgId = session.orgId;
  const userId = session.userId;
  const startOfToday = new Date();
  startOfToday.setHours(0, 0, 0, 0);
  const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000 - 1);
- const dayKey = startOfToday.toDateString();
- const dayUserKey = `${userId}:${dayKey}`;
- if (lastDailyDeliveryDateRef.current === dayUserKey) return;
+ const yyyy = startOfToday.getFullYear();
+ const mm = String(startOfToday.getMonth() + 1).padStart(2, '0');
+ const dd = String(startOfToday.getDate()).padStart(2, '0');
+ const dayStamp = `${yyyy}-${mm}-${dd}`;
+ const dayUserKey = `${userId}:${dayStamp}`;
+
+ const firstPrompt = resolveDailyCheckInPrompt(prompts, orgId);
+ if (!firstPrompt) return;
+
  const orgDeliveries = deliveries.filter((d) => d.orgId === orgId);
  const hasPendingDueToday = orgDeliveries.some(
  (d) => d.userId === userId && d.status === 'PENDING' && d.dueAt && d.dueAt <= endOfToday
  );
- if (hasPendingDueToday) return;
- const firstPrompt = resolveDailyCheckInPrompt(prompts, orgId);
- if (!firstPrompt) return;
+ if (hasPendingDueToday) {
+ lastDailyDeliveryDateRef.current = dayUserKey;
+ return;
+ }
+
+ const alreadyDoneToday = orgDeliveries.some(
+ (d) =>
+ d.userId === userId &&
+ d.promptId === firstPrompt.id &&
+ d.status === 'COMPLETED' &&
+ d.deliveredAt != null &&
+ d.deliveredAt >= startOfToday &&
+ d.deliveredAt <= endOfToday
+ );
+ if (alreadyDoneToday) {
+ lastDailyDeliveryDateRef.current = dayUserKey;
+ return;
+ }
+
+ const answeredToday = responses.some(
+ (r) =>
+ r.orgId === orgId &&
+ r.userId === userId &&
+ r.promptId === firstPrompt.id &&
+ r.finalizedAt != null &&
+ r.finalizedAt >= startOfToday &&
+ r.finalizedAt <= endOfToday
+ );
+ if (answeredToday) {
+ lastDailyDeliveryDateRef.current = dayUserKey;
+ return;
+ }
+
+ const deliveryId = `delivery-daily-${userId}-${dayStamp}`;
+ if (orgDeliveries.some((d) => d.id === deliveryId)) {
+ lastDailyDeliveryDateRef.current = dayUserKey;
+ return;
+ }
+
  const newDelivery: PromptDelivery = {
- id: `delivery-daily-${userId}-${startOfToday.getTime()}`,
+ id: deliveryId,
  orgId,
  promptId: firstPrompt.id,
  userId,
@@ -471,9 +555,10 @@ export function useDataStore() {
  createdAt: new Date(),
  updatedAt: new Date(),
  };
- setDeliveries((prev) => [...prev, newDelivery]);
+ setDeliveries((prev) => (prev.some((d) => d.id === deliveryId) ? prev : [...prev, newDelivery]));
  lastDailyDeliveryDateRef.current = dayUserKey;
- }, [session, deliveries, prompts]);
+ void persistPromptDelivery(newDelivery);
+ }, [session, deliveries, prompts, responses, dataLoading]);
 
  // Org-scoped data when session exists (each company sees only their data)
  const effectiveOrgId = session?.orgId ?? DEFAULT_ORG_ID;
@@ -697,9 +782,17 @@ export function useDataStore() {
  const response = submitPromptResponse(deliveryId, 'HAS_ISSUE', notes);
  if (!response) return undefined;
  const report = beginIncidentCaseFromPrompt(delivery.userId, delivery, response);
+ const employee = users.find((u) => u.id === delivery.userId);
+ if (employee?.email) {
+ void notifyIncidentYes({
+ employeeEmail: employee.email,
+ orgId: effectiveOrgId,
+ caseId: report.id,
+ });
+ }
  return { response, report };
  },
- [deliveries, submitPromptResponse, beginIncidentCaseFromPrompt]
+ [deliveries, submitPromptResponse, beginIncidentCaseFromPrompt, users, effectiveOrgId]
  );
  
  // Create report
@@ -857,6 +950,15 @@ export function useDataStore() {
  },
  ...prev,
  ]);
+ void persistReport(newReport);
+ const employee = users.find((u) => u.id === userId);
+ if (employee?.email) {
+ void notifyWageHourYes({
+ employeeEmail: employee.email,
+ orgId: effectiveOrgId,
+ caseId: newReport.id,
+ });
+ }
  return newReport;
  },
  [effectiveOrgId, reports, users]
@@ -2365,7 +2467,299 @@ export function useDataStore() {
  void persistUsers(created);
  return created;
  }, [users, effectiveOrgId]);
- 
+
+ const createDepartment = useCallback(
+ (name: string): Department | { error: string } => {
+ const trimmed = name.trim();
+ if (!trimmed) return { error: 'Department name is required.' };
+ const duplicate = departments.some(
+ (d) => d.orgId === effectiveOrgId && d.name.toLowerCase() === trimmed.toLowerCase()
+ );
+ if (duplicate) return { error: 'A department with that name already exists.' };
+ const now = new Date();
+ const slug = trimmed.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'dept';
+ let id = `dept-${slug}`;
+ let n = 1;
+ const existingIds = new Set(departments.map((d) => d.id));
+ while (existingIds.has(id)) {
+ id = `dept-${slug}-${n}`;
+ n += 1;
+ }
+ const dept: Department = {
+ id,
+ orgId: effectiveOrgId,
+ name: trimmed,
+ createdAt: now,
+ updatedAt: now,
+ };
+ setDepartments((prev) => [...prev, dept]);
+ void persistDepartment(dept);
+ return dept;
+ },
+ [departments, effectiveOrgId]
+ );
+
+ const updateDepartment = useCallback(
+ (departmentId: string, name: string): Department | { error: string } | null => {
+ const trimmed = name.trim();
+ if (!trimmed) return { error: 'Department name is required.' };
+ const duplicate = departments.some(
+ (d) =>
+ d.id !== departmentId &&
+ d.orgId === effectiveOrgId &&
+ d.name.toLowerCase() === trimmed.toLowerCase()
+ );
+ if (duplicate) return { error: 'A department with that name already exists.' };
+ let updated: Department | null = null;
+ setDepartments((prev) =>
+ prev.map((d) => {
+ if (d.id !== departmentId) return d;
+ updated = { ...d, name: trimmed, updatedAt: new Date() };
+ return updated;
+ })
+ );
+ if (updated) void persistDepartment(updated);
+ return updated;
+ },
+ [departments, effectiveOrgId]
+ );
+
+ const deleteDepartment = useCallback(
+ (departmentId: string) => {
+ setDepartments((prev) => prev.filter((d) => d.id !== departmentId));
+ setUsers((prev) =>
+ prev.map((u) =>
+ u.departmentId === departmentId ? { ...u, departmentId: undefined, updatedAt: new Date() } : u
+ )
+ );
+ void deleteDepartmentRecord(departmentId);
+ },
+ []
+ );
+
+ const updateOrgSettings = useCallback(
+ (patch: Partial<typeof DEFAULT_ORG_SETTINGS>) => {
+ setOrgSettings((prev) => {
+ const next = { ...prev, ...patch, thresholds: { ...prev.thresholds, ...patch.thresholds } };
+ void persistOrgSettings(effectiveOrgId, next);
+ return next;
+ });
+ },
+ [effectiveOrgId]
+ );
+
+ /** Add an org-defined role / job title for employee Role dropdowns. */
+ const addCustomRole = useCallback(
+ (name: string): string | { error: string } => {
+ const trimmed = name.trim();
+ if (!trimmed) return { error: 'Role name is required.' };
+ const existing = orgSettings.customRoles ?? [];
+ const systemLabels = new Set(['Employee', 'Human Resources', 'Management', 'Admin', 'Super Admin', 'Client']);
+ if (systemLabels.has(trimmed) || existing.some((r) => r.toLowerCase() === trimmed.toLowerCase())) {
+ return { error: 'A role with that name already exists.' };
+ }
+ const nextRoles = [...existing, trimmed].sort((a, b) => a.localeCompare(b));
+ updateOrgSettings({ customRoles: nextRoles });
+ return trimmed;
+ },
+ [orgSettings.customRoles, updateOrgSettings]
+ );
+
+ const emptyClientCompany = (overrides: Partial<ClientCompany> = {}): ClientCompany => {
+ const now = new Date();
+ return {
+ id: `client-${Date.now()}`,
+ managedByOrgId: effectiveOrgId,
+ companyName: '',
+ address1: '',
+ address2: '',
+ city: '',
+ state: '',
+ zip: '',
+ country: 'USA',
+ telephone: '',
+ fax: '',
+ tollFree: '',
+ website: '',
+ jestarAccountRep: '',
+ billingIncrement: '',
+ paymentMode: '',
+ inactiveReason: '',
+ status: 'active',
+ createdAt: now,
+ updatedAt: now,
+ ...overrides,
+ };
+ };
+
+ const createClientCompany = useCallback(
+ (input: Partial<ClientCompany> = {}): ClientCompany | { error: string } => {
+ const companyName = (input.companyName ?? '').trim();
+ if (!companyName) return { error: 'Company name is required.' };
+ const company = emptyClientCompany({
+ ...input,
+ companyName,
+ country: input.country?.trim() || 'USA',
+ state: (input.state ?? '').trim().toUpperCase().slice(0, 2),
+ managedByOrgId: effectiveOrgId,
+ });
+ setClientCompanies((prev) => [company, ...prev]);
+ void persistClientCompany(company);
+ return company;
+ },
+ [effectiveOrgId]
+ );
+
+ const updateClientCompany = useCallback(
+ (clientId: string, updates: Partial<ClientCompany>): ClientCompany | { error: string } | null => {
+ if (updates.companyName !== undefined && !updates.companyName.trim()) {
+ return { error: 'Company name is required.' };
+ }
+ let updated: ClientCompany | null = null;
+ setClientCompanies((prev) =>
+ prev.map((c) => {
+ if (c.id !== clientId) return c;
+ updated = {
+ ...c,
+ ...updates,
+ companyName: updates.companyName !== undefined ? updates.companyName.trim() : c.companyName,
+ state: updates.state !== undefined ? updates.state.trim().toUpperCase().slice(0, 2) : c.state,
+ country: updates.country !== undefined ? updates.country.trim() || 'USA' : c.country,
+ updatedAt: new Date(),
+ };
+ return updated;
+ })
+ );
+ if (updated) void persistClientCompany(updated);
+ return updated;
+ },
+ []
+ );
+
+ const addClientContact = useCallback(
+ (clientId: string, input: Omit<ClientContact, 'id' | 'clientId' | 'createdAt' | 'updatedAt'>) => {
+ const now = new Date();
+ const office = input.officePhone || input.phone || '';
+ const contact: ClientContact = {
+ name: input.name,
+ title: input.title ?? '',
+ department: input.department ?? '',
+ email: input.email ?? '',
+ phone: office,
+ officePhone: office,
+ directPhone: input.directPhone ?? '',
+ extension: input.extension ?? '',
+ cellPhone: input.cellPhone ?? '',
+ isPrimary: Boolean(input.isPrimary),
+ id: `client-contact-${Date.now()}`,
+ clientId,
+ createdAt: now,
+ updatedAt: now,
+ };
+ setClientContacts((prev) => [...prev, contact]);
+ void persistClientContact(contact);
+ return contact;
+ },
+ []
+ );
+
+ const updateClientContact = useCallback((contactId: string, updates: Partial<ClientContact>) => {
+ let updated: ClientContact | null = null;
+ setClientContacts((prev) =>
+ prev.map((c) => {
+ if (c.id !== contactId) return c;
+ updated = { ...c, ...updates, updatedAt: new Date() };
+ return updated;
+ })
+ );
+ if (updated) void persistClientContact(updated);
+ }, []);
+
+ const deleteClientContact = useCallback((contactId: string) => {
+ setClientContacts((prev) => prev.filter((c) => c.id !== contactId));
+ void deleteClientContactRecord(contactId);
+ }, []);
+
+ const addClientDocument = useCallback(
+ (clientId: string, input: { title: string; fileName: string; notes?: string }) => {
+ const doc: ClientDocument = {
+ id: `client-doc-${Date.now()}`,
+ clientId,
+ title: input.title.trim() || input.fileName,
+ fileName: input.fileName,
+ notes: input.notes ?? '',
+ uploadedByUserId: currentUser.id,
+ uploadedAt: new Date(),
+ };
+ setClientDocuments((prev) => [doc, ...prev]);
+ void persistClientDocument(doc);
+ return doc;
+ },
+ [currentUser.id]
+ );
+
+ const deleteClientDocument = useCallback((documentId: string) => {
+ setClientDocuments((prev) => prev.filter((d) => d.id !== documentId));
+ void deleteClientDocumentRecord(documentId);
+ }, []);
+
+ const addClientNote = useCallback(
+ (clientId: string, body: string) => {
+ const trimmed = body.trim();
+ if (!trimmed) return null;
+ const note: ClientNote = {
+ id: `client-note-${Date.now()}`,
+ clientId,
+ body: trimmed,
+ createdByUserId: currentUser.id,
+ createdByName: `${currentUser.firstName} ${currentUser.lastName}`.trim(),
+ createdAt: new Date(),
+ };
+ setClientNotes((prev) => [note, ...prev]);
+ void persistClientNote(note);
+ return note;
+ },
+ [currentUser.id, currentUser.firstName, currentUser.lastName]
+ );
+
+ const addClientPayment = useCallback(
+ (clientId: string, input: { amount: number; paidAt: Date; method: string; reference?: string; notes?: string }) => {
+ const payment: ClientPayment = {
+ id: `client-pay-${Date.now()}`,
+ clientId,
+ amount: input.amount,
+ paidAt: input.paidAt,
+ method: input.method,
+ reference: input.reference ?? '',
+ notes: input.notes ?? '',
+ createdAt: new Date(),
+ };
+ setClientPayments((prev) => [payment, ...prev]);
+ void persistClientPayment(payment);
+ return payment;
+ },
+ []
+ );
+
+ const addClientSupportEntry = useCallback(
+ (clientId: string, body: string) => {
+ const trimmed = body.trim();
+ if (!trimmed) return null;
+ const entry: ClientSupportEntry = {
+ id: `client-support-${Date.now()}`,
+ clientId,
+ body: trimmed,
+ createdByUserId: currentUser.id,
+ createdByName: `${currentUser.firstName} ${currentUser.lastName}`.trim(),
+ createdAt: new Date(),
+ };
+ setClientSupportEntries((prev) => [entry, ...prev]);
+ void persistClientSupportEntry(entry);
+ return entry;
+ },
+ [currentUser.id, currentUser.firstName, currentUser.lastName]
+ );
+
  // Get filtered reports (org-scoped)
  const getFilteredReports = useCallback((filters: {
  status?: ReportStatus[];
@@ -2635,6 +3029,12 @@ export function useDataStore() {
  organizationName,
  dataLoading,
  departments: session ? departments.filter((d) => d.orgId === session.orgId) : departments,
+ clientCompanies,
+ clientContacts,
+ clientDocuments,
+ clientNotes,
+ clientPayments,
+ clientSupportEntries,
  session,
  previewUserId,
  login,
@@ -2701,6 +3101,21 @@ export function useDataStore() {
  updateAnnouncement,
  updateUser,
  createUsers,
+ createDepartment,
+ updateDepartment,
+ deleteDepartment,
+ updateOrgSettings,
+ addCustomRole,
+ createClientCompany,
+ updateClientCompany,
+ addClientContact,
+ updateClientContact,
+ deleteClientContact,
+ addClientDocument,
+ deleteClientDocument,
+ addClientNote,
+ addClientPayment,
+ addClientSupportEntry,
  addReportMessage,
  addReportHandlingEntry,
  addReportLedgerFile,

@@ -22,10 +22,20 @@ export const API_CONNECTED_READY =
 
 export const API_ENDPOINT_LABEL = 'Mismo API (AWS-hosted)';
 
+/** Strip vendor-specific names from any message shown to users. Prefer AWS / generic wording. */
 export function sanitizeInfraError(message: string): string {
   const lower = message.toLowerCase();
-  if (lower.includes('supabase') || lower.includes('vite_supabase')) {
-    if (lower.includes('not configured')) return INFRA_NOT_CONFIGURED;
+  if (
+    lower.includes('supabase') ||
+    lower.includes('vite_supabase') ||
+    lower.includes('postgrest') ||
+    lower.includes('gotrue') ||
+    /\.supabase\.co/.test(lower)
+  ) {
+    if (lower.includes('not configured') || lower.includes('missing')) return INFRA_NOT_CONFIGURED;
+    if (lower.includes('jwt') || lower.includes('auth') || lower.includes('session')) {
+      return 'Authentication failed. Sign in again or contact your administrator.';
+    }
     return 'A cloud database or API error occurred. Contact your administrator.';
   }
   if (lower.includes('edge function')) {

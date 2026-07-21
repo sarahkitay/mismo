@@ -391,6 +391,8 @@ export interface OrgSettings {
  atRiskMinResponseRate: number;
  criticalSLAHours: number;
  };
+ /** Org-defined role / job titles shown in employee Role dropdowns (in addition to system roles). */
+ customRoles?: string[];
 }
 
 // Organization
@@ -407,6 +409,8 @@ export interface User {
  id: string;
  orgId: string;
  role: UserRole;
+ /** Optional org-defined job title / custom role label (shown when set). */
+ jobTitle?: string;
  firstName: string;
  lastName: string;
  email: string;
@@ -887,3 +891,108 @@ export interface EmployeeEngagement {
  pendingPrompts: number;
  isAtRisk: boolean;
 }
+
+/** Billing cadence for client companies */
+export type ClientBillingIncrement = 'MONTHLY' | 'QUARTERLY' | 'ANNUALLY' | '';
+
+export type ClientPaymentMode = 'INVOICE' | 'ACH' | 'CARD' | 'CHECK' | 'OTHER' | '';
+
+/** Platform client company profile (JeStar / Mismo back-office). */
+export interface ClientCompany {
+  id: string;
+  /** Owning ops org that manages this client record */
+  managedByOrgId: string;
+  /** Linked tenant org when provisioned (optional) */
+  linkedOrgId?: string;
+  companyName: string;
+  address1: string;
+  address2: string;
+  city: string;
+  /** Two-letter state abbreviation (e.g. CA) */
+  state: string;
+  zip: string;
+  /** Defaults to USA */
+  country: string;
+  telephone: string;
+  fax: string;
+  tollFree: string;
+  website: string;
+  employeeCount?: number;
+  officeCount?: number;
+  jestarAccountRep: string;
+  signupDate?: Date;
+  activeDate?: Date;
+  initialSetupAmount?: number;
+  initialSetupPaidDate?: Date;
+  monthlySupportFee?: number;
+  monthlyEmployeeRate?: number;
+  billingIncrement: ClientBillingIncrement;
+  paymentMode: ClientPaymentMode;
+  /** Optional client portal login (no password rules enforced here) */
+  clientLoginEmail?: string;
+  clientLoginPassword?: string;
+  inactiveDate?: Date;
+  inactiveReason: string;
+  status: 'active' | 'inactive';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ClientContact {
+  id: string;
+  clientId: string;
+  name: string;
+  title: string;
+  department: string;
+  email: string;
+  /** Main / office phone */
+  phone: string;
+  officePhone: string;
+  directPhone: string;
+  extension: string;
+  cellPhone: string;
+  isPrimary: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ClientDocument {
+  id: string;
+  clientId: string;
+  title: string;
+  fileName: string;
+  notes: string;
+  uploadedByUserId?: string;
+  uploadedAt: Date;
+}
+
+export interface ClientNote {
+  id: string;
+  clientId: string;
+  body: string;
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: Date;
+}
+
+export interface ClientPayment {
+  id: string;
+  clientId: string;
+  amount: number;
+  paidAt: Date;
+  method: string;
+  reference: string;
+  notes: string;
+  createdAt: Date;
+}
+
+/** Customer support history line items on the client summary. */
+export interface ClientSupportEntry {
+  id: string;
+  clientId: string;
+  body: string;
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: Date;
+}
+

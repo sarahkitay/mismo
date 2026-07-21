@@ -24,6 +24,8 @@ import { AdminPrompts } from '@/pages/admin/AdminPrompts';
 import { AdminAnalytics } from '@/pages/admin/AdminAnalytics';
 import { AdminSystemHealth } from '@/pages/admin/AdminSystemHealth';
 import { AdminSettings } from '@/pages/admin/AdminSettings';
+import { AdminClients } from '@/pages/admin/AdminClients';
+import { AdminClientDetail } from '@/pages/admin/AdminClientDetail';
 import { AdminReportDetail } from '@/pages/admin/AdminReportDetail';
 import { AdminEmployeeDetail } from '@/pages/admin/AdminEmployeeDetail';
 import { AdminInvestigationDetail } from '@/pages/admin/AdminInvestigationDetail';
@@ -38,7 +40,6 @@ import { AdminActivity } from '@/pages/admin/AdminActivity';
 import { ManagerDashboard } from '@/pages/manager/ManagerDashboard';
 import { ClientDashboard } from '@/pages/client/ClientDashboard';
 import { buildAppUrl, parseAppLocation, normalizeHrNavigation, type AppRole } from '@/lib/appUrl';
-import { deferCheckInForToday } from '@/lib/checkInGate';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -51,7 +52,7 @@ function isStaffRole(role: DataStore['currentRole']) {
 }
 
 export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
- const { currentRole, switchRole, session, previewUserId, setPreviewUserId, pendingPromptsForEmployee } = dataStore;
+ const { currentRole, switchRole, session, previewUserId, setPreviewUserId } = dataStore;
 
  const [activePage, setActivePage] = useState(() => {
  const parsed = parseAppLocation(
@@ -148,15 +149,6 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  }, [currentRole]);
 
  const handleNavigate = (page: string, params?: Record<string, string>) => {
- const pendingCheckInPage =
- (currentRole === 'EMPLOYEE' && activePage === 'home') ||
- (isStaffRole(currentRole) && activePage === 'dashboard');
- if (pendingCheckInPage && page !== activePage && pendingPromptsForEmployee.length > 0) {
- const pending = pendingPromptsForEmployee[0];
- if (pending) {
- deferCheckInForToday(dataStore.currentUser.id, pending.id);
- }
- }
  const routeParams = params ?? {};
  const normalized = isStaffRole(currentRole)
  ? normalizeHrNavigation(page, routeParams)
@@ -274,6 +266,10 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  case 'employees':
  case 'users':
  return <AdminEmployees dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
+ case 'clients':
+ return <AdminClients dataStore={dataStore} onNavigate={handleNavigate} />;
+ case 'client-detail':
+ return <AdminClientDetail dataStore={dataStore} clientId={pageParams.id ?? ''} onNavigate={handleNavigate} />;
  case 'policies':
  return (
  <AdminPoliciesAndAnnouncements
