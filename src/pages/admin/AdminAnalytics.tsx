@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
-import { Icons } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -153,13 +152,8 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  <button type="button" className="text-left cursor-pointer" onClick={() => registerNav()}>
  <Card className="metric-card mismo-card hover:border-[var(--mismo-blue)] transition-colors h-full">
  <CardContent className="p-5">
- <div className="flex items-center justify-between mb-3">
  <p className="text-sm text-[var(--mismo-text-secondary)]">Total Reports</p>
- <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
- <Icons.reports className="h-4 w-4 text-gray-500" />
- </div>
- </div>
- <p className="text-2xl font-bold text-[var(--mismo-text)]">{totalReports}</p>
+ <p className="text-2xl font-bold text-[var(--mismo-text)] mt-2">{totalReports}</p>
  <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">In selected date range · view in case register</p>
  </CardContent>
  </Card>
@@ -168,13 +162,8 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  <button type="button" className="text-left cursor-pointer" onClick={() => registerNav({ open: '1' })}>
  <Card className="metric-card mismo-card hover:border-[var(--mismo-blue)] transition-colors h-full">
  <CardContent className="p-5">
- <div className="flex items-center justify-between mb-3">
  <p className="text-sm text-[var(--mismo-text-secondary)]">Open Reports</p>
- <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
- <Icons.alertCircle className="h-4 w-4 text-amber-600" />
- </div>
- </div>
- <p className="text-2xl font-bold text-[var(--mismo-text)]">{openReports}</p>
+ <p className="text-2xl font-bold text-[var(--mismo-text)] mt-2">{openReports}</p>
  <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">Awaiting resolution · view open cases</p>
  </CardContent>
  </Card>
@@ -183,13 +172,8 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  <button type="button" className="text-left cursor-pointer" onClick={() => registerNav({ status: 'RESOLVED,CLOSED' })}>
  <Card className="metric-card mismo-card hover:border-[var(--mismo-blue)] transition-colors h-full">
  <CardContent className="p-5">
- <div className="flex items-center justify-between mb-3">
  <p className="text-sm text-[var(--mismo-text-secondary)]">Resolved Reports</p>
- <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
- <Icons.checkCircle className="h-4 w-4 text-emerald-600" />
- </div>
- </div>
- <p className="text-2xl font-bold text-[var(--mismo-text)]">{resolvedReports}</p>
+ <p className="text-2xl font-bold text-[var(--mismo-text)] mt-2">{resolvedReports}</p>
  <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">Resolved or closed in range</p>
  </CardContent>
  </Card>
@@ -198,13 +182,8 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  <button type="button" className="text-left cursor-pointer" onClick={() => onNavigate('investigations', { status: 'OPEN' })}>
  <Card className="metric-card mismo-card hover:border-[var(--mismo-blue)] transition-colors h-full">
  <CardContent className="p-5">
- <div className="flex items-center justify-between mb-3">
  <p className="text-sm text-[var(--mismo-text-secondary)]">Open Investigations</p>
- <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
- <Icons.search className="h-4 w-4 text-blue-600" />
- </div>
- </div>
- <p className="text-2xl font-bold text-[var(--mismo-text)]">{openInvestigations.totalCount}</p>
+ <p className="text-2xl font-bold text-[var(--mismo-text)] mt-2">{openInvestigations.totalCount}</p>
  <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">
  {openInvestigations.yesUnderReviewCount > 0
  ? `${openInvestigations.formalCount} formal · ${openInvestigations.yesUnderReviewCount} Yes under review`
@@ -216,13 +195,8 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  
  <Card className="metric-card mismo-card h-full">
  <CardContent className="p-5">
- <div className="flex items-center justify-between mb-3">
  <p className="text-sm text-[var(--mismo-text-secondary)]">Avg Resolution Time</p>
- <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
- <Icons.clock className="h-4 w-4 text-blue-600" />
- </div>
- </div>
- <p className="text-2xl font-bold text-[var(--mismo-text)]">{avgResolutionDays.toFixed(1)}d</p>
+ <p className="text-2xl font-bold text-[var(--mismo-text)] mt-2">{avgResolutionDays.toFixed(1)}d</p>
  <p className="text-xs text-[var(--mismo-text-secondary)] mt-1">Per closed report</p>
  </CardContent>
  </Card>

@@ -4,7 +4,6 @@ import type { DataStore } from '@/hooks/useDataStore';
 import { Icons } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatDate } from '@/lib/utils';
 import { clearCheckInDeferralForToday, shouldShowCheckInGate } from '@/lib/checkInGate';
 import { toast } from 'sonner';
 import {
@@ -23,7 +22,7 @@ const EQC_RETALIATION_NOTE =
  'You will not be retaliated against for sharing a concern in good faith. Retaliation is against the law and is not tolerated by this company.';
 
 const EQC_CONFIRMATION_BODY =
- 'Thank you for letting us know. Your response will be reviewed by the appropriate HR contact. If this was selected by mistake, you can go back and update your answer before submitting.';
+ 'Mismo will relay your response to the individuals designated by the company to receive it. You will be contacted to discuss the circumstances surrounding your response in the very near future, pursuant to the company\'s policy.';
 
 const FINANCIAL_SCREENING_QUESTION =
  'Are you aware of any issue related to pay, bonuses, reimbursements, benefits, or other compensation that you believe may be incorrect, withheld without proper explanation, or inconsistent with company policy or applicable law?';
@@ -325,11 +324,6 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  <h2 className="mismo-heading text-2xl md:text-3xl mt-3">Pay and compensation screening</h2>
  <p className="text-base mt-5">{FINANCIAL_SCREENING_QUESTION}</p>
  <p className="text-sm text-[var(--color-text-secondary)] mt-4 border-l-2 border-[var(--color-primary-500)] pl-4">{FINANCIAL_SCREENING_NOTE}</p>
- {heroPrompt.dueAt && (
- <p className="text-sm text-[var(--color-text-secondary)] mt-4 flex items-center gap-1.5">
- <Icons.clock className="h-4 w-4" /> Due by {formatDate(heroPrompt.dueAt)}
- </p>
- )}
  <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
  <Button variant="outline" className="h-14 border-[var(--color-emerald-600)] text-[var(--color-emerald-600)]" onClick={() => submitFinancialAndClose(false)}>
  No concern
@@ -364,11 +358,6 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  <span className="font-medium">Note: </span>
  {EQC_RETALIATION_NOTE}
  </p>
- {heroPrompt.dueAt && (
- <p className="text-sm text-[var(--color-text-secondary)] mt-4 flex items-center gap-1.5">
- <Icons.clock className="h-4 w-4" /> Due by {formatDate(heroPrompt.dueAt)}
- </p>
- )}
  <p className="text-sm text-[var(--color-text-secondary)] mt-6">
  {portal === 'staff'
  ? 'Please answer today\'s incident query before using the Risk Command Center. It stays on your dashboard until you respond.'
@@ -401,11 +390,6 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  <>
  <h2 className="mismo-heading text-3xl mt-2">{heroPrompt.prompt.title}</h2>
  <p className="text-base text-[var(--color-text-secondary)] mt-3">{heroPrompt.prompt.description}</p>
- {heroPrompt.dueAt && (
- <p className="text-sm text-[var(--color-text-secondary)] mt-3 flex items-center gap-1.5">
- <Icons.clock className="h-4 w-4" /> Due by {formatDate(heroPrompt.dueAt)}
- </p>
- )}
  <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
  <Button variant="outline" className="h-14 border-[var(--color-emerald-600)] text-[var(--color-emerald-600)]" onClick={() => handleNoIssues(heroPrompt.id)}>
  No issues to report

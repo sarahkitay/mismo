@@ -26,8 +26,16 @@ const adminNavItems: NavItem[] = [
   { id: 'analytics', label: 'Analytics', icon: 'analytics' },
   { id: 'compliance', label: 'State Compliance', icon: 'shield' },
   { id: 'users', label: 'Manage Employees', icon: 'employees', badgeKey: 'atRiskEmployees' },
-  { id: 'clients', label: 'Clients', icon: 'building' },
   { id: 'prompts', label: 'Manage Prompts', icon: 'message' },
+  { id: 'settings', label: 'Settings', icon: 'settings' },
+];
+
+/** Platform back-office for Mismo operators (not shown to company HR). */
+const superAdminNavItems: NavItem[] = [
+  { id: 'clients', label: 'Clients', icon: 'building' },
+  { id: 'dashboard', label: 'Risk Command Center', icon: 'dashboard' },
+  { id: 'analytics', label: 'Analytics', icon: 'analytics' },
+  { id: 'users', label: 'Manage Employees', icon: 'employees', badgeKey: 'atRiskEmployees' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
@@ -48,7 +56,13 @@ function SidebarContent({
 }: Omit<SidebarProps, 'isOpen' | 'onClose'>) {
   const { currentRole, dashboardCounts, employeeReports } = dataStore;
   const navItems =
-    currentRole === 'EMPLOYEE' ? employeeNavItems : currentRole === 'CLIENT' ? clientNavItems : adminNavItems;
+    currentRole === 'EMPLOYEE'
+      ? employeeNavItems
+      : currentRole === 'CLIENT'
+        ? clientNavItems
+        : currentRole === 'SUPER_ADMIN'
+          ? superAdminNavItems
+          : adminNavItems;
 
   const getBadgeCount = (item: NavItem): number | undefined => {
     if (currentRole === 'CLIENT') return undefined;
@@ -97,7 +111,9 @@ function SidebarContent({
             ? 'Employee Portal'
             : currentRole === 'CLIENT'
               ? 'Client View'
-              : 'Human Resources'}
+              : currentRole === 'SUPER_ADMIN'
+                ? 'Mismo Backend'
+                : 'Human Resources'}
         </p>
       </div>
 
