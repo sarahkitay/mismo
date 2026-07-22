@@ -82,7 +82,7 @@ export function AdminClients({ dataStore, onNavigate }: AdminClientsProps) {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--mismo-text-secondary)]">
-            Mismo Backend
+            Mismo Internal
           </p>
           <h1 className="text-2xl font-bold text-[var(--mismo-text)] mt-1">Client companies</h1>
           <p className="text-[var(--mismo-text-secondary)] mt-1">

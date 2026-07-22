@@ -2554,7 +2554,7 @@ export function useDataStore() {
  const trimmed = name.trim();
  if (!trimmed) return { error: 'Role name is required.' };
  const existing = orgSettings.customRoles ?? [];
- const systemLabels = new Set(['Employee', 'Human Resources', 'Management', 'Admin', 'Super Admin', 'Client']);
+ const systemLabels = new Set(['Employee', 'Human Resources', 'Management', 'Admin', 'Mismo Internal', 'Client']);
  if (systemLabels.has(trimmed) || existing.some((r) => r.toLowerCase() === trimmed.toLowerCase())) {
  return { error: 'A role with that name already exists.' };
  }
