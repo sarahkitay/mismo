@@ -305,16 +305,18 @@ img {
   background: #fff;
 }
 
-.phone-welcome .phone-screen {
+.phone-welcome .phone-screen,
+.phone-screen-welcome {
   background: var(--teal);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1.25rem;
+  gap: 0;
   padding: 1.5rem 1rem;
   color: #fff;
   text-align: center;
+  min-height: 360px;
 }
 
 .phone-welcome h3 {
@@ -324,78 +326,178 @@ img {
   line-height: 1.25;
 }
 
-.mascot {
-  width: 88px;
-  height: 88px;
-}
-
-.phone-chat {
+.phone-dash {
   width: min(52%, 250px);
   transform: translateY(-12px);
 }
 
-.chat-header {
-  background: #f7f7f7;
-  padding: 0.85rem 0.9rem;
-  border-bottom: 1px solid #eee;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-}
-
-.chat-body {
-  padding: 0.85rem;
+.phone-screen-dash {
+  background: #f5f7fa;
+  min-height: 380px;
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
-  font-size: 0.72rem;
-  color: var(--ink-soft);
 }
 
-.bubble {
-  background: #f3f3f3;
-  border-radius: 10px;
+.dash-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 0.65rem 0.75rem;
-}
-
-.bubble strong {
-  display: block;
-  font-size: 0.68rem;
-  margin-bottom: 0.2rem;
-}
-
-.chat-actions {
-  display: grid;
-  gap: 0.4rem;
-  margin-top: 0.25rem;
-}
-
-.chat-actions .mini-btn {
-  border-radius: 4px;
-  padding: 0.55rem 0.5rem;
-  text-align: center;
-  font-weight: 600;
-  font-size: 0.68rem;
-}
-
-.mini-btn.primary {
-  background: var(--teal);
+  background: #1f3f68;
   color: #fff;
 }
 
-.mini-btn.ghost {
-  background: #fff;
-  color: var(--teal);
-  border: 1px solid var(--teal);
+.dash-brand {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-transform: lowercase;
+  color: #5ec2b5;
 }
 
-.chat-status {
+.dash-role {
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.dash-body {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  flex: 1;
+}
+
+.dash-eyebrow {
+  margin: 0;
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #6e7b8d;
+}
+
+.dash-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #1f3f68;
+}
+
+.dash-card {
+  background: #fff;
+  border: 1px solid #e3e8ef;
+  border-radius: 4px;
+  padding: 0.65rem 0.7rem;
+}
+
+.dash-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6e7b8d;
+}
+
+.dash-count {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #c85b66;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.dash-list {
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.dash-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
   font-size: 0.62rem;
-  color: var(--muted);
-  line-height: 1.4;
-  margin-top: 0.35rem;
+  color: #5f6f86;
+}
+
+.dash-list strong {
+  color: #0f1b2a;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-cta {
+  margin-top: 0.55rem;
+  background: #1f3f68;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 0.45rem 0.5rem;
+  border-radius: 2px;
+}
+
+.dash-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.dash-metric {
+  background: #fff;
+  border: 1px solid #e3e8ef;
+  border-radius: 4px;
+  padding: 0.5rem 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.dash-metric span {
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6e7b8d;
+  font-weight: 600;
+}
+
+.dash-metric strong {
+  font-size: 1rem;
+  color: #1f3f68;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-score span {
+  display: block;
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6e7b8d;
+}
+
+.dash-score strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 1.35rem;
+  color: #1f3f68;
+  letter-spacing: -0.03em;
+}
+
+.dash-score p {
+  margin: 0.2rem 0 0;
+  font-size: 0.58rem;
+  color: #6e7b8d;
+  line-height: 1.3;
 }
 
 @media (max-width: 900px) {
@@ -413,7 +515,7 @@ img {
     min-height: 360px;
   }
 
-  .phone-chat {
+  .phone-dash {
     transform: none;
   }
 }
