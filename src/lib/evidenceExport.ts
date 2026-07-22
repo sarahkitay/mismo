@@ -36,7 +36,6 @@ export function exportCaseCsv(input: EvidenceExportInput) {
   pushRow('Response Plan', report.responsePlan ?? '');
   pushRow('Action Taken', report.responseActionTaken ?? '');
   pushRow('Employee Outcome', report.employeeResponseOutcome ?? '');
-  pushRow('Gina Notes', report.ginaBuildNotes ?? '');
 
   (report.responseChecklist ?? []).forEach((item, idx) => {
     pushRow(`Checklist ${idx + 1}`, `${item.completed ? 'Completed' : 'Pending'} - ${item.label}`);

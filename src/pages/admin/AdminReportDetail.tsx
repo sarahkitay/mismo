@@ -60,7 +60,6 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  const [responsePlanDraft, setResponsePlanDraft] = useState(report?.responsePlan ?? '');
  const [responseActionDraft, setResponseActionDraft] = useState(report?.responseActionTaken ?? '');
  const [employeeOutcomeDraft, setEmployeeOutcomeDraft] = useState(report?.employeeResponseOutcome ?? '');
- const [ginaNotesDraft, setGinaNotesDraft] = useState(report?.ginaBuildNotes ?? '');
  const [checklistSectionIndex, setChecklistSectionIndex] = useState(0);
  const [showAdvancedChecklist, setShowAdvancedChecklist] = useState(false);
  const [showIntakeSubmission, setShowIntakeSubmission] = useState(false);
@@ -768,24 +767,6 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  </CardContent>
  </Card>
  </div>
-
- <Card className="mismo-card">
- <CardContent className="p-5 space-y-2">
- <h2 className="text-sm uppercase tracking-wide text-[var(--color-text-secondary)]">Gina build notes (persistent)</h2>
- <textarea
- value={ginaNotesDraft}
- onChange={(event) => setGinaNotesDraft(event.target.value)}
- className="w-full min-h-[110px] border border-[var(--color-border-200)] p-2 text-sm"
- placeholder="Leave Figma-style build notes here. Notes are saved with this case."
- />
- <Button
- size="sm"
- onClick={() => dataStore.updateReportHandling(report.id, { ginaBuildNotes: ginaNotesDraft })}
- >
- Save notes
- </Button>
- </CardContent>
- </Card>
  </div>
  );
 }
