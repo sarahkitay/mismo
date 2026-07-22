@@ -26,6 +26,7 @@ import { AdminSystemHealth } from '@/pages/admin/AdminSystemHealth';
 import { AdminSettings } from '@/pages/admin/AdminSettings';
 import { AdminClients } from '@/pages/admin/AdminClients';
 import { AdminClientDetail } from '@/pages/admin/AdminClientDetail';
+import { AdminClientPortfolio } from '@/pages/admin/AdminClientPortfolio';
 import { AdminReportDetail } from '@/pages/admin/AdminReportDetail';
 import { AdminEmployeeDetail } from '@/pages/admin/AdminEmployeeDetail';
 import { AdminInvestigationDetail } from '@/pages/admin/AdminInvestigationDetail';
@@ -256,6 +257,35 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  };
 
  const renderAdminContent = () => {
+ // Mismo Internal is company portfolio ops only — not employee / risk-command HR tools.
+ const isMismoInternal = dataStore.currentRole === 'SUPER_ADMIN';
+ const hrOnlyPages = new Set([
+ 'dashboard',
+ 'users',
+ 'employees',
+ 'employee-detail',
+ 'investigations',
+ 'investigation-detail',
+ 'policies',
+ 'policy-detail',
+ 'announcements',
+ 'announcement-detail',
+ 'prompts',
+ 'prompt-responses',
+ 'prompt-response-detail',
+ 'case-register',
+ 'scheduled-memos',
+ 'compliance',
+ 'system-health',
+ 'settings',
+ 'activity',
+ 'manager-dashboard',
+ 'report-detail',
+ ]);
+ if (isMismoInternal && hrOnlyPages.has(activePage)) {
+ return <AdminClients dataStore={dataStore} onNavigate={handleNavigate} />;
+ }
+
  switch (activePage) {
  case 'dashboard':
  return dataStore.currentRole === 'CLIENT' ? (
@@ -269,12 +299,12 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  case 'users':
  return <AdminEmployees dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
  case 'clients':
- if (dataStore.currentRole !== 'SUPER_ADMIN') {
+ if (!isMismoInternal) {
  return <AdminDashboard dataStore={dataStore} onNavigate={handleNavigate} />;
  }
  return <AdminClients dataStore={dataStore} onNavigate={handleNavigate} />;
  case 'client-detail':
- if (dataStore.currentRole !== 'SUPER_ADMIN') {
+ if (!isMismoInternal) {
  return <AdminDashboard dataStore={dataStore} onNavigate={handleNavigate} />;
  }
  return <AdminClientDetail dataStore={dataStore} clientId={pageParams.id ?? ''} onNavigate={handleNavigate} />;
@@ -303,6 +333,9 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  case 'scheduled-memos':
  return <AdminPrompts dataStore={dataStore} onNavigate={handleNavigate} initialFilters={{ filter: 'SCHEDULED' }} />;
  case 'analytics':
+ if (isMismoInternal) {
+ return <AdminClientPortfolio dataStore={dataStore} onNavigate={handleNavigate} />;
+ }
  return <AdminAnalytics dataStore={dataStore} onNavigate={handleNavigate} />;
  case 'compliance':
  return <AdminCompliance dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
@@ -325,6 +358,9 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  case 'help':
  return <HelpSupport dataStore={dataStore} onNavigate={handleNavigate} />;
  default:
+ if (isMismoInternal) {
+ return <AdminClients dataStore={dataStore} onNavigate={handleNavigate} />;
+ }
  return dataStore.currentRole === 'CLIENT' ? (
  <ClientDashboard dataStore={dataStore} />
  ) : (

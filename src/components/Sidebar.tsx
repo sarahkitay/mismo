@@ -30,13 +30,10 @@ const adminNavItems: NavItem[] = [
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
-/** Platform back-office for Mismo operators (not shown to company HR). */
+/** Platform back-office for Mismo leadership (companies + portfolio analytics only). */
 const superAdminNavItems: NavItem[] = [
   { id: 'clients', label: 'Clients', icon: 'building' },
-  { id: 'dashboard', label: 'Risk Command Center', icon: 'dashboard' },
   { id: 'analytics', label: 'Analytics', icon: 'analytics' },
-  { id: 'users', label: 'Manage Employees', icon: 'employees', badgeKey: 'atRiskEmployees' },
-  { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
 const clientNavItems: NavItem[] = [{ id: 'client-dashboard', label: 'Overview', icon: 'dashboard' }];
