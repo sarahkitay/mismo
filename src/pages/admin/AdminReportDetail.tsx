@@ -35,7 +35,9 @@ import { ASSIGN_CASE_TO_ME_ACTION, MARK_INITIAL_REVIEW_ACTION, formatCaseReferen
 import { isIncidentIntakeComplete, isWageHourIntakeComplete } from '@/lib/utils';
 import { EmployeeIntakeReadOnly } from '@/components/admin/EmployeeIntakeReadOnly';
 import { RelatedRecordsNav } from '@/components/admin/RelatedRecordsNav';
+import { OutreachToneCoach } from '@/components/admin/OutreachToneCoach';
 import { relatedNavForReport } from '@/lib/recordLinks';
+import { isAiFeaturesEnabled } from '@/lib/api/aiServices';
 
 interface AdminReportDetailProps {
  dataStore: DataStore;
@@ -340,7 +342,12 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
 
  <Card className="mismo-card">
  <CardContent className="p-5 space-y-3">
+ <div>
  <h2 className="text-sm uppercase tracking-wide text-[var(--color-text-secondary)]">Response workflow</h2>
+ <p className="text-xs text-[var(--color-text-muted)] mt-1">
+ Draft the plan, action, and outcome here. Use AI to soften language and flag risky wording before you save.
+ </p>
+ </div>
  <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
  <div className="space-y-2">
  <p className="text-sm font-medium">Planned Response</p>
@@ -348,6 +355,21 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  value={responsePlanDraft}
  onChange={(event) => setResponsePlanDraft(event.target.value)}
  className="w-full min-h-[120px] border border-[var(--color-border-200)] p-2 text-sm"
+ placeholder="How HR plans to respond to the employee…"
+ />
+ <OutreachToneCoach
+ bodyOnly
+ title="Soften planned response"
+ description="AI revises this plan for a professional, non-punitive tone."
+ orgId={report.orgId}
+ reportId={report.id}
+ investigationId={linkedInvestigation?.id}
+ subject="Planned Response"
+ body={responsePlanDraft}
+ caseCategory={report.category}
+ caseType={report.caseType}
+ createdBy={dataStore.currentUser.id}
+ onApplySuggestion={(_subject, nextBody) => setResponsePlanDraft(nextBody)}
  />
  <Button
  size="sm"
@@ -365,6 +387,21 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  value={responseActionDraft}
  onChange={(event) => setResponseActionDraft(event.target.value)}
  className="w-full min-h-[120px] border border-[var(--color-border-200)] p-2 text-sm"
+ placeholder="What was said or done…"
+ />
+ <OutreachToneCoach
+ bodyOnly
+ title="Soften actual response"
+ description="AI cleans up the logged action for clear, factual case notes."
+ orgId={report.orgId}
+ reportId={report.id}
+ investigationId={linkedInvestigation?.id}
+ subject="Actual Response"
+ body={responseActionDraft}
+ caseCategory={report.category}
+ caseType={report.caseType}
+ createdBy={dataStore.currentUser.id}
+ onApplySuggestion={(_subject, nextBody) => setResponseActionDraft(nextBody)}
  />
  <Button
  size="sm"
@@ -382,6 +419,21 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  value={employeeOutcomeDraft}
  onChange={(event) => setEmployeeOutcomeDraft(event.target.value)}
  className="w-full min-h-[120px] border border-[var(--color-border-200)] p-2 text-sm"
+ placeholder="How the employee responded / next steps…"
+ />
+ <OutreachToneCoach
+ bodyOnly
+ title="Soften outcome note"
+ description="AI helps phrase the outcome neutrally and carefully."
+ orgId={report.orgId}
+ reportId={report.id}
+ investigationId={linkedInvestigation?.id}
+ subject="Employee Response Outcome"
+ body={employeeOutcomeDraft}
+ caseCategory={report.category}
+ caseType={report.caseType}
+ createdBy={dataStore.currentUser.id}
+ onApplySuggestion={(_subject, nextBody) => setEmployeeOutcomeDraft(nextBody)}
  />
  <Button
  size="sm"
@@ -584,10 +636,15 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  <Card className="mismo-card">
  <CardContent className="p-5 space-y-2">
  <h2 className="text-sm uppercase tracking-wide text-[var(--color-text-secondary)]">Response assessment</h2>
+ {isAiFeaturesEnabled() ? (
  <p className="text-sm text-[var(--color-text-secondary)]">
- Responses are assessed by AI and LCM for tone and completeness.
+ Use Soften with AI on each Response workflow field to check tone, flag risky language, and apply a revised draft before saving.
  </p>
- <p className="text-xs text-[var(--color-text-muted)]">Assessment results will appear here once available.</p>
+ ) : (
+ <p className="text-sm text-[var(--color-text-secondary)]">
+ AI language assist is unavailable until the API and AI features are configured.
+ </p>
+ )}
  </CardContent>
  </Card>
  </div>
