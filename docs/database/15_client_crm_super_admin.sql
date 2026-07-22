@@ -1,5 +1,5 @@
 -- =============================================================================
--- MISMO — Restrict client CRM to SUPER_ADMIN only (platform back-office)
+-- MISMO — Restrict client CRM to SUPER_ADMIN (Mismo Internal) only
 -- Safe to run multiple times (idempotent).
 -- =============================================================================
 

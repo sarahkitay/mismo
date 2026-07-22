@@ -203,7 +203,7 @@ export function AdminClientDetail({ dataStore, clientId, onNavigate }: AdminClie
           </Button>
           <h1 className="text-2xl font-bold text-[var(--mismo-text)] truncate">{draft.companyName || 'Client'}</h1>
           <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">
-            Mismo Backend · Client Summary is the printable overview. Edit details in the other tabs.
+            Mismo Internal · Client Summary is the printable overview. Edit details in the other tabs.
           </p>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">

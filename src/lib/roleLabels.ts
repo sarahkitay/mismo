@@ -6,7 +6,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
  HR: 'Human Resources',
  MANAGER: 'Management',
  ADMIN: 'Admin',
- SUPER_ADMIN: 'Super Admin',
+ SUPER_ADMIN: 'Mismo Internal',
  CLIENT: 'Client',
 };
 

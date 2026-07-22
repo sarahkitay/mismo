@@ -20,14 +20,14 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
   const { currentUser, currentRole, switchRole, logout, users, setPreviewUserId } = dataStore;
   const isEmployee = currentRole === 'EMPLOYEE';
   const directoryRole = users.find((u) => u.id === currentUser.id)?.role;
-  const canAccessMismoBackend = directoryRole === 'SUPER_ADMIN';
+  const canAccessMismoInternal = directoryRole === 'SUPER_ADMIN';
 
   const handleSwitchToHR = () => {
     switchRole('HR');
     onNavigate?.('dashboard');
   };
 
-  const handleSwitchToSuperAdmin = () => {
+  const handleSwitchToMismoInternal = () => {
     switchRole('SUPER_ADMIN');
     onNavigate?.('clients');
   };
@@ -93,7 +93,7 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
             )}
             <Badge className="hidden sm:inline-flex bg-[var(--color-emerald-600)] text-white border-0 text-[10px] sm:text-xs">
             {currentRole === 'SUPER_ADMIN'
-              ? 'Mismo Backend'
+              ? 'Mismo Internal'
               : currentRole === 'HR' || currentRole === 'MANAGER' || currentRole === 'ADMIN'
                 ? 'Human Resources'
                 : currentRole === 'CLIENT'
@@ -112,17 +112,17 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
                       : currentRole === 'CLIENT'
                         ? 'Client'
                         : currentRole === 'SUPER_ADMIN'
-                          ? 'Mismo Backend'
+                          ? 'Mismo Internal'
                           : 'Human Resources'}
                   </span>
                   <Icons.chevronRight className="h-4 w-4 rotate-90" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {canAccessMismoBackend && (
-                  <DropdownMenuItem onClick={handleSwitchToSuperAdmin}>
+                {canAccessMismoInternal && (
+                  <DropdownMenuItem onClick={handleSwitchToMismoInternal}>
                     <Icons.shield className="h-4 w-4 mr-2" />
-                    Mismo Backend
+                    Mismo Internal
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onClick={handleSwitchToHR}>
@@ -181,7 +181,7 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
                     : currentRole === 'CLIENT'
                       ? 'Client Viewer'
                         : currentRole === 'SUPER_ADMIN'
-                        ? 'Mismo Backend'
+                        ? 'Mismo Internal'
                         : 'Human Resources'}
               </p>
             </div>

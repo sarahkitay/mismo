@@ -112,7 +112,7 @@ function SidebarContent({
             : currentRole === 'CLIENT'
               ? 'Client View'
               : currentRole === 'SUPER_ADMIN'
-                ? 'Mismo Backend'
+                ? 'Mismo Internal'
                 : 'Human Resources'}
         </p>
       </div>
