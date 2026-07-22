@@ -41,7 +41,7 @@ export const HR_LAW_RESEARCH_JSON_SCHEMA = {
           source_url: { type: 'string' },
           effective_date: { type: ['string', 'null'] },
         },
-        required: ['topic', 'title', 'summary', 'citation', 'source_url'],
+        required: ['topic', 'source_type', 'title', 'summary', 'citation', 'source_url', 'effective_date'],
         additionalProperties: false,
       },
     },
