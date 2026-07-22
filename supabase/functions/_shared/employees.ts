@@ -47,6 +47,40 @@ type GeneratedLink = {
   status: 'invited' | 'already_registered';
 };
 
+type LinkType = 'invite' | 'magiclink';
+
+/**
+ * Build a Mismo app URL for invites so shared links never show the vendor auth host.
+ * Uses token_hash + type; the app verifies via verifyOtp on /auth/confirm.
+ */
+function toBrandedActionLink(
+  appOrigin: string | undefined,
+  linkType: LinkType,
+  actionLink?: string,
+  hashedToken?: string
+): string | undefined {
+  const origin = appOrigin?.trim().replace(/\/$/, '');
+  const token =
+    hashedToken?.trim() ||
+    (() => {
+      if (!actionLink) return undefined;
+      try {
+        return new URL(actionLink).searchParams.get('token') ?? undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+
+  if (origin && token) {
+    const params = new URLSearchParams({
+      token_hash: token,
+      type: linkType,
+    });
+    return `${origin}/auth/confirm?${params.toString()}`;
+  }
+  return actionLink;
+}
+
 /**
  * Generate a login link for the employee. For a brand-new account this creates
  * the auth user with an invite link (and sends the invite email when SMTP is
@@ -59,16 +93,20 @@ async function generateLoginLink(
   data: Record<string, unknown>
 ): Promise<GeneratedLink> {
   const admin = getSupabaseAdmin();
+  const appOrigin = redirectTo?.trim() || Deno.env.get('SITE_URL')?.trim() || undefined;
 
   const invite = await admin.auth.admin.generateLink({
     type: 'invite',
     email,
-    options: { redirectTo, data },
+    options: { redirectTo: appOrigin, data },
   });
 
   if (!invite.error) {
+    const props = invite.data?.properties as
+      | { action_link?: string; hashed_token?: string }
+      | undefined;
     return {
-      actionLink: invite.data?.properties?.action_link,
+      actionLink: toBrandedActionLink(appOrigin, 'invite', props?.action_link, props?.hashed_token),
       authUserId: invite.data?.user?.id,
       status: 'invited',
     };
@@ -81,20 +119,23 @@ async function generateLoginLink(
   const magic = await admin.auth.admin.generateLink({
     type: 'magiclink',
     email,
-    options: { redirectTo },
+    options: { redirectTo: appOrigin },
   });
   if (magic.error) throw new Error(magic.error.message);
 
+  const props = magic.data?.properties as
+    | { action_link?: string; hashed_token?: string }
+    | undefined;
   return {
-    actionLink: magic.data?.properties?.action_link,
+    actionLink: toBrandedActionLink(appOrigin, 'magiclink', props?.action_link, props?.hashed_token),
     authUserId: magic.data?.user?.id,
     status: 'already_registered',
   };
 }
 
 /**
- * Invite an employee to create their Mismo login. Sends a Supabase Auth invite
- * email (when SMTP is configured), returns a shareable link, and links the auth
+ * Invite an employee to create their Mismo login. Sends an invite email when
+ * SMTP is configured, returns a shareable Mismo app link, and links the auth
  * user to their directory record. Requires an authenticated HR/Admin caller.
  */
 export async function inviteEmployee(input: InviteEmployeeInput): Promise<InviteEmployeeResult> {

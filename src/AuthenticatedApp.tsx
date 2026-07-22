@@ -137,7 +137,9 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  nextPage = 'home';
  } else if (currentRole === 'CLIENT') {
  nextPage = 'client-dashboard';
- } else if (currentRole === 'HR' || currentRole === 'MANAGER' || currentRole === 'ADMIN' || currentRole === 'SUPER_ADMIN') {
+ } else if (currentRole === 'SUPER_ADMIN') {
+ nextPage = 'clients';
+ } else if (currentRole === 'HR' || currentRole === 'MANAGER' || currentRole === 'ADMIN') {
  nextPage = 'dashboard';
  }
  setActivePage(nextPage);
@@ -267,8 +269,14 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  case 'users':
  return <AdminEmployees dataStore={dataStore} onNavigate={handleNavigate} initialFilters={pageParams} />;
  case 'clients':
+ if (dataStore.currentRole !== 'SUPER_ADMIN') {
+ return <AdminDashboard dataStore={dataStore} onNavigate={handleNavigate} />;
+ }
  return <AdminClients dataStore={dataStore} onNavigate={handleNavigate} />;
  case 'client-detail':
+ if (dataStore.currentRole !== 'SUPER_ADMIN') {
+ return <AdminDashboard dataStore={dataStore} onNavigate={handleNavigate} />;
+ }
  return <AdminClientDetail dataStore={dataStore} clientId={pageParams.id ?? ''} onNavigate={handleNavigate} />;
  case 'policies':
  return (

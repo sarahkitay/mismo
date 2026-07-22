@@ -161,10 +161,15 @@ export function parseAppLocation(
     const rid = pathname.split('/admin/users/')[1]?.split('?')[0] ?? '';
     return merge({ role: 'HR', page: 'employee-detail', params: { id: rid } });
   }
-  if (pathname === '/admin/clients') return merge({ role: 'HR', page: 'clients', params: {} });
+  if (pathname === '/admin/clients') {
+    return merge({ role: currentRole === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'HR', page: currentRole === 'SUPER_ADMIN' ? 'clients' : 'dashboard', params: {} });
+  }
   if (pathname.startsWith('/admin/clients/')) {
     const rid = pathname.split('/admin/clients/')[1]?.split('?')[0] ?? '';
-    return merge({ role: 'HR', page: 'client-detail', params: { id: rid } });
+    if (currentRole === 'SUPER_ADMIN') {
+      return merge({ role: 'SUPER_ADMIN', page: 'client-detail', params: { id: rid } });
+    }
+    return merge({ role: 'HR', page: 'dashboard', params: {} });
   }
   if (pathname === '/admin/prompts') return merge({ role: 'HR', page: 'prompts', params: {} });
   if (pathname === '/admin/prompts/scheduled') return merge({ role: 'HR', page: 'scheduled-memos', params: {} });
