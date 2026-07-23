@@ -3,11 +3,7 @@ export function PhoneMockups() {
     <div className="phones" aria-hidden="true">
       <div className="phone phone-welcome">
         <div className="phone-screen phone-screen-welcome">
-          <h3>
-            Welcome To
-            <br />
-            Mismo!
-          </h3>
+          <p className="welcome-logo">mismo</p>
         </div>
       </div>
 
