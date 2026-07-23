@@ -49,7 +49,7 @@ export function FeaturesPage() {
           ))}
         </div>
 
-        <div style={{ marginTop: '2.5rem' }}>
+        <div style={{ marginTop: '2.5rem', display: 'flex', justifyContent: 'center' }}>
           <a className="btn btn-dark" href={inviteMailto('Mismo features — invitation request')}>
             Request Invitation
           </a>
