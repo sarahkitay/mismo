@@ -107,7 +107,7 @@ export function AdminClientSummary({
                 >
                   <span>{formatDate(n.createdAt)}</span>
                   <span className="whitespace-pre-wrap">{n.body}</span>
-                  <span>{n.createdByName || '—'}</span>
+                  <span>{n.createdByName || '-'}</span>
                 </div>
               ))
             )}
@@ -159,13 +159,13 @@ export function AdminClientSummary({
                   others.map((c) => (
                     <tr key={c.id} className="border-t border-[var(--color-border-200)]">
                       <td className="px-3 py-2">{c.name}</td>
-                      <td className="px-3 py-2">{c.title || '—'}</td>
-                      <td className="px-3 py-2">{c.department || '—'}</td>
+                      <td className="px-3 py-2">{c.title || '-'}</td>
+                      <td className="px-3 py-2">{c.department || '-'}</td>
                       <td className="px-3 py-2">
                         {phoneLine(c.officePhone || c.phone)}
                         {c.extension ? ` Ext: ${c.extension}` : ''}
                       </td>
-                      <td className="px-3 py-2">{c.email || '—'}</td>
+                      <td className="px-3 py-2">{c.email || '-'}</td>
                     </tr>
                   ))
                 )}
@@ -191,7 +191,7 @@ export function AdminClientSummary({
             {sortedSupport.map((e) => (
               <div key={e.id} className="p-3 text-sm">
                 <p className="text-xs text-[var(--mismo-text-secondary)] mb-1">
-                  {formatDate(e.createdAt)} · {e.createdByName || '—'}
+                  {formatDate(e.createdAt)} · {e.createdByName || '-'}
                 </p>
                 <p className="whitespace-pre-wrap">{e.body}</p>
               </div>

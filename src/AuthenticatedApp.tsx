@@ -257,7 +257,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  };
 
  const renderAdminContent = () => {
- // Mismo Internal is company portfolio ops only — not employee / risk-command HR tools.
+ // Mismo Internal is company portfolio ops only - not employee / risk-command HR tools.
  const isMismoInternal = dataStore.currentRole === 'SUPER_ADMIN';
  const hrOnlyPages = new Set([
  'dashboard',

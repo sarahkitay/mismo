@@ -387,7 +387,7 @@ export function AdminClientDetail({ dataStore, clientId, onNavigate }: AdminClie
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="NONE">—</SelectItem>
+                      <SelectItem value="NONE">-</SelectItem>
                       <SelectItem value="MONTHLY">Monthly</SelectItem>
                       <SelectItem value="QUARTERLY">Quarterly</SelectItem>
                       <SelectItem value="ANNUALLY">Annually</SelectItem>
@@ -405,7 +405,7 @@ export function AdminClientDetail({ dataStore, clientId, onNavigate }: AdminClie
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="NONE">—</SelectItem>
+                      <SelectItem value="NONE">-</SelectItem>
                       <SelectItem value="INVOICE">Invoice</SelectItem>
                       <SelectItem value="ACH">ACH</SelectItem>
                       <SelectItem value="CARD">Card</SelectItem>
@@ -585,7 +585,7 @@ export function AdminClientDetail({ dataStore, clientId, onNavigate }: AdminClie
                     <p className="text-xs text-[var(--mismo-text-secondary)]">
                       {[c.title, c.department, c.email, c.officePhone || c.phone, c.cellPhone]
                         .filter(Boolean)
-                        .join(' · ') || '—'}
+                        .join(' · ') || '-'}
                     </p>
                   </div>
                   <div className="flex gap-2">

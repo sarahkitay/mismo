@@ -22,7 +22,7 @@ interface AdminClientsProps {
 type StatusFilter = 'ALL' | 'active' | 'inactive';
 
 function money(n: number | undefined): string {
-  if (n == null || Number.isNaN(n)) return '—';
+  if (n == null || Number.isNaN(n)) return '-';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
 }
 
@@ -187,13 +187,13 @@ export function AdminClients({ dataStore, onNavigate }: AdminClientsProps) {
                     ) : null}
                   </td>
                   <td className="px-4 py-3 hidden md:table-cell text-[var(--mismo-text-secondary)]">
-                    {[c.city, c.state].filter(Boolean).join(', ') || '—'}
+                    {[c.city, c.state].filter(Boolean).join(', ') || '-'}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums font-medium">
-                    {c.employeeCount != null ? c.employeeCount : '—'}
+                    {c.employeeCount != null ? c.employeeCount : '-'}
                   </td>
                   <td className="px-4 py-3 hidden lg:table-cell text-[var(--mismo-text-secondary)]">
-                    {c.jestarAccountRep || '—'}
+                    {c.jestarAccountRep || '-'}
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -205,7 +205,7 @@ export function AdminClients({ dataStore, onNavigate }: AdminClientsProps) {
                     </span>
                   </td>
                   <td className="px-4 py-3 hidden sm:table-cell text-[var(--mismo-text-secondary)]">
-                    {c.activeDate ? formatDate(c.activeDate) : '—'}
+                    {c.activeDate ? formatDate(c.activeDate) : '-'}
                   </td>
                 </tr>
               ))}
