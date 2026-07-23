@@ -321,11 +321,13 @@ img {
   min-height: 360px;
 }
 
-.phone-welcome h3 {
+.welcome-logo {
   margin: 0;
-  font-size: 1.15rem;
-  font-weight: 700;
-  line-height: 1.25;
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--teal);
+  text-transform: lowercase;
 }
 
 .phone-dash {
