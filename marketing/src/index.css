@@ -307,7 +307,7 @@ img {
 
 .phone-welcome .phone-screen,
 .phone-screen-welcome {
-  background: var(--teal);
+  background: #1f3f68;
   display: flex;
   flex-direction: column;
   align-items: center;
