@@ -31,7 +31,7 @@ export function AdminClientPortfolio({ dataStore, onNavigate }: AdminClientPortf
       0
     );
     const byState = [...clientCompanies].reduce<Record<string, number>>((acc, c) => {
-      const key = (c.state || '—').toUpperCase();
+      const key = (c.state || '-').toUpperCase();
       acc[key] = (acc[key] ?? 0) + 1;
       return acc;
     }, {});
@@ -124,7 +124,7 @@ export function AdminClientPortfolio({ dataStore, onNavigate }: AdminClientPortf
                     >
                       <span className="font-medium">{c.companyName}</span>
                       <span className="text-[var(--mismo-text-secondary)] float-right tabular-nums">
-                        {c.employeeCount != null ? c.employeeCount : '—'}
+                        {c.employeeCount != null ? c.employeeCount : '-'}
                       </span>
                     </button>
                   </li>
