@@ -1,7 +1,7 @@
 :root {
-  --teal: #00c4b4;
-  --teal-dark: #00a89a;
-  --teal-soft: #e6f9f7;
+  --teal: #1f3f68;
+  --teal-dark: #162f4f;
+  --teal-soft: #e6edf6;
   --ink: #121212;
   --ink-soft: #2a2a2a;
   --muted: #6b6b6b;
@@ -356,7 +356,7 @@ img {
   font-weight: 800;
   letter-spacing: -0.03em;
   text-transform: lowercase;
-  color: #5ec2b5;
+  color: #fff;
 }
 
 .dash-role {
@@ -416,6 +416,33 @@ img {
   color: #c85b66;
   letter-spacing: -0.03em;
   line-height: 1;
+}
+
+.dash-action {
+  background: #1f3f68;
+  border-color: #1f3f68;
+  color: #fff;
+}
+
+.dash-action .dash-card-head {
+  color: #fff;
+}
+
+.dash-action .dash-count {
+  color: #fff;
+}
+
+.dash-action .dash-list li {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.dash-action .dash-list strong {
+  color: #fff;
+}
+
+.dash-action .dash-cta {
+  background: #fff;
+  color: #1f3f68;
 }
 
 .dash-list {

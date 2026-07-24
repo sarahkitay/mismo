@@ -21,9 +21,9 @@ Opens on http://localhost:5174
 4. Add env (optional):
    - `VITE_APP_URL` - URL of the logged-in product app (Sign in link)
    - `VITE_INVITE_EMAIL` - inbox for Request Invitation (default `hello@mismo.com`)
-5. After deploy: **Domains** → add your old marketing domain (e.g. `www.mismo.com`).
+5. After deploy: **Domains** → add your old marketing domain (e.g. `www.mismo.co`).
 
-Keep the product app on a separate project/domain (e.g. `app.mismo.com`).
+Keep the product app on a separate project/domain (e.g. `app.mismo.co`).
 
 ## Pages
 
