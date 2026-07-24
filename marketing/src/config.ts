@@ -1,5 +1,5 @@
 /** Public app URL for sign-in / invite handoff. Override with VITE_APP_URL. */
-export const APP_URL = (import.meta.env.VITE_APP_URL as string | undefined)?.trim() || 'https://app.mismo.com';
+export const APP_URL = (import.meta.env.VITE_APP_URL as string | undefined)?.trim() || 'https://app.mismo.co';
 
 /** Invitation / sales contact. Override with VITE_INVITE_EMAIL. */
 export const INVITE_EMAIL =
