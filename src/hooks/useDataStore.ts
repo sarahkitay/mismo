@@ -89,7 +89,7 @@ import {
  persistClientPayment,
  persistClientSupportEntry,
 } from '@/lib/supabase/clientCompanies';
-import { normalizeDemoEmail, resolveDemoPassword } from '@/data/demoLogins';
+import { normalizeDemoEmail } from '@/data/demoLogins';
 import { mergeCorePrompts, resolveDailyCheckInPrompt, isLockedCorePrompt } from '@/lib/corePrompts';
 import { INDUSTRY_CHECKLIST_SECTIONS } from '@/data/industryChecklist';
 import { INFRA_NOT_CONFIGURED, sanitizeInfraError } from '@/lib/infraMessaging';
@@ -261,7 +261,7 @@ export function useDataStore() {
  return { ok: false, message: INFRA_NOT_CONFIGURED };
  }
  const trimmed = normalizeDemoEmail(email);
- const effectivePassword = resolveDemoPassword(trimmed, password);
+ const effectivePassword = password;
  if (!trimmed || !effectivePassword) {
  return { ok: false, message: 'Email and password are required.' };
  }
