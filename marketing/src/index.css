@@ -532,32 +532,157 @@ img {
 }
 
 @media (max-width: 900px) {
+  .hero {
+    padding: 2rem 1.25rem 2.75rem;
+  }
+
   .hero-inner {
     grid-template-columns: 1fr;
     text-align: center;
+    gap: 1.75rem;
   }
 
   .hero-copy {
-    max-width: none;
+    max-width: 22rem;
     margin: 0 auto;
   }
 
+  .hero h1 {
+    font-size: clamp(1.85rem, 7.5vw, 2.45rem);
+    line-height: 1.12;
+  }
+
+  .hero-cta {
+    margin-top: 1.25rem;
+  }
+
   .hero-visual {
-    min-height: 360px;
+    min-height: 0;
+    width: min(100%, 340px);
+    margin: 0 auto;
+  }
+
+  .hero-blob {
+    inset: 10% 4% 6% 4%;
+  }
+
+  .phones {
+    max-width: 100%;
+    gap: 0.55rem;
+  }
+
+  .phone {
+    width: 44%;
+    max-width: 148px;
+    border-radius: 20px;
+    padding: 7px;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.14);
   }
 
   .phone-dash {
+    width: 52%;
+    max-width: 172px;
     transform: none;
+  }
+
+  .phone-screen,
+  .phone-screen-welcome {
+    min-height: 268px;
+    border-radius: 15px;
+  }
+
+  .phone-screen-dash {
+    min-height: 288px;
   }
 }
 
 @media (max-width: 520px) {
-  .phones {
-    gap: 0.5rem;
+  .header-inner {
+    padding: 0.95rem 1.15rem;
   }
 
-  .phone-screen {
-    min-height: 280px;
+  .hero {
+    padding: 1.5rem 1.15rem 2.25rem;
+  }
+
+  .hero-copy {
+    max-width: none;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.7rem, 8vw, 2.1rem);
+  }
+
+  .hero-visual {
+    width: min(100%, 300px);
+  }
+
+  .phones {
+    gap: 0.4rem;
+  }
+
+  .phone {
+    width: 45%;
+    max-width: 132px;
+    border-radius: 17px;
+    padding: 6px;
+  }
+
+  .phone-dash {
+    width: 53%;
+    max-width: 154px;
+  }
+
+  .phone-screen,
+  .phone-screen-welcome {
+    min-height: 236px;
+    border-radius: 13px;
+  }
+
+  .phone-screen-dash {
+    min-height: 252px;
+  }
+
+  .welcome-logo {
+    font-size: 1.15rem;
+  }
+
+  .dash-topbar {
+    padding: 0.5rem 0.55rem;
+  }
+
+  .dash-body {
+    padding: 0.5rem;
+    gap: 0.35rem;
+  }
+
+  .dash-title {
+    font-size: 0.72rem;
+  }
+
+  .dash-card {
+    padding: 0.45rem 0.5rem;
+  }
+
+  .dash-list li,
+  .dash-cta {
+    font-size: 0.52rem;
+  }
+
+  .dash-count {
+    font-size: 1rem;
+  }
+
+  .dash-metric {
+    padding: 0.4rem 0.45rem;
+  }
+
+  .dash-metric strong {
+    font-size: 0.9rem;
+  }
+
+  .dash-score strong {
+    font-size: 1.05rem;
   }
 }
 
