@@ -3038,7 +3038,15 @@ export function useDataStore() {
  yesResponsesNeedingReview: effectiveResponses.filter(
  (r) => r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false
  ).length,
- unansweredPromptDeliveries: effectiveDeliveries.filter((d) => d.status === 'PENDING').length,
+ // Only employee check-ins still awaiting an answer (not HR/admin's own gate, not closed prompts).
+ unansweredPromptDeliveries: effectiveDeliveries.filter((d) => {
+ if (d.status !== 'PENDING') return false;
+ const user = effectiveUsers.find((u) => u.id === d.userId);
+ if (!user || user.role !== 'EMPLOYEE' || user.status !== 'active') return false;
+ const prompt = effectivePrompts.find((p) => p.id === d.promptId);
+ if (!prompt || prompt.status !== 'ACTIVE') return false;
+ return true;
+ }).length,
  reportsNeedingClarification: effectiveReports.filter((r) => r.status === 'NEEDS_INFO').length,
  memoAcknowledgementsPending: (() => {
  const activeEmployees = effectiveUsers.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');

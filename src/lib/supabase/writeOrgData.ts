@@ -227,10 +227,25 @@ export async function persistPromptDelivery(
         return;
       }
     }
-    const { error } = await supabase
-      .from('prompt_deliveries')
-      .upsert(deliveryRow(delivery), { onConflict: 'id' });
-    if (error) notify('prompt delivery', error);
+    // Avoid upsert: ON CONFLICT DO UPDATE fails RLS USING when org context is
+    // missing or the row already exists from a prior seed.
+    const row = deliveryRow(delivery);
+    const { error: insertErr } = await supabase.from('prompt_deliveries').insert(row);
+    if (!insertErr) return;
+    if (insertErr.code === '23505') {
+      const { id: _id, org_id: _org, ...patch } = row;
+      const { error: updErr } = await supabase
+        .from('prompt_deliveries')
+        .update(patch)
+        .eq('id', delivery.id)
+        .eq('org_id', delivery.orgId);
+      // Duplicate PENDING seed: ignore update failures (row already present).
+      if (updErr && delivery.status !== 'PENDING') {
+        notify('prompt delivery', updErr);
+      }
+      return;
+    }
+    notify('prompt delivery', insertErr);
   } catch (err) {
     notify('prompt delivery', { message: err instanceof Error ? err.message : String(err) });
   }
@@ -373,6 +388,44 @@ function policyAckRow(ack: PolicyAcknowledgement): Record<string, unknown> {
   };
 }
 
+/** Ensure a delivery row exists and is marked complete when possible.
+ * Does not fail the response save if only the status update is blocked. */
+async function ensurePromptDeliveryForResponse(
+  supabase: SupabaseLike,
+  delivery: PromptDelivery
+): Promise<{ ok: boolean; error?: { message: string } }> {
+  const row = deliveryRow(delivery);
+  const { error: insertErr } = await supabase.from('prompt_deliveries').insert(row);
+  if (!insertErr) return { ok: true };
+
+  if (insertErr.code !== '23505') {
+    return { ok: false, error: insertErr };
+  }
+
+  // Row exists — only patch completion fields (avoids rewriting identity cols).
+  const completionPatch = {
+    status: row.status,
+    completed_at: row.completed_at,
+    updated_at: row.updated_at,
+  };
+  const { error: updErr } = await supabase
+    .from('prompt_deliveries')
+    .update(completionPatch)
+    .eq('id', delivery.id);
+
+  if (!updErr) return { ok: true };
+
+  // Delivery already present is enough for the response FK; log softly.
+  const { data: existing } = await supabase
+    .from('prompt_deliveries')
+    .select('id')
+    .eq('id', delivery.id)
+    .maybeSingle();
+  if (existing?.id) return { ok: true };
+
+  return { ok: false, error: updErr };
+}
+
 /** Persist a submitted check-in response and mark its delivery complete.
  * Returns the response id that exists in the DB (may differ if a row already
  * existed for this delivery). Delivery is written first — responses FK to it. */
@@ -385,11 +438,9 @@ export async function persistPromptResponse(
     const supabase = getSupabaseClient();
 
     if (delivery) {
-      const { error: delErr } = await supabase
-        .from('prompt_deliveries')
-        .upsert(deliveryRow(delivery), { onConflict: 'id' });
-      if (delErr) {
-        notify('response', delErr);
+      const ensured = await ensurePromptDeliveryForResponse(supabase, delivery);
+      if (!ensured.ok) {
+        notify('response', ensured.error ?? { message: 'Could not save prompt delivery.' });
         return { ok: false, responseId: response.id };
       }
     }
