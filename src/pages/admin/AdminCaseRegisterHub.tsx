@@ -185,11 +185,6 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
     };
   }, [registerReports]);
 
-  const unansweredCount = deliveries.filter((d) => d.status === 'PENDING').length;
-  const yesNeedingReviewCount = useMemo(
-    () => responses.filter((r) => r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false).length,
-    [responses]
-  );
   const promptIdsForChannel = useMemo(() => {
     if (promptChannel === 'incident') {
       return new Set(prompts.filter((p) => p.type === 'INCIDENT').map((p) => p.id));
@@ -201,6 +196,24 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
     }
     return new Set(prompts.map((p) => p.id));
   }, [prompts, promptChannel]);
+
+  const unansweredCount = useMemo(
+    () =>
+      deliveries.filter((d) => {
+        if (d.status !== 'PENDING') return false;
+        const user = users.find((u) => u.id === d.userId);
+        if (!user || user.role !== 'EMPLOYEE' || user.status !== 'active') return false;
+        const prompt = prompts.find((p) => p.id === d.promptId);
+        if (!prompt || prompt.status !== 'ACTIVE') return false;
+        if (!promptIdsForChannel.has(d.promptId)) return false;
+        return true;
+      }).length,
+    [deliveries, users, prompts, promptIdsForChannel]
+  );
+  const yesNeedingReviewCount = useMemo(
+    () => responses.filter((r) => r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false).length,
+    [responses]
+  );
 
   const employeeIdFilter = filters.employeeId;
   const filterEmployee = employeeIdFilter ? users.find((u) => u.id === employeeIdFilter) : undefined;
@@ -262,7 +275,15 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
     if (bucket === 'PROMPT_UNANSWERED') {
       return sortRows(
         deliveries
-          .filter((d) => d.status === 'PENDING' && inDateRange(d.deliveredAt, range) && promptIdsForChannel.has(d.promptId))
+          .filter((d) => {
+            if (d.status !== 'PENDING' || !inDateRange(d.deliveredAt, range) || !promptIdsForChannel.has(d.promptId)) {
+              return false;
+            }
+            const user = users.find((u) => u.id === d.userId);
+            if (!user || user.role !== 'EMPLOYEE' || user.status !== 'active') return false;
+            const prompt = prompts.find((p) => p.id === d.promptId);
+            return Boolean(prompt && prompt.status === 'ACTIVE');
+          })
           .map((d) => {
             const u = users.find((user) => user.id === d.userId);
             const prompt = prompts.find((p) => p.id === d.promptId);
@@ -283,7 +304,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
       );
     }
     const ansFilter = bucket === 'PROMPT_YES' ? 'HAS_ISSUE' : bucket === 'PROMPT_NO' ? 'NO_ISSUE' : null;
-    return sortRows(
+    const answeredRows = sortRows(
       responses
         .filter((r) => inDateRange(r.createdAt, range) && promptIdsForChannel.has(r.promptId))
         .filter((r) => ansFilter === null || r.answer === ansFilter)
@@ -309,6 +330,40 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
         })
         .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
     );
+    // Default "all" view: include unanswered employee check-ins so the list matches the nav badge.
+    if (bucket === 'PROMPT_ALL' && !needsReviewOnly) {
+      const unansweredRows = sortRows(
+        deliveries
+          .filter((d) => {
+            if (d.status !== 'PENDING' || !inDateRange(d.deliveredAt, range) || !promptIdsForChannel.has(d.promptId)) {
+              return false;
+            }
+            const user = users.find((u) => u.id === d.userId);
+            if (!user || user.role !== 'EMPLOYEE' || user.status !== 'active') return false;
+            const prompt = prompts.find((p) => p.id === d.promptId);
+            return Boolean(prompt && prompt.status === 'ACTIVE');
+          })
+          .map((d) => {
+            const u = users.find((user) => user.id === d.userId);
+            const prompt = prompts.find((p) => p.id === d.promptId);
+            return {
+              id: d.id,
+              deliveryId: d.id,
+              userId: d.userId,
+              promptTitle: prompt?.title ?? 'Prompt',
+              promptType: prompt?.type ?? 'GENERAL',
+              userName: u ? `${u.firstName} ${u.lastName}` : 'Employee',
+              answer: 'UNANSWERED' as const,
+              date: d.deliveredAt,
+              modified: d.updatedAt ?? d.deliveredAt,
+              needsReview: false,
+            };
+          })
+          .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
+      );
+      return sortRows([...answeredRows, ...unansweredRows]);
+    }
+    return answeredRows;
   }, [bucket, deliveries, responses, prompts, users, range, promptQuery, needsReviewOnly, promptChannel, promptIdsForChannel, employeeIdFilter]);
 
   const filteredRegisterReports = useMemo(() => {

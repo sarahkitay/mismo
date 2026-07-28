@@ -85,6 +85,8 @@ function SidebarContent({
       return dataStore.pendingPromptsForEmployee.length;
     }
     if (item.id === 'prompt-responses') {
+      // Match what HR can act on in the hub: Yes needing review, unanswered employee
+      // check-ins, and open case-register items. Do not inflate with HR's own gate.
       const n =
         dashboardCounts.yesResponsesNeedingReview +
         dashboardCounts.unansweredPromptDeliveries +
