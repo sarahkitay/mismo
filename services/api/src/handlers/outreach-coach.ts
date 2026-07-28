@@ -14,7 +14,7 @@ const RequestSchema = z.object({
   reportId: z.string().optional(),
   investigationId: z.string().optional(),
   subject: z.string().optional(),
-  body: z.string().min(1),
+  body: z.string().optional().default(''),
   stateCode: z.string().length(2).optional(),
   caseCategory: z.string().optional(),
   caseType: z.string().optional(),
@@ -23,6 +23,19 @@ const RequestSchema = z.object({
   applicableLaws: z
     .array(z.object({ citation: z.string(), summary: z.string() }))
     .optional(),
+  task: z.enum(['soften', 'employee_outcome']).optional(),
+  sourceMaterial: z.string().optional(),
+}).superRefine((val, ctx) => {
+  if (val.task === 'employee_outcome') {
+    if (!val.body?.trim() && !val.sourceMaterial?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Add an Actual Response (or an outcome draft) before generating.',
+      });
+    }
+  } else if (!val.body?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'body is required' });
+  }
 });
 
 const CoachResponseSchema = z.object({
@@ -73,12 +86,14 @@ export async function runOutreachCoach(input: OutreachCoachRequest): Promise<Out
         role: 'user',
         content: buildOutreachCoachUserPrompt({
           subject: parsed.subject,
-          body: parsed.body,
+          body: parsed.body || '',
           toneTarget: parsed.toneTarget,
           caseCategory: parsed.caseCategory,
           caseType: parsed.caseType,
           stateCode: parsed.stateCode,
           applicableLaws: parsed.applicableLaws,
+          task: parsed.task,
+          sourceMaterial: parsed.sourceMaterial,
         }),
       },
     ],
@@ -99,7 +114,11 @@ export async function runOutreachCoach(input: OutreachCoachRequest): Promise<Out
     caseCategory: parsed.caseCategory,
     caseType: parsed.caseType,
     subject: parsed.subject,
-    body: parsed.body,
+    body:
+      parsed.body?.trim() ||
+      (parsed.task === 'employee_outcome'
+        ? `[generated from actual response]\n${parsed.sourceMaterial?.trim() ?? ''}`
+        : ''),
     toneLevel: result.tone_level,
     toneScore: result.tone_score,
     riskFlags: result.risk_flags,

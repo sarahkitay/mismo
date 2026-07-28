@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface AdminSettingsProps {
   dataStore: DataStore;
@@ -141,9 +142,7 @@ export function AdminSettings({ dataStore, initialSection }: AdminSettingsProps)
     <div className="space-y-6 max-w-3xl">
       <div className="settings-header">
         <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Settings</h1>
-        <p className="text-[var(--mismo-text-secondary)] mt-1">
-          Configure organization settings and preferences
-        </p>
+        <PageMoreInfo>Configure organization settings and preferences</PageMoreInfo>
       </div>
 
       <div ref={departmentsSectionRef} id="settings-departments">

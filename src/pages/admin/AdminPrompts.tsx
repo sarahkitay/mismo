@@ -35,6 +35,7 @@ import {
  isOptionalPrompt,
 } from '@/lib/corePrompts';
 import { toast } from 'sonner';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface AdminPromptsProps {
   dataStore: DataStore;
@@ -287,9 +288,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
       <div className="prompts-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Prompts</h1>
-          <p className="text-[var(--mismo-text-secondary)] mt-1">
-            Create and manage employee check-in prompts
-          </p>
+          <PageMoreInfo>Create and manage employee check-in prompts</PageMoreInfo>
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>

@@ -10,6 +10,7 @@ import { Icons } from '@/lib/icons';
 import { EMPLOYEE_RESOURCE_CATEGORIES, getEmployeeResourceCategoryLabel } from '@/lib/employeeResourceCategories';
 import { formatDate, getMemoCategoryDisplay } from '@/lib/utils';
 import { toast } from 'sonner';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 type MemoStatusFilter = 'ALL' | 'REQUIRED' | 'ACKNOWLEDGED' | 'CLARIFICATION' | 'UNREAD';
 type SortOption = 'NEWEST' | 'DUE_SOON' | 'CATEGORY' | 'TITLE';
@@ -130,12 +131,10 @@ export function EmployeeResources({ dataStore }: EmployeeResourcesProps) {
  <div className="space-y-6">
  <div>
  <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Resources</h1>
- <p className="text-[var(--mismo-text-secondary)] mt-1">
+ <PageMoreInfo>
  Company memos, handbooks, and support materials managed by HR. You can search, filter, and request clarification if anything is unclear.
- </p>
- <p className="text-xs text-[var(--mismo-text-secondary)] mt-2">
- HR admins publish content under Memos &amp; Announcements and the Company Library in the admin portal.
- </p>
+ {' '}HR admins publish content under Memos &amp; Announcements and the Company Library in the admin portal.
+ </PageMoreInfo>
  </div>
 
  {/* Required acknowledgements */}

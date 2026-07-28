@@ -13,6 +13,7 @@ import { MemoNudgeModal, type MemoNudgePayload } from '@/components/admin/MemoNu
 import { downloadCsv } from '@/lib/exportCsv';
 import { ReportBuilderDialog } from '@/components/admin/ReportBuilderDialog';
 import { toast } from 'sonner';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 import {
   Select,
   SelectContent,
@@ -109,9 +110,9 @@ export function AdminPolicies({ dataStore, onNavigate, initialFilters }: AdminPo
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Company memos</h1>
-          <p className="text-[var(--mismo-text-secondary)]">
+          <PageMoreInfo>
             Create, publish, and version memos. Search by category, title, or date range (publish or completion due date).
-          </p>
+          </PageMoreInfo>
           {memoQueueFilter !== 'ALL' && (
             <p className="mt-2 text-sm text-[var(--color-primary-900)] border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-3 py-2">
               URL filter: {memoQueueFilter === 'PENDING_ACK' ? 'Memos with missing acknowledgements' : 'Memos with clarification requests'}.

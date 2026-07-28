@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import type { Report, ReportSeverity, ReportStatus } from '@/types';
 import { downloadCsv } from '@/lib/exportCsv';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -431,15 +432,20 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
     <div className="space-y-5">
       <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-5 py-4">
         <h1 className="mismo-heading text-3xl text-[var(--color-primary-900)]">Prompt responses</h1>
-        <p className="mt-1 text-[var(--color-text-secondary)]">
-          Scheduled check-in answers and the <strong>case register</strong> in one place. <strong>Prompt responses</strong> are
-          check-in answers (Yes, No, unanswered). <strong>Case register</strong> items are reports and escalations (from a Yes
-          response, incident intake, memo clarification, or manual entry) that HR triages here. Escalations may become{' '}
-          <button type="button" className="text-[var(--mismo-blue)] hover:underline font-medium" onClick={() => onNavigate('investigations')}>
+        <PageMoreInfo>
+          Scheduled check-in answers and the <strong>case register</strong> in one place.{' '}
+          <strong>Prompt responses</strong> are check-in answers (Yes, No, unanswered).{' '}
+          <strong>Case register</strong> items are reports and escalations (from a Yes response, incident intake, memo
+          clarification, or manual entry) that HR triages here. Escalations may become{' '}
+          <button
+            type="button"
+            className="text-[var(--mismo-blue)] hover:underline font-medium"
+            onClick={() => onNavigate('investigations')}
+          >
             Investigations
           </button>
           . Cases linked to an open investigation are hidden from this register until closed.
-        </p>
+        </PageMoreInfo>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

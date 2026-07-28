@@ -26,6 +26,7 @@ import { ASSIGNABLE_ROLES, roleLabel } from '@/lib/roleLabels';
 import { inviteEmployeeToMismo } from '@/lib/api/employees';
 import { sanitizeInfraError } from '@/lib/infraMessaging';
 import { toast } from 'sonner';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface AdminEmployeesProps {
  dataStore: DataStore;
@@ -578,9 +579,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <div className="employees-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
  <div>
  <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Employees</h1>
- <p className="text-[var(--mismo-text-secondary)] mt-1">
- Add employees one at a time or use bulk import for CSV onboarding
- </p>
+ <PageMoreInfo>Add employees one at a time or use bulk import for CSV onboarding</PageMoreInfo>
  </div>
  <div className="flex flex-wrap items-center gap-2">
  <Button

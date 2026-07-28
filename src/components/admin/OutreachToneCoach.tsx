@@ -27,7 +27,24 @@ interface OutreachToneCoachProps {
   bodyOnly?: boolean;
   title?: string;
   description?: string;
+  /**
+   * When `employee_outcome`, generate/revise the outcome note from `sourceMaterial`
+   * (Actual Response). Body may be empty if source material is present.
+   */
+  task?: 'soften' | 'employee_outcome';
+  /** Source text for generation (e.g. Actual Response field). */
+  sourceMaterial?: string;
+  /** Employee email for "Email to employee" (opens mailto). */
+  employeeEmail?: string;
+  employeeName?: string;
   onApplySuggestion: (subject: string, body: string) => void;
+}
+
+function buildMailto(email: string, emailSubject: string, emailBody: string): string {
+  const params = new URLSearchParams();
+  params.set('subject', emailSubject);
+  params.set('body', emailBody);
+  return `mailto:${email}?${params.toString()}`;
 }
 
 export function OutreachToneCoach({
@@ -43,25 +60,49 @@ export function OutreachToneCoach({
   bodyOnly = false,
   title,
   description,
+  task = 'soften',
+  sourceMaterial,
+  employeeEmail,
+  employeeName,
   onApplySuggestion,
 }: OutreachToneCoachProps) {
   const [loading, setLoading] = useState(false);
-  const [toneTarget, setToneTarget] = useState<number | undefined>(bodyOnly ? 2 : undefined);
+  const [toneTarget, setToneTarget] = useState<number>(bodyOnly ? 2 : 2);
   const [result, setResult] = useState<OutreachCoachResponse | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   if (!isAiFeaturesEnabled()) return null;
 
-  const heading = title ?? (bodyOnly ? 'AI language assist' : 'AI outreach tone coach');
+  const isOutcomeGenerate = task === 'employee_outcome';
+  const hasBody = Boolean(body.trim());
+  const hasSource = Boolean(sourceMaterial?.trim());
+  const canRun = isOutcomeGenerate ? hasBody || hasSource : hasBody;
+  const generateFresh = isOutcomeGenerate && !hasBody && hasSource;
+
+  const heading =
+    title ??
+    (isOutcomeGenerate
+      ? 'Generate outcome from actual response'
+      : bodyOnly
+        ? 'AI language assist'
+        : 'AI outreach tone coach');
   const blurb =
     description ??
-    (bodyOnly
-      ? 'Softens wording, flags risky language, and suggests a clearer professional draft you can apply before saving.'
-      : 'Rates wording from empathetic (1) to harsh (6). Suggests safer drafts for case outreach.');
+    (isOutcomeGenerate
+      ? 'Uses the Actual Response to draft how the employee responded and next steps, in your chosen tone.'
+      : bodyOnly
+        ? 'Softens wording, flags risky language, and suggests a clearer professional draft you can apply before saving.'
+        : 'Rates wording from empathetic (1) to harsh (6). Suggests safer drafts for case outreach.');
 
   const runCoach = async () => {
-    if (!body.trim()) {
-      toast.error(bodyOnly ? 'Enter text before asking AI to revise it.' : 'Enter a message body before running the tone coach.');
+    if (!canRun) {
+      toast.error(
+        isOutcomeGenerate
+          ? 'Save or enter an Actual Response first (or draft an outcome to soften).'
+          : bodyOnly
+            ? 'Enter text before asking AI to revise it.'
+            : 'Enter a message body before running the tone coach.'
+      );
       return;
     }
     setLoading(true);
@@ -71,12 +112,14 @@ export function OutreachToneCoach({
         reportId,
         investigationId,
         subject: subject || (bodyOnly ? heading : 'Case message'),
-        body,
+        body: body.trim() || '',
         stateCode,
         caseCategory,
         caseType,
-        toneTarget: toneTarget ?? (bodyOnly ? 2 : undefined),
+        toneTarget,
         createdBy,
+        task: isOutcomeGenerate ? 'employee_outcome' : 'soften',
+        sourceMaterial: sourceMaterial?.trim() || undefined,
       });
       setResult(res);
       setExpanded(true);
@@ -86,6 +129,48 @@ export function OutreachToneCoach({
       setLoading(false);
     }
   };
+
+  const copySuggested = async () => {
+    if (!result) return;
+    const text =
+      !bodyOnly && result.suggested_subject?.trim()
+        ? `${result.suggested_subject.trim()}\n\n${result.suggested_body}`
+        : result.suggested_body;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Suggested wording copied.');
+    } catch {
+      toast.error('Could not copy to clipboard.');
+    }
+  };
+
+  const emailSuggested = () => {
+    if (!result) return;
+    const to = employeeEmail?.trim();
+    if (!to) {
+      toast.error('No employee email on this case. Copy the wording instead.');
+      return;
+    }
+    const emailSubject =
+      result.suggested_subject?.trim() ||
+      subject?.trim() ||
+      (employeeName ? 'Update regarding your report' : 'Follow-up from HR');
+    const href = buildMailto(to, emailSubject, result.suggested_body);
+    window.location.href = href;
+    toast.message(`Opening email to ${to}`, {
+      description: 'Review the draft in your mail client before sending.',
+    });
+  };
+
+  const actionLabel = loading
+    ? generateFresh
+      ? 'Generating…'
+      : 'Analyzing…'
+    : generateFresh
+      ? 'Generate with AI'
+      : bodyOnly
+        ? 'Soften with AI'
+        : 'Analyze tone';
 
   return (
     <div className="rounded-lg border border-[var(--color-border-200)] bg-[var(--color-surface-200)]/50 p-3 space-y-3">
@@ -97,15 +182,15 @@ export function OutreachToneCoach({
           </p>
           <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">{blurb}</p>
         </div>
-        <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={loading} onClick={runCoach}>
-          {loading ? 'Analyzing…' : bodyOnly ? 'Soften with AI' : 'Analyze tone'}
+        <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={loading || !canRun} onClick={runCoach}>
+          {actionLabel}
         </Button>
       </div>
 
       <div className="space-y-2">
-        <Label className="text-xs">{bodyOnly ? 'Preferred tone' : 'Target tone (optional)'}</Label>
+        <Label className="text-xs">{bodyOnly || isOutcomeGenerate ? 'Preferred tone' : 'Target tone (optional)'}</Label>
         <div className="flex flex-wrap gap-1.5">
-          {OUTREACH_TONE_SCALE.filter((t) => (bodyOnly ? t.score <= 4 : true)).map((t) => (
+          {OUTREACH_TONE_SCALE.filter((t) => (bodyOnly || isOutcomeGenerate ? t.score <= 4 : true)).map((t) => (
             <button
               key={t.score}
               type="button"
@@ -115,13 +200,19 @@ export function OutreachToneCoach({
                   ? 'bg-[var(--color-primary-900)] text-white border-[var(--color-primary-900)]'
                   : 'bg-white border-[var(--color-border-200)] hover:border-[var(--color-primary-700)]'
               }`}
-              onClick={() => setToneTarget(toneTarget === t.score ? undefined : t.score)}
+              onClick={() => setToneTarget(t.score)}
             >
               {t.score}. {t.label}
             </button>
           ))}
         </div>
       </div>
+
+      {isOutcomeGenerate && !hasSource && (
+        <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+          Add text under Actual Response so AI can draft an appropriate outcome.
+        </p>
+      )}
 
       {result && expanded && (
         <div className="space-y-3 pt-2 border-t border-[var(--color-border-200)]">
@@ -155,21 +246,44 @@ export function OutreachToneCoach({
 
           <div className="space-y-2">
             <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-              Suggested revision
+              {generateFresh ? 'Suggested outcome' : 'Suggested revision'}
             </p>
             {!bodyOnly && <p className="text-sm font-medium">{result.suggested_subject}</p>}
             <p className="text-sm text-[var(--color-text-secondary)] whitespace-pre-wrap">{result.suggested_body}</p>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                onApplySuggestion(result.suggested_subject, result.suggested_body);
-                toast.success(bodyOnly ? 'Suggested wording applied. Review before saving.' : 'Suggested wording applied - review before sending.');
-              }}
-            >
-              Use suggested wording
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  onApplySuggestion(result.suggested_subject, result.suggested_body);
+                  toast.success(
+                    bodyOnly || isOutcomeGenerate
+                      ? 'Suggested wording applied. Review before saving.'
+                      : 'Suggested wording applied - review before sending.'
+                  );
+                }}
+              >
+                Use suggested wording
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => void copySuggested()}>
+                Copy
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={emailSuggested}
+                title={
+                  employeeEmail?.trim()
+                    ? `Email to ${employeeEmail.trim()}`
+                    : 'No employee email on this case'
+                }
+              >
+                <Icons.mail className="h-3.5 w-3.5 mr-1.5" />
+                Email to employee
+              </Button>
+            </div>
           </div>
 
           <p className="text-[10px] text-[var(--color-text-muted)]">{result.disclaimer}</p>

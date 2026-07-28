@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { formatRelativeTime } from '@/lib/utils';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface AdminActivityProps {
   dataStore: DataStore;
@@ -56,9 +57,7 @@ export function AdminActivity({ dataStore }: AdminActivityProps) {
       {/* Header */}
       <div className="activity-header">
         <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Activity Log</h1>
-        <p className="text-[var(--mismo-text-secondary)] mt-1">
-          Track all system activities and events
-        </p>
+        <PageMoreInfo>Track all system activities and events</PageMoreInfo>
       </div>
       
       {/* Filters */}

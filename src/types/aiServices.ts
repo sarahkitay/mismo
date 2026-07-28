@@ -39,6 +39,13 @@ export interface OutreachCoachRequest {
  toneTarget?: number;
  createdBy?: string;
  applicableLaws?: { citation: string; summary: string }[];
+ /**
+  * When `employee_outcome`, draft/revise the outcome note from `sourceMaterial`
+  * (typically the Actual Response logged for the employee).
+  */
+ task?: 'soften' | 'employee_outcome';
+ /** Source text the model should base a generated note on (e.g. Actual Response). */
+ sourceMaterial?: string;
 }
 
 export interface OutreachCoachResponse {

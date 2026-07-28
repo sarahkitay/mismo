@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { employeeIncidentReportHeadline, isIncidentIntakeComplete } from '@/lib/utils';
 import { formatCaseReference } from '@/lib/caseTypes';
 import { toast } from 'sonner';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface EmployeeIncidentIntakeProps {
  dataStore: DataStore;
@@ -82,10 +83,10 @@ export function EmployeeIncidentIntake({ dataStore, reportId, onNavigate }: Empl
 
  <div>
  <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Incident questionnaire</h1>
- <p className="text-[var(--mismo-text-secondary)] mt-2 text-sm leading-relaxed">
+ <PageMoreInfo>
  This is the secure link referenced in your receipt email. Complete the details below so your organization can
  open or continue the investigation without waiting on a separate form from HR.
- </p>
+ </PageMoreInfo>
  </div>
 
  <Card className="mismo-card border border-[var(--color-border-200)]">

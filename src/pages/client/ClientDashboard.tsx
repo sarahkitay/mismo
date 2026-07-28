@@ -1,6 +1,7 @@
 import type { DataStore } from '@/hooks/useDataStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatPercent } from '@/lib/utils';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface ClientDashboardProps {
   dataStore: DataStore;
@@ -16,9 +17,9 @@ export function ClientDashboard({ dataStore }: ClientDashboardProps) {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Client Risk Overview</h1>
-        <p className="text-[var(--mismo-text-secondary)] mt-1">
+        <PageMoreInfo>
           Read-only view for executives and external clients: see report and investigation counts without full HR access. Viewer: {currentUser.firstName}.
-        </p>
+        </PageMoreInfo>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="mismo-card"><CardContent className="p-4"><p className="text-sm text-[var(--mismo-text-secondary)]">Open Reports</p><p className="text-3xl font-bold">{openReports}</p></CardContent></Card>

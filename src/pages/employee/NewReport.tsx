@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface NewReportProps {
   dataStore: DataStore;
@@ -87,9 +88,9 @@ export function NewReport({ dataStore, onNavigate, initialParams }: NewReportPro
           Back to Home
         </button>
         <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Report workplace concern</h1>
-        <p className="text-[var(--mismo-text-secondary)] mt-1">
+        <PageMoreInfo>
           Report harassment, discrimination, retaliation, safety, ethics, or other workplace concerns. HR will review and assign appropriate follow-up. You do not need to classify the issue yourself.
-        </p>
+        </PageMoreInfo>
       </div>
 
       <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] shadow-[var(--shadow-1)] p-4">

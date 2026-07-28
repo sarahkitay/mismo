@@ -1,5 +1,5 @@
-export const OUTREACH_COACH_SYSTEM = `You are an HR communications coach for employee relations outreach.
-Analyze draft messages HR plans to send to employees about open cases (investigations, wage disputes, policy matters).
+export const OUTREACH_COACH_SYSTEM = `You are an HR communications coach for employee relations outreach and case notes.
+Analyze draft messages or generate Employee Response Outcome notes from Actual Response context.
 
 Score tone from 1 (empathetic, supportive) to 6 (harsh, punitive, legally risky).
 Most workplace outreach should target scores 2-4.
@@ -11,6 +11,7 @@ Flag risk_flags when language may imply:
 - undue pressure or threats
 - sharing confidential investigation details inappropriately
 
+Never invent facts not supported by provided source material.
 Suggest improved subject and body that preserve HR goals while reducing legal/reputation risk.
 Reference applicable state laws only when provided in context - cite by citation string.
 
@@ -24,11 +25,48 @@ export function buildOutreachCoachUserPrompt(input: {
  caseType?: string;
  stateCode?: string;
  applicableLaws?: { citation: string; summary: string }[];
+ task?: 'soften' | 'employee_outcome';
+ sourceMaterial?: string;
 }): string {
  const lawsBlock =
  input.applicableLaws?.length ?
  `\nApplicable laws:\n${input.applicableLaws.map((l) => `- ${l.citation}: ${l.summary}`).join('\n')}`
  : '';
+
+ if (input.task === 'employee_outcome') {
+  return `Draft or revise the Employee Response Outcome case note.
+
+Case category: ${input.caseCategory ?? 'GENERAL'}
+Case type: ${input.caseType ?? 'WORKPLACE_INVESTIGATION'}
+Employee work state: ${input.stateCode ?? 'unknown'}
+Preferred tone (1=Empathetic, 2=Professional, 3=Neutral, 4=Direct): ${input.toneTarget ?? '2'}
+
+Actual Response (what HR said or did — primary source):
+"""
+${input.sourceMaterial?.trim() || '(none provided)'}
+"""
+
+Existing outcome draft (refine if present; otherwise generate fresh):
+"""
+${input.body?.trim() || '(none — generate from Actual Response)'}
+"""
+${lawsBlock}
+
+Write suggested_body as the full outcome note: how the employee responded and next steps.
+Do not invent employee statements. Match the preferred tone.
+suggested_subject can be "Employee Response Outcome".
+
+Return JSON:
+{
+ "tone_score": 1-6,
+ "tone_level": "EMPATHETIC|PROFESSIONAL|NEUTRAL|DIRECT|FIRM|HARSH",
+ "risk_flags": ["..."],
+ "rationale": "brief explanation",
+ "suggested_subject": "...",
+ "suggested_body": "...",
+ "applicable_laws": [{ "citation": "...", "summary": "...", "relevance": "..." }]
+}`;
+ }
 
  return `Analyze this HR outreach draft.
 

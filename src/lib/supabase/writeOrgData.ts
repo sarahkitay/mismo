@@ -39,6 +39,64 @@ function notify(entity: string, error: { message: string }): void {
   toast.error(`Could not save ${entity}. ${sanitizeInfraError(error.message)}`);
 }
 
+type SupabaseLike = ReturnType<typeof getSupabaseClient>;
+
+/** Return id if the row exists; otherwise null (avoids FK violations on orphan client ids). */
+async function existingRowId(
+  supabase: SupabaseLike,
+  table: 'prompts' | 'prompt_responses' | 'reports' | 'users',
+  id: string | null | undefined
+): Promise<string | null> {
+  if (!id) return null;
+  const { data } = await supabase.from(table).select('id').eq('id', id).maybeSingle();
+  return data?.id ? String(data.id) : null;
+}
+
+/**
+ * Resolve a prompt_responses id that may only exist locally.
+ * Tries exact id, then `response-{deliveryId}` → lookup by prompt_delivery_id.
+ */
+async function resolvePromptResponseFk(
+  supabase: SupabaseLike,
+  responseId: string | null | undefined
+): Promise<string | null> {
+  if (!responseId) return null;
+  const byId = await existingRowId(supabase, 'prompt_responses', responseId);
+  if (byId) return byId;
+  if (responseId.startsWith('response-')) {
+    const deliveryId = responseId.slice('response-'.length);
+    if (deliveryId) {
+      const { data } = await supabase
+        .from('prompt_responses')
+        .select('id')
+        .eq('prompt_delivery_id', deliveryId)
+        .maybeSingle();
+      if (data?.id) return String(data.id);
+    }
+  }
+  return null;
+}
+
+async function reportRowForPersist(
+  supabase: SupabaseLike,
+  report: Report
+): Promise<Record<string, unknown>> {
+  const row = reportRow(report);
+  row.source_prompt_id = await existingRowId(supabase, 'prompts', report.sourcePromptId);
+  row.source_prompt_response_id = await resolvePromptResponseFk(supabase, report.sourcePromptResponseId);
+  return row;
+}
+
+async function investigationRowForPersist(
+  supabase: SupabaseLike,
+  inv: Investigation
+): Promise<Record<string, unknown>> {
+  const row = investigationRow(inv);
+  row.linked_prompt_id = await existingRowId(supabase, 'prompts', inv.linkedPromptId);
+  row.linked_prompt_response_id = await resolvePromptResponseFk(supabase, inv.linkedPromptResponseId);
+  return row;
+}
+
 function userRow(user: User): Record<string, unknown> {
   return {
     id: user.id,
@@ -143,7 +201,8 @@ export async function persistReport(report: Report): Promise<void> {
   if (!reportPersistEnabled()) return;
   try {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from('reports').upsert(reportRow(report), { onConflict: 'id' });
+    const row = await reportRowForPersist(supabase, report);
+    const { error } = await supabase.from('reports').upsert(row, { onConflict: 'id' });
     if (error) notify('report', error);
   } catch (err) {
     notify('report', { message: err instanceof Error ? err.message : String(err) });
@@ -160,10 +219,10 @@ export async function persistPromptDelivery(
   try {
     const supabase = getSupabaseClient();
     if (prompt) {
-      const { error: promptErr } = await supabase
-        .from('prompts')
-        .upsert(promptRow(prompt), { onConflict: 'id' });
-      if (promptErr) {
+      // Seed only via INSERT. Upsert/ON CONFLICT DO UPDATE hits UPDATE RLS
+      // (USING requires HR), which blocks employees seeding the daily check-in.
+      const { error: promptErr } = await supabase.from('prompts').insert(promptRow(prompt));
+      if (promptErr && promptErr.code !== '23505') {
         notify('prompt', promptErr);
         return;
       }
@@ -177,15 +236,29 @@ export async function persistPromptDelivery(
   }
 }
 
-/** Persist a prompt plus its generated deliveries. */
+/** Persist a newly created prompt plus its generated deliveries. */
 export async function persistPrompt(prompt: Prompt, deliveries: PromptDelivery[] = []): Promise<void> {
   if (!reportPersistEnabled()) return;
   try {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from('prompts').upsert(promptRow(prompt), { onConflict: 'id' });
+    const row = promptRow(prompt);
+    const { error } = await supabase.from('prompts').insert(row);
     if (error) {
-      notify('prompt', error);
-      return;
+      // Idempotent retry / remount: fall back to same-org update only.
+      if (error.code === '23505') {
+        const { error: updErr } = await supabase
+          .from('prompts')
+          .update(row)
+          .eq('id', prompt.id)
+          .eq('org_id', prompt.orgId);
+        if (updErr) {
+          notify('prompt', updErr);
+          return;
+        }
+      } else {
+        notify('prompt', error);
+        return;
+      }
     }
     if (deliveries.length > 0) {
       const { error: delErr } = await supabase
@@ -200,7 +273,19 @@ export async function persistPrompt(prompt: Prompt, deliveries: PromptDelivery[]
 
 /** Persist prompt field updates (activate/deactivate, edits). */
 export async function persistPromptUpdate(prompt: Prompt): Promise<void> {
-  await persistPrompt(prompt);
+  if (!reportPersistEnabled()) return;
+  try {
+    const supabase = getSupabaseClient();
+    const { id: _id, org_id: _org, created_by: _cb, ...patch } = promptRow(prompt);
+    const { error } = await supabase
+      .from('prompts')
+      .update({ ...patch, updated_at: iso(prompt.updatedAt) ?? new Date().toISOString() })
+      .eq('id', prompt.id)
+      .eq('org_id', prompt.orgId);
+    if (error) notify('prompt', error);
+  } catch (err) {
+    notify('prompt', { message: err instanceof Error ? err.message : String(err) });
+  }
 }
 
 function responseRow(response: PromptResponse): Record<string, unknown> {
@@ -288,30 +373,77 @@ function policyAckRow(ack: PolicyAcknowledgement): Record<string, unknown> {
   };
 }
 
-/** Persist a submitted check-in response and mark its delivery complete. */
+/** Persist a submitted check-in response and mark its delivery complete.
+ * Returns the response id that exists in the DB (may differ if a row already
+ * existed for this delivery). Delivery is written first — responses FK to it. */
 export async function persistPromptResponse(
   response: PromptResponse,
   delivery?: PromptDelivery
-): Promise<void> {
-  if (!reportPersistEnabled()) return;
+): Promise<{ ok: boolean; responseId: string }> {
+  if (!reportPersistEnabled()) return { ok: true, responseId: response.id };
   try {
     const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from('prompt_responses')
-      .upsert(responseRow(response), { onConflict: 'id' });
-    if (error) {
-      notify('response', error);
-      return;
-    }
+
     if (delivery) {
       const { error: delErr } = await supabase
         .from('prompt_deliveries')
         .upsert(deliveryRow(delivery), { onConflict: 'id' });
-      if (delErr) notify('response', delErr);
+      if (delErr) {
+        notify('response', delErr);
+        return { ok: false, responseId: response.id };
+      }
     }
+
+    const row = responseRow(response);
+    const { error: insertErr } = await supabase.from('prompt_responses').insert(row);
+    if (!insertErr) return { ok: true, responseId: response.id };
+
+    // Unique on prompt_delivery_id: another id already answered this delivery.
+    if (insertErr.code === '23505') {
+      const { data: existing, error: selErr } = await supabase
+        .from('prompt_responses')
+        .select('id')
+        .eq('prompt_delivery_id', response.promptDeliveryId)
+        .maybeSingle();
+      if (selErr) {
+        notify('response', selErr);
+        return { ok: false, responseId: response.id };
+      }
+      const existingId = existing?.id ? String(existing.id) : response.id;
+      const { id: _id, prompt_delivery_id: _pd, org_id: _org, ...patch } = row;
+      const { error: updErr } = await supabase
+        .from('prompt_responses')
+        .update(patch)
+        .eq('prompt_delivery_id', response.promptDeliveryId);
+      if (updErr) {
+        notify('response', updErr);
+        return { ok: false, responseId: existingId };
+      }
+      return { ok: true, responseId: existingId };
+    }
+
+    notify('response', insertErr);
+    return { ok: false, responseId: response.id };
   } catch (err) {
     notify('response', { message: err instanceof Error ? err.message : String(err) });
+    return { ok: false, responseId: response.id };
   }
+}
+
+/** Persist check-in response first, then the linked report (FK requires response row). */
+export async function persistResponseThenReport(
+  response: PromptResponse,
+  delivery: PromptDelivery | undefined,
+  report: Report
+): Promise<void> {
+  if (!reportPersistEnabled()) return;
+  const result = await persistPromptResponse(response, delivery);
+  if (!result.ok) return;
+  const reportToSave =
+    result.responseId === report.sourcePromptResponseId
+      ? report
+      : { ...report, sourcePromptResponseId: result.responseId };
+  await persistReport(reportToSave);
 }
 
 /** Persist a report status/assignment change plus its status-event trail. */
@@ -322,7 +454,8 @@ export async function persistReportChange(
   if (!reportPersistEnabled()) return;
   try {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from('reports').upsert(reportRow(report), { onConflict: 'id' });
+    const row = await reportRowForPersist(supabase, report);
+    const { error } = await supabase.from('reports').upsert(row, { onConflict: 'id' });
     if (error) {
       notify('report', error);
       return;
@@ -343,22 +476,29 @@ export async function persistInvestigation(inv: Investigation): Promise<void> {
   if (!reportPersistEnabled()) return;
   try {
     const supabase = getSupabaseClient();
-    const { error } = await supabase
-      .from('investigations')
-      .upsert(investigationRow(inv), { onConflict: 'id' });
+    const row = await investigationRowForPersist(supabase, inv);
+    const { error } = await supabase.from('investigations').upsert(row, { onConflict: 'id' });
     if (error) {
       notify('investigation', error);
       return;
     }
     if (inv.linkedReportIds.length > 0) {
-      const links = inv.linkedReportIds.map((reportId) => ({
-        investigation_id: inv.id,
-        report_id: reportId,
-      }));
-      const { error: linkErr } = await supabase
-        .from('investigation_linked_reports')
-        .upsert(links, { onConflict: 'investigation_id,report_id' });
-      if (linkErr) notify('investigation links', linkErr);
+      // Only link reports that already exist remotely (avoids join FK failures).
+      const existingReportIds: string[] = [];
+      for (const reportId of inv.linkedReportIds) {
+        const id = await existingRowId(supabase, 'reports', reportId);
+        if (id) existingReportIds.push(id);
+      }
+      if (existingReportIds.length > 0) {
+        const links = existingReportIds.map((reportId) => ({
+          investigation_id: inv.id,
+          report_id: reportId,
+        }));
+        const { error: linkErr } = await supabase
+          .from('investigation_linked_reports')
+          .upsert(links, { onConflict: 'investigation_id,report_id' });
+        if (linkErr) notify('investigation links', linkErr);
+      }
     }
   } catch (err) {
     notify('investigation', { message: err instanceof Error ? err.message : String(err) });

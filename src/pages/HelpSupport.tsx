@@ -2,6 +2,7 @@ import type { DataStore } from '@/hooks/useDataStore';
 import { Icons } from '@/lib/icons';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface HelpSupportProps {
   dataStore: DataStore;
@@ -46,9 +47,7 @@ export function HelpSupport({ dataStore, onNavigate }: HelpSupportProps) {
     <div className="space-y-6 max-w-3xl">
       <div>
         <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Help & Support</h1>
-        <p className="text-[var(--mismo-text-secondary)] mt-1">
-          Get answers, contact support, and find resources.
-        </p>
+        <PageMoreInfo>Get answers, contact support, and find resources.</PageMoreInfo>
       </div>
 
       <Card className="mismo-card">

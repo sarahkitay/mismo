@@ -3,6 +3,7 @@ import type { DataStore } from '@/hooks/useDataStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/utils';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface AdminClientPortfolioProps {
   dataStore: DataStore;
@@ -65,9 +66,9 @@ export function AdminClientPortfolio({ dataStore, onNavigate }: AdminClientPortf
             Mismo Internal
           </p>
           <h1 className="text-2xl font-bold text-[var(--mismo-text)] mt-1">Portfolio analytics</h1>
-          <p className="text-[var(--mismo-text-secondary)] mt-1">
+          <PageMoreInfo>
             Overview of client companies, rostered employees, and estimated recurring fees.
-          </p>
+          </PageMoreInfo>
         </div>
         <Button className="bg-[var(--mismo-blue)] hover:bg-blue-600" onClick={() => onNavigate('clients')}>
           View all companies

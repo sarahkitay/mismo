@@ -22,6 +22,7 @@ import {
 } from '@/lib/caseTypes';
 import { formatDate } from '@/lib/utils';
 import { toast } from 'sonner';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface EmployeeWageHourIntakeProps {
  dataStore: DataStore;
@@ -168,9 +169,9 @@ export function EmployeeWageHourIntake({ dataStore, reportId, onNavigate }: Empl
  <div>
  <p className="text-xs font-mono text-[var(--color-text-muted)]">{formatCaseReference(report)}</p>
  <h1 className="text-2xl font-bold text-[var(--mismo-text)] mt-1">Wage &amp; hour intake</h1>
- <p className="text-sm text-[var(--mismo-text-secondary)] mt-2">
+ <PageMoreInfo>
  Complete the sections below. You may save progress by submitting when ready - all fields are stored securely for compliance review.
- </p>
+ </PageMoreInfo>
  </div>
 
  <form onSubmit={handleSubmit} className="space-y-6">
