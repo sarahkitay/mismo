@@ -42,10 +42,13 @@ export interface OutreachCoachRequest {
  /**
   * When `employee_outcome`, draft/revise the outcome note from `sourceMaterial`
   * (typically the Actual Response logged for the employee).
+  * When `draft_from_screenshots`, draft a follow-up from context image screenshots.
   */
- task?: 'soften' | 'employee_outcome';
+ task?: 'soften' | 'employee_outcome' | 'draft_from_screenshots';
  /** Source text the model should base a generated note on (e.g. Actual Response). */
  sourceMaterial?: string;
+ /** Screenshot / email image data URLs (compressed client-side) for vision context. */
+ contextImages?: { fileName?: string; dataUrl: string; mimeType?: string }[];
 }
 
 export interface OutreachCoachResponse {

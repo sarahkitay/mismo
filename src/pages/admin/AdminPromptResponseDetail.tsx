@@ -4,10 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { RelatedRecordsNav } from '@/components/admin/RelatedRecordsNav';
 import {
+  findInvestigationForPromptResponse,
+  findReportForPromptResponse,
   relatedNavForDelivery,
   relatedNavForPromptResponse,
   userDisplayName,
 } from '@/lib/recordLinks';
+import { formatCaseReference } from '@/lib/caseTypes';
+import { getInvestigationDisplayId } from '@/lib/investigationWorkflow';
 import { toast } from 'sonner';
 
 interface AdminPromptResponseDetailProps {
@@ -103,7 +107,44 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
   const user = dataStore.users.find((u) => u.id === response.userId);
   const needsReview = response.answer === 'HAS_ISSUE' && !response.reviewedAt && response.needsReview !== false;
   const reviewer = response.reviewedByUserId ? dataStore.users.find((u) => u.id === response.reviewedByUserId) : null;
+  const linkedCase = findReportForPromptResponse(response.id, dataStore.reports, response.userId);
+  const linkedInv = findInvestigationForPromptResponse(response.id, dataStore.reports, dataStore.investigations);
   const relatedLinks = relatedNavForPromptResponse(dataStore, response);
+
+  const openCase = () => {
+    if (!linkedCase) {
+      toast.error('No linked case found for this response yet.');
+      return;
+    }
+    onNavigate('report-detail', { id: linkedCase.id });
+  };
+
+  const openInvestigation = () => {
+    if (!linkedInv) {
+      toast.error('No investigation has been opened for this case yet.');
+      return;
+    }
+    onNavigate('investigation-detail', { id: linkedInv.id, tab: 'page-1' });
+  };
+
+  const convertToInvestigation = () => {
+    if (!linkedCase) {
+      toast.error('Open or create the case first.');
+      return;
+    }
+    if (linkedInv) {
+      onNavigate('investigation-detail', { id: linkedInv.id, tab: 'page-1' });
+      return;
+    }
+    const inv = dataStore.createInvestigation(linkedCase.id, dataStore.currentUser.id);
+    if (inv?.id) {
+      toast.success('Investigation opened.');
+      onNavigate('investigation-detail', { id: inv.id, tab: 'page-1' });
+      return;
+    }
+    onNavigate('report-detail', { id: linkedCase.id });
+    toast.message('Opened case — use Convert to investigation there if needed.');
+  };
 
   return (
     <div className="space-y-4">
@@ -158,22 +199,51 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
             )}
           </p>
           {response.notes && <p className="text-sm border-l-2 border-[var(--color-border-200)] pl-3 mt-2">{response.notes}</p>}
-          {needsReview && (
-            <Button
-              className="mt-2 bg-[var(--color-primary-900)] text-white"
-              onClick={() => {
-                dataStore.markPromptResponseReviewed(response.id);
-                toast.success('Marked as reviewed.');
-              }}
-            >
-              Mark reviewed
-            </Button>
+
+          {linkedCase && (
+            <div className="mt-3 rounded-md border border-[var(--mismo-blue)]/30 bg-[var(--mismo-blue-light)]/20 p-3 space-y-2">
+              <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                Linked case {formatCaseReference(linkedCase)}
+                {linkedInv ? ` · Investigation ${getInvestigationDisplayId(linkedInv)}` : ''}
+              </p>
+              <p className="text-xs text-[var(--color-text-secondary)]">
+                Open the case for response workflow, ownership, and convert-to-investigation. Related records above also link here.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" onClick={openCase}>
+                  Open case
+                </Button>
+                {linkedInv ? (
+                  <Button type="button" variant="outline" onClick={openInvestigation}>
+                    Open investigation
+                  </Button>
+                ) : response.answer === 'HAS_ISSUE' ? (
+                  <Button type="button" variant="outline" onClick={convertToInvestigation}>
+                    Convert to investigation
+                  </Button>
+                ) : null}
+              </div>
+            </div>
           )}
-          {prompt?.routeToPayroll && (
-            <Button className="mt-3" onClick={() => toast.success('Response sent to payroll team for handling.')}>
-              Send to payroll team
-            </Button>
-          )}
+
+          <div className="flex flex-wrap gap-2 mt-2">
+            {needsReview && (
+              <Button
+                className="bg-[var(--color-primary-900)] text-white"
+                onClick={() => {
+                  dataStore.markPromptResponseReviewed(response.id);
+                  toast.success('Marked as reviewed.');
+                }}
+              >
+                Mark reviewed
+              </Button>
+            )}
+            {prompt?.routeToPayroll && (
+              <Button onClick={() => toast.success('Response sent to payroll team for handling.')}>
+                Send to payroll team
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
