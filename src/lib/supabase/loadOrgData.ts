@@ -186,6 +186,35 @@ function mapInvestigation(
   };
 }
 
+function mapLawDigest(raw: unknown): Policy['lawDigest'] {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const obj = raw as Record<string, unknown>;
+  const entriesRaw = Array.isArray(obj.entries) ? obj.entries : [];
+  const entries = entriesRaw
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const e = entry as Record<string, unknown>;
+      if (!e.lawRecordId && !e.law_record_id) return null;
+      return {
+        lawRecordId: String(e.lawRecordId ?? e.law_record_id),
+        title: String(e.title ?? ''),
+        summary: String(e.summary ?? ''),
+        citation: String(e.citation ?? ''),
+        topic: String(e.topic ?? 'OTHER'),
+        sourceUrl: e.sourceUrl || e.source_url ? String(e.sourceUrl ?? e.source_url) : undefined,
+        updatedAt: e.updatedAt || e.updated_at ? String(e.updatedAt ?? e.updated_at) : undefined,
+      };
+    })
+    .filter(Boolean) as NonNullable<Policy['lawDigest']>['entries'];
+  if (!obj.stateCode && !obj.state_code) return undefined;
+  return {
+    stateCode: String(obj.stateCode ?? obj.state_code).toUpperCase(),
+    stateName: String(obj.stateName ?? obj.state_name ?? obj.stateCode ?? obj.state_code),
+    syncedAt: String(obj.syncedAt ?? obj.synced_at ?? new Date().toISOString()),
+    entries,
+  };
+}
+
 function mapPolicy(row: Record<string, unknown>): Policy {
   return {
     id: String(row.id),
@@ -205,9 +234,31 @@ function mapPolicy(row: Record<string, unknown>): Policy {
       ? String(row.body_attachment_file_name)
       : undefined,
     bodySourceUrl: row.body_source_url ? String(row.body_source_url) : undefined,
+    lawDigest: mapLawDigest(row.law_digest),
     createdAt: d(row.created_at as string),
     updatedAt: d(row.updated_at as string),
   };
+}
+
+function mapLawDigestEntries(raw: unknown): PolicyAcknowledgement['acknowledgedLawDigest'] {
+  if (!Array.isArray(raw)) return undefined;
+  const entries = raw
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const e = entry as Record<string, unknown>;
+      if (!e.lawRecordId && !e.law_record_id) return null;
+      return {
+        lawRecordId: String(e.lawRecordId ?? e.law_record_id),
+        title: String(e.title ?? ''),
+        summary: String(e.summary ?? ''),
+        citation: String(e.citation ?? ''),
+        topic: String(e.topic ?? 'OTHER'),
+        sourceUrl: e.sourceUrl || e.source_url ? String(e.sourceUrl ?? e.source_url) : undefined,
+        updatedAt: e.updatedAt || e.updated_at ? String(e.updatedAt ?? e.updated_at) : undefined,
+      };
+    })
+    .filter(Boolean) as NonNullable<PolicyAcknowledgement['acknowledgedLawDigest']>;
+  return entries.length ? entries : undefined;
 }
 
 function mapPolicyAck(row: Record<string, unknown>): PolicyAcknowledgement {
@@ -217,6 +268,7 @@ function mapPolicyAck(row: Record<string, unknown>): PolicyAcknowledgement {
     acknowledgedAt: d(row.acknowledged_at as string),
     outcome: row.outcome as PolicyAcknowledgement['outcome'],
     clarificationNote: row.clarification_note ? String(row.clarification_note) : undefined,
+    acknowledgedLawDigest: mapLawDigestEntries(row.acknowledged_law_digest),
   };
 }
 

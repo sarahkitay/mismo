@@ -4,6 +4,7 @@ import { isOpenAiConfigured } from '../_shared/openai.ts';
 import { computeHrNextTasks } from '../_shared/hr-next-tasks.ts';
 import { listHrLawUpdates, listHrLawsForState, syncStateLawsToDb } from '../_shared/hr-laws.ts';
 import { runOutreachCoach } from '../_shared/outreach-coach.ts';
+import { runHelpAssistant } from '../_shared/help-assistant.ts';
 import { inviteEmployee } from '../_shared/employees.ts';
 import {
   sendIncidentYesNotices,
@@ -28,6 +29,7 @@ Deno.serve(async (req) => {
         runtime: 'supabase-edge',
         database: isSupabaseConfigured(),
         openai: isOpenAiConfigured(),
+        resend: isResendConfigured(),
       });
     }
 
@@ -102,6 +104,12 @@ Deno.serve(async (req) => {
     if (path === '/ai/outreach/coach' && req.method === 'POST') {
       const body = (await req.json()) as Parameters<typeof runOutreachCoach>[0];
       const result = await runOutreachCoach(body);
+      return jsonResponse(200, result);
+    }
+
+    if (path === '/ai/help/ask' && req.method === 'POST') {
+      const body = (await req.json()) as Parameters<typeof runHelpAssistant>[0];
+      const result = await runHelpAssistant(body);
       return jsonResponse(200, result);
     }
 

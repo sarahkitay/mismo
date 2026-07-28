@@ -6,7 +6,7 @@ Implementation lives in:
 - `supabase/functions/_shared/email-templates.ts`
 - `supabase/functions/_shared/resend.ts`
 
-Until `RESEND_API_KEY` (and preferably `RESEND_FROM`) are set on the API, sends are skipped safely. Invite links still work without email.
+Product emails (incident / wage-hour Yes notices) send when `RESEND_API_KEY` and `RESEND_FROM` are set as Supabase Edge Function secrets. Auth emails (invite, reset, confirm) use Supabase Auth SMTP (also Resend). If the API key is missing, product sends are skipped safely; invite links still work without email.
 
 ---
 
@@ -180,13 +180,13 @@ Note: Retaliation for reporting an issue or participating in an investigation th
 
 ---
 
-## Resend setup (when domain is ready)
+## Resend setup
 
 1. Create a Resend account and verify your domain.
-2. Set Edge Function secrets:
+2. Set Edge Function secrets (required for incident / wage-hour notice emails):
    - `RESEND_API_KEY`
    - `RESEND_FROM` (e.g. `Mismo <noreply@yourdomain.com>`)
-3. For Auth emails (reset / confirm / invite), also configure Supabase Dashboard → Authentication → SMTP with the same Resend SMTP credentials, and paste the Auth template copy above into the Auth email templates.
-4. Redeploy `mismo-api` after secrets are set.
+3. For Auth emails (reset / confirm / invite), configure Supabase Dashboard → Authentication → SMTP with Resend SMTP credentials, and paste the Auth template copy above into the Auth email templates.
+4. Redeploy `mismo-api` after secrets are set. Confirm with `GET /functions/v1/mismo-api/health` → `"resend": true`.
 
-Until then, use **shareable invite links** in the Employees UI for onboarding tests.
+Shareable invite links in the Employees UI still work if email delivery fails.

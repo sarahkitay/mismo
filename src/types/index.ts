@@ -749,6 +749,25 @@ export interface MetricsSnapshot {
 
 export type PolicyBodySource = 'EDITOR' | 'UPLOAD' | 'LINK';
 
+/** One law row published into a compliance digest memo. */
+export interface LawDigestEntry {
+ lawRecordId: string;
+ title: string;
+ summary: string;
+ citation: string;
+ topic: string;
+ sourceUrl?: string;
+ updatedAt?: string;
+}
+
+/** Snapshot of state laws synced into a signable memo. */
+export interface LawDigestMeta {
+ stateCode: string;
+ stateName: string;
+ syncedAt: string;
+ entries: LawDigestEntry[];
+}
+
 export interface Policy {
  id: string;
  orgId: string;
@@ -774,6 +793,8 @@ export interface Policy {
  bodyAttachmentDataUrl?: string;
  /** Reference URL when body was sourced from a link */
  bodySourceUrl?: string;
+ /** When set, this memo is a state-law digest; re-ack is driven by law record deltas. */
+ lawDigest?: LawDigestMeta;
 }
 
 export type PolicyAcknowledgementOutcome = 'READ_UNDERSTOOD' | 'REQUEST_CLARIFICATION';
@@ -787,6 +808,8 @@ export interface PolicyAcknowledgement {
  signatureDataUrl?: string;
  /** Employee note when requesting clarification on a memo */
  clarificationNote?: string;
+ /** Law records covered by this signature (full set at sign time for digest memos). */
+ acknowledgedLawDigest?: LawDigestEntry[];
 }
 
 /** Admin-managed library item surfaced in the employee Resources portal */
@@ -877,10 +900,12 @@ export interface DashboardCounts {
  memosNeedingClarification: number;
  /** Distinct actionable queue items for command center (deduped sum) */
  actionRequiredTotal: number;
- /** Formal open investigations plus Yes check-ins under HR review (deduped) */
+ /** Formal open investigations plus Yes check-ins under HR review (analytics / dashboard breakdown) */
  openInvestigationWorkload: number;
  /** Open case register rows (excl. cases under open investigation) */
  openCaseRegisterCount: number;
+ /** Prompt Responses nav badge (unanswered + open cases + Yes without a linked open case) */
+ promptResponsesNavCount: number;
 }
 
 // Employee Engagement

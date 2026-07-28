@@ -70,7 +70,7 @@ export function EmployeeIncidentIntake({ dataStore, reportId, onNavigate }: Empl
  peopleInvolved: peopleInvolved.trim() || undefined,
  location: location.trim() || undefined,
  });
- toast.success('Incident form submitted. HR has been notified (simulated).');
+ toast.success('Incident form submitted. HR has been notified.');
  onNavigate(`report-detail/${report.id}`);
  };
 

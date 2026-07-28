@@ -11,6 +11,7 @@ import { EMPLOYEE_RESOURCE_CATEGORIES, getEmployeeResourceCategoryLabel } from '
 import { formatDate, getMemoCategoryDisplay } from '@/lib/utils';
 import { toast } from 'sonner';
 import { PageMoreInfo } from '@/components/PageMoreInfo';
+import { employeeFacingLawDigestBody, employeeNeedsPolicyAck } from '@/lib/lawDigestMemo';
 
 type MemoStatusFilter = 'ALL' | 'REQUIRED' | 'ACKNOWLEDGED' | 'CLARIFICATION' | 'UNREAD';
 type SortOption = 'NEWEST' | 'DUE_SOON' | 'CATEGORY' | 'TITLE';
@@ -25,6 +26,15 @@ function getMemoStatus(policy: Policy, ack: PolicyAcknowledgement | undefined): 
  label: string;
  tone: 'success' | 'warn' | 'muted' | 'info';
 } {
+ if (employeeNeedsPolicyAck(policy, ack)) {
+ if (ack?.outcome === 'REQUEST_CLARIFICATION') return { label: 'Needs clarification', tone: 'info' };
+ if (policy.lawDigest && ack?.acknowledgedLawDigest?.length) {
+ return { label: 'Updates to review', tone: 'warn' };
+ }
+ return policy.acknowledgmentRequired
+ ? { label: 'Unanswered', tone: 'warn' }
+ : { label: 'Unread', tone: 'muted' };
+ }
  if (!ack) {
  return policy.acknowledgmentRequired
  ? { label: 'Unanswered', tone: 'warn' }
@@ -53,9 +63,8 @@ export function EmployeeResources({ dataStore }: EmployeeResourcesProps) {
  const requiredMemos = useMemo(
  () =>
  publishedPolicies.filter((p) => {
- if (!p.acknowledgmentRequired) return false;
  const ack = ackByPolicyId.get(p.id);
- return !ack || ack.outcome === 'REQUEST_CLARIFICATION';
+ return employeeNeedsPolicyAck(p, ack);
  }),
  [publishedPolicies, myAcks]
  );
@@ -197,9 +206,36 @@ export function EmployeeResources({ dataStore }: EmployeeResourcesProps) {
  Close
  </Button>
  </div>
+ {(() => {
+ const ack = ackByPolicyId.get(openMemo.id);
+ const facing = openMemo.lawDigest
+ ? employeeFacingLawDigestBody(openMemo, ack)
+ : { heading: openMemo.title, body: openMemo.content, pendingCount: 0, isDelta: false };
+ return (
+ <>
+ {facing.isDelta && (
+ <p className="text-sm text-[var(--mismo-amber)] bg-[var(--mismo-amber)]/10 border border-[var(--mismo-amber)]/30 p-3 rounded-md">
+ Since you last signed, {facing.pendingCount} law
+ {facing.pendingCount === 1 ? ' has' : 's have'} been updated. Review only the changes below, then sign again.
+ </p>
+ )}
+ {facing.isDelta && (
+ <h3 className="text-sm font-semibold text-[var(--mismo-text)]">{facing.heading}</h3>
+ )}
  <div className="prose prose-sm max-w-none text-[var(--mismo-text)] whitespace-pre-wrap border border-[var(--color-border-200)] p-4 bg-[var(--color-surface-100)] rounded-md">
+ {facing.body}
+ </div>
+ {facing.isDelta && openMemo.lawDigest && openMemo.lawDigest.entries.length > facing.pendingCount && (
+ <details className="text-sm">
+ <summary className="cursor-pointer text-[var(--mismo-blue)]">View full current law set</summary>
+ <div className="mt-2 prose prose-sm max-w-none whitespace-pre-wrap border border-[var(--color-border-200)] p-4 bg-[var(--color-surface-100)] rounded-md">
  {openMemo.content}
  </div>
+ </details>
+ )}
+ </>
+ );
+ })()}
  {openMemo.bodySourceUrl && (
  <a href={openMemo.bodySourceUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-[var(--mismo-blue)] hover:underline">
  Open linked document
@@ -212,21 +248,25 @@ export function EmployeeResources({ dataStore }: EmployeeResourcesProps) {
  )}
  {openMemo.acknowledgmentRequired && (() => {
  const ack = ackByPolicyId.get(openMemo.id);
- const needsAck =
- !ack ||
- ack.outcome === 'REQUEST_CLARIFICATION' ||
- (ack.outcome === 'READ_UNDERSTOOD' && !ack.signatureDataUrl);
+ const needsAck = employeeNeedsPolicyAck(openMemo, ack);
  return needsAck ? (
  <MemoSignatureAcknowledgement
  policyId={openMemo.id}
  policyTitle={openMemo.title}
  onSubmit={(signatureDataUrl) => {
- acknowledgePolicy(openMemo.id, currentUser.id, { outcome: 'READ_UNDERSTOOD', signatureDataUrl });
+ acknowledgePolicy(openMemo.id, currentUser.id, {
+ outcome: 'READ_UNDERSTOOD',
+ signatureDataUrl,
+ acknowledgedLawDigest: openMemo.lawDigest?.entries,
+ });
  toast.success('Thank you. Your acknowledgement has been recorded.');
  setOpenMemoId(null);
  }}
  onRequestClarification={(note) => {
- acknowledgePolicy(openMemo.id, currentUser.id, { outcome: 'REQUEST_CLARIFICATION', clarificationNote: note });
+ acknowledgePolicy(openMemo.id, currentUser.id, {
+ outcome: 'REQUEST_CLARIFICATION',
+ clarificationNote: note,
+ });
  toast.success('Your clarification request has been sent to HR.');
  setOpenMemoId(null);
  }}
