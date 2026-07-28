@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Icons } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
@@ -10,9 +10,10 @@ import { toast } from 'sonner';
 
 interface AdminSettingsProps {
   dataStore: DataStore;
+  initialSection?: string;
 }
 
-export function AdminSettings({ dataStore }: AdminSettingsProps) {
+export function AdminSettings({ dataStore, initialSection }: AdminSettingsProps) {
   const {
     orgSettings,
     departments,
@@ -22,6 +23,7 @@ export function AdminSettings({ dataStore }: AdminSettingsProps) {
     deleteDepartment,
   } = dataStore;
   const aiPrefKey = 'mismo-admin-ai-options';
+  const departmentsSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [settings, setSettings] = useState({
     allowAnonymousReports: orgSettings.allowAnonymousReports,
@@ -58,6 +60,14 @@ export function AdminSettings({ dataStore }: AdminSettingsProps) {
       // ignore malformed stored preferences
     }
   }, []);
+
+  useEffect(() => {
+    if (initialSection !== 'departments') return;
+    const timer = window.setTimeout(() => {
+      departmentsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [initialSection]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -136,6 +146,7 @@ export function AdminSettings({ dataStore }: AdminSettingsProps) {
         </p>
       </div>
 
+      <div ref={departmentsSectionRef} id="settings-departments">
       <Card className="settings-card mismo-card">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
@@ -247,6 +258,7 @@ export function AdminSettings({ dataStore }: AdminSettingsProps) {
           )}
         </CardContent>
       </Card>
+      </div>
 
       <Card className="settings-card mismo-card">
         <CardHeader>

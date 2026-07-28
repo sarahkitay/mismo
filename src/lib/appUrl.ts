@@ -63,6 +63,7 @@ export function buildAppUrl(page: string, role: AppRole, routeParams: Record<str
     investigations: '/admin/investigations',
     activity: '/admin/activity',
     settings: '/admin/settings',
+    account: '/admin/account',
     'system-health': '/admin/system-health',
     'manager-dashboard': '/admin/human-resources-dashboard',
     'client-dashboard': '/admin/client-dashboard',
@@ -194,6 +195,7 @@ export function parseAppLocation(
   if (pathname === '/admin/campaigns') return merge({ role: 'HR', page: 'prompts', params: {} });
   if (pathname === '/admin/activity') return merge({ role: 'HR', page: 'activity', params: {} });
   if (pathname === '/admin/settings') return merge({ role: 'HR', page: 'settings', params: {} });
+  if (pathname === '/admin/account') return merge({ role: 'HR', page: 'account', params: {} });
   if (pathname === '/admin/system-health') return merge({ role: 'HR', page: 'system-health', params: {} });
   if (pathname === '/admin/human-resources-dashboard' || pathname === '/admin/manager-dashboard') {
     return merge({ role: 'HR', page: 'dashboard', params: {} });

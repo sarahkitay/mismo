@@ -342,7 +342,9 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  case 'system-health':
  return <AdminSystemHealth dataStore={dataStore} />;
  case 'settings':
- return <AdminSettings dataStore={dataStore} />;
+ return <AdminSettings dataStore={dataStore} initialSection={pageParams.section} />;
+ case 'account':
+ return <EmployeeSettings dataStore={dataStore} />;
  case 'report-detail':
  return <AdminReportDetail dataStore={dataStore} reportId={pageParams.id ?? ''} onNavigate={handleNavigate} fromInvestigationId={pageParams.fromInvestigation} />;
  case 'employee-detail':

@@ -273,20 +273,47 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  {/* Department Health */}
  <Card className="metric-card mismo-card">
  <CardContent className="p-5">
- <h3 className="font-semibold text-[var(--mismo-text)] mb-4">Department Health</h3>
- <p className="text-sm text-[var(--mismo-text-secondary)] mb-4">Risk assessment by department</p>
+ <div className="flex items-start justify-between gap-3 mb-4">
+ <div>
+ <h3 className="font-semibold text-[var(--mismo-text)]">Department Health</h3>
+ <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">Risk assessment by department</p>
+ </div>
+ <Button
+ type="button"
+ variant="outline"
+ size="sm"
+ className="shrink-0"
+ onClick={() => onNavigate('settings', { section: 'departments' })}
+ >
+ Manage departments
+ </Button>
+ </div>
  <div className="space-y-3">
- {departmentData.map((dept) => (
- <div key={dept.deptId} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
- <div className="flex items-center gap-3">
- <div className={`w-3 h-3 rounded-full ${
+ {departmentData.length === 0 ? (
+ <button
+ type="button"
+ onClick={() => onNavigate('settings', { section: 'departments' })}
+ className="w-full text-left p-3 border border-dashed border-[var(--color-border-200)] rounded-lg text-sm text-[var(--mismo-text-secondary)] hover:bg-[var(--color-surface-200)] transition-colors"
+ >
+ No departments yet. Add departments in Settings.
+ </button>
+ ) : (
+ departmentData.map((dept) => (
+ <button
+ type="button"
+ key={dept.deptId}
+ onClick={() => onNavigate('settings', { section: 'departments' })}
+ className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg text-left hover:bg-[var(--color-surface-200)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--mismo-blue)] focus:ring-offset-1"
+ >
+ <div className="flex items-center gap-3 min-w-0">
+ <div className={`w-3 h-3 rounded-full shrink-0 ${
  dept.riskLevel === 'LOW' ? 'bg-green-500' :
  dept.riskLevel === 'MEDIUM' ? 'bg-amber-500' :
  'bg-red-500'
  }`} />
- <span className="font-medium text-[var(--mismo-text)]">{dept.name}</span>
+ <span className="font-medium text-[var(--mismo-text)] truncate">{dept.name}</span>
  </div>
- <div className="flex items-center gap-4">
+ <div className="flex items-center gap-4 shrink-0">
  <span className="text-sm text-[var(--mismo-text-secondary)]">
  {dept.reportCount} reports
  </span>
@@ -298,8 +325,9 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  {dept.riskLevel}
  </Badge>
  </div>
- </div>
- ))}
+ </button>
+ ))
+ )}
  </div>
  </CardContent>
  </Card>

@@ -5,6 +5,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { getInitials } from '@/lib/utils';
@@ -16,11 +18,20 @@ interface TopNavProps {
   onNavigate?: (page: string, params?: Record<string, string>) => void;
 }
 
+function roleLabel(role: DataStore['currentRole']): string {
+  if (role === 'SUPER_ADMIN') return 'Mismo Internal';
+  if (role === 'HR' || role === 'MANAGER' || role === 'ADMIN') return 'Human Resources';
+  if (role === 'CLIENT') return 'Client';
+  if (role === 'EMPLOYEE') return 'Employee';
+  return role;
+}
+
 export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
   const { currentUser, currentRole, switchRole, logout, users, setPreviewUserId } = dataStore;
-  const isEmployee = currentRole === 'EMPLOYEE';
   const directoryRole = users.find((u) => u.id === currentUser.id)?.role;
-  const canAccessMismoInternal = directoryRole === 'SUPER_ADMIN';
+  /** Only platform super-admins can switch preview roles. HR users stay in HR. */
+  const showRoleSwitcher = directoryRole === 'SUPER_ADMIN';
+  const isEmployee = currentRole === 'EMPLOYEE';
 
   const handleSwitchToHR = () => {
     switchRole('HR');
@@ -44,7 +55,7 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
       onNavigate?.('home', { previewEmployee: 'true' });
     }
   };
-  
+
   const handleExportData = () => {
     const payload = localStorage.getItem('mismo_app_v1') ?? '{}';
     const blob = new Blob([payload], { type: 'application/json' });
@@ -55,11 +66,10 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
     a.click();
     URL.revokeObjectURL(url);
   };
-  
+
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-[var(--color-primary-900)] border-b border-[var(--color-primary-700)] z-50">
       <div className="h-full flex items-center justify-between px-4 lg:px-6">
-        {/* Left: Logo + Menu button */}
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
@@ -73,58 +83,46 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
           <div className="flex items-center gap-3 min-w-0">
             <div className="min-w-0">
               <span className="text-xl sm:text-2xl font-bold text-white">Mismo</span>
-              <p className="hidden sm:block text-[10px] leading-none text-white/70 truncate">Proactive Risk Infrastructure</p>
+              <p className="hidden sm:block text-[10px] leading-none text-white/70 truncate">
+                Proactive Risk Infrastructure
+              </p>
             </div>
           </div>
         </div>
-        
-        {/* Right: Role switcher + User */}
-          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-            {!isEmployee && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleExportData}
-                  className="hidden md:inline text-xs text-white/80 hover:text-white"
-                >
-                  Export Data
-                </button>
-              </>
-            )}
-            <Badge className="hidden sm:inline-flex bg-[var(--color-emerald-600)] text-white border-0 text-[10px] sm:text-xs">
-            {currentRole === 'SUPER_ADMIN'
-              ? 'Mismo Internal'
-              : currentRole === 'HR' || currentRole === 'MANAGER' || currentRole === 'ADMIN'
-                ? 'Human Resources'
-                : currentRole === 'CLIENT'
-                  ? 'Client'
-                  : currentRole}
-          </Badge>
-          {/* Role Switcher: only for HR/Client (employees cannot switch to HR or Client) */}
+
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
           {!isEmployee && (
+            <button
+              type="button"
+              onClick={handleExportData}
+              className="hidden md:inline text-xs text-white/80 hover:text-white"
+            >
+              Export Data
+            </button>
+          )}
+
+          <Badge className="hidden sm:inline-flex bg-[var(--color-emerald-600)] text-white border-0 text-[10px] sm:text-xs">
+            {roleLabel(currentRole)}
+          </Badge>
+
+          {showRoleSwitcher && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="hidden sm:flex items-center gap-2 bg-white text-[var(--color-text-primary)]">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="hidden sm:flex items-center gap-2 bg-white text-[var(--color-text-primary)]"
+                >
                   <span className="text-xs text-[var(--color-text-secondary)]">View as:</span>
-                  <span className="font-medium">
-                    {currentRole === 'HR' || currentRole === 'MANAGER' || currentRole === 'ADMIN'
-                      ? 'Human Resources'
-                      : currentRole === 'CLIENT'
-                        ? 'Client'
-                        : currentRole === 'SUPER_ADMIN'
-                          ? 'Mismo Internal'
-                          : 'Human Resources'}
-                  </span>
+                  <span className="font-medium">{roleLabel(currentRole)}</span>
                   <Icons.chevronRight className="h-4 w-4 rotate-90" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {canAccessMismoInternal && (
-                  <DropdownMenuItem onClick={handleSwitchToMismoInternal}>
-                    <Icons.shield className="h-4 w-4 mr-2" />
-                    Mismo Internal
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem onClick={handleSwitchToMismoInternal}>
+                  <Icons.shield className="h-4 w-4 mr-2" />
+                  Mismo Internal
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleSwitchToHR}>
                   <Icons.briefcase className="h-4 w-4 mr-2" />
                   Human Resources
@@ -137,59 +135,63 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
                   <Icons.user className="h-4 w-4 mr-2" />
                   View as employee
                 </DropdownMenuItem>
-                {logout && (
-                  <DropdownMenuItem onClick={() => logout()} className="text-[var(--color-alert-600)]">
-                    Sign out
-                  </DropdownMenuItem>
-                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          {isEmployee && logout && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="sm:hidden text-white hover:text-white hover:bg-white/10 shrink-0"
-              onClick={() => logout()}
-              aria-label="Sign out"
-            >
-              <Icons.logout className="h-5 w-5" />
-            </Button>
-          )}
-          {isEmployee && logout && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="hidden sm:inline-flex text-white/90 hover:text-white hover:bg-white/10"
-              onClick={() => logout()}
-            >
-              Sign out
-            </Button>
-          )}
-          
-          {/* User Avatar */}
+
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden md:block text-right">
               <p className="text-sm font-medium text-white">
                 {currentUser.firstName} {currentUser.lastName}
               </p>
-              <p className="text-xs text-white/70">
-                {currentRole === 'EMPLOYEE'
-                  ? 'Employee'
-                  : currentRole === 'HR' || currentRole === 'MANAGER' || currentRole === 'ADMIN'
-                    ? 'Human Resources'
-                    : currentRole === 'CLIENT'
-                      ? 'Client Viewer'
-                        : currentRole === 'SUPER_ADMIN'
-                        ? 'Mismo Internal'
-                        : 'Human Resources'}
-              </p>
+              <p className="text-xs text-white/70">{roleLabel(currentRole)}</p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-white/10 border border-white/20 flex items-center justify-center">
-              <span className="text-sm font-semibold text-white">
-                {getInitials(currentUser.firstName, currentUser.lastName)}
-              </span>
-            </div>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="w-10 h-10 rounded-full bg-white/10 border border-white/20 flex items-center justify-center hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                  aria-label="Account menu"
+                >
+                  <span className="text-sm font-semibold text-white">
+                    {getInitials(currentUser.firstName, currentUser.lastName)}
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col gap-0.5">
+                    <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                      {currentUser.firstName} {currentUser.lastName}
+                    </p>
+                    <p className="text-xs text-[var(--color-text-secondary)] truncate">
+                      {currentUser.email}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {currentRole !== 'CLIENT' && (
+                  <DropdownMenuItem
+                    onClick={() =>
+                      onNavigate?.(currentRole === 'EMPLOYEE' ? 'settings' : 'account')
+                    }
+                  >
+                    <Icons.settings className="h-4 w-4 mr-2" />
+                    Profile &amp; settings
+                  </DropdownMenuItem>
+                )}
+                {logout && (
+                  <DropdownMenuItem
+                    onClick={() => logout()}
+                    className="text-[var(--color-alert-600)] focus:text-[var(--color-alert-600)]"
+                  >
+                    <Icons.logout className="h-4 w-4 mr-2" />
+                    Sign out
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
