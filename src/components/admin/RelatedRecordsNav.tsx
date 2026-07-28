@@ -7,6 +7,15 @@ interface RelatedRecordsNavProps {
   compact?: boolean;
 }
 
+const KIND_LABEL: Record<RecordNavTarget['kind'], string> = {
+  employee: 'Employee',
+  case: 'Case',
+  investigation: 'Investigation',
+  query: 'Check-in',
+  prompt: 'Prompt',
+  register: 'Register',
+};
+
 export function RelatedRecordsNav({ title = 'Related records', links, onNavigate, compact }: RelatedRecordsNavProps) {
   const unique = links.filter(
     (link, i, arr) =>
@@ -20,18 +29,19 @@ export function RelatedRecordsNav({ title = 'Related records', links, onNavigate
       <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">{title}</p>
       <div className={`grid gap-2 ${compact ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'}`}>
         {unique.map((link) => (
-            <button
-              key={`${link.page}-${JSON.stringify(link.params)}`}
-              type="button"
-              onClick={() => onNavigate(link.page, link.params)}
-              className="text-left p-3 rounded-md border border-[var(--color-border-200)] bg-white hover:border-[var(--mismo-blue)] hover:bg-[var(--mismo-blue-light)]/30 transition-colors min-h-[44px] touch-manipulation"
-            >
-              <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{link.label}</p>
-              {link.sublabel && (
-                <p className="text-xs text-[var(--color-text-secondary)] mt-0.5 line-clamp-2">{link.sublabel}</p>
-              )}
-            </button>
-          ))}
+          <button
+            key={`${link.kind}-${link.page}-${JSON.stringify(link.params)}-${link.label}`}
+            type="button"
+            onClick={() => onNavigate(link.page, link.params)}
+            className="text-left p-3 rounded-md border border-[var(--color-border-200)] bg-white hover:border-[var(--mismo-blue)] hover:bg-[var(--mismo-blue-light)]/30 transition-colors min-h-[44px] touch-manipulation"
+          >
+            <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)]">{KIND_LABEL[link.kind]}</p>
+            <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{link.label}</p>
+            {link.sublabel && (
+              <p className="text-xs text-[var(--color-text-secondary)] mt-0.5 line-clamp-2">{link.sublabel}</p>
+            )}
+          </button>
+        ))}
       </div>
     </div>
   );

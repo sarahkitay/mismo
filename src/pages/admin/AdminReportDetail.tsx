@@ -459,7 +459,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  <div>
  <p className="text-sm font-medium text-[var(--color-text-primary)]">Context attachments</p>
  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
- Upload screenshots of texts or emails (PNG, JPG, WEBP, PDF). Stored on the case handling ledger.
+ Upload screenshots of texts or emails (PNG, JPG, WEBP, PDF). AI can draft a Planned Response from image screenshots.
  </p>
  </div>
  <div>
@@ -493,25 +493,41 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  return (
  <li key={entry.id} className="border border-[var(--color-border-200)] bg-white p-2 text-sm space-y-1">
  {isImage && entry.fileDataUrl ? (
- <a href={entry.fileDataUrl} target="_blank" rel="noopener noreferrer" className="block">
+ <button
+ type="button"
+ className="block w-full text-left"
+ onClick={() => {
+ const url = entry.fileDataUrl!;
+ window.setTimeout(() => {
+ window.open(url, '_blank', 'noopener,noreferrer');
+ }, 0);
+ }}
+ >
  <img
  src={entry.fileDataUrl}
  alt={entry.fileFileName ?? entry.text}
  className="max-h-36 w-full object-contain bg-[var(--color-surface-200)]"
+ loading="lazy"
+ decoding="async"
  />
- </a>
+ </button>
  ) : null}
  <p className="font-medium truncate">{entry.fileFileName ?? entry.text}</p>
  <p className="text-xs text-[var(--color-text-secondary)]">{entry.createdAt.toLocaleString()}</p>
  {entry.fileDataUrl ? (
- <a
- href={entry.fileDataUrl}
- target="_blank"
- rel="noopener noreferrer"
+ <button
+ type="button"
  className="text-xs text-[var(--mismo-blue)] underline"
+ onClick={() => {
+ const url = entry.fileDataUrl!;
+ // Open without putting a huge data: URL on an <a href> (avoids long main-thread stalls).
+ window.setTimeout(() => {
+ window.open(url, '_blank', 'noopener,noreferrer');
+ }, 0);
+ }}
  >
  Open / download
- </a>
+ </button>
  ) : null}
  </li>
  );
@@ -536,8 +552,9 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  />
  <OutreachToneCoach
  bodyOnly
- title="Soften planned response"
- description="AI revises this plan for a professional, non-punitive tone."
+ task="draft_from_screenshots"
+ title="Draft follow-up from screenshots"
+ description="AI reads your uploaded text/email screenshots and drafts a professional follow-up. Softens an existing draft when text is already entered."
  orgId={report.orgId}
  reportId={report.id}
  investigationId={linkedInvestigation?.id}
@@ -546,6 +563,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  caseCategory={report.category}
  caseType={report.caseType}
  createdBy={dataStore.currentUser.id}
+ contextAttachments={responseContextFiles}
  employeeEmail={reporter?.email}
  employeeName={reporter ? `${reporter.firstName} ${reporter.lastName}`.trim() : undefined}
  onApplySuggestion={(_subject, nextBody) => {
@@ -580,7 +598,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  <OutreachToneCoach
  bodyOnly
  title="Soften actual response"
- description="AI cleans up the logged action for clear, factual case notes."
+ description="AI cleans up the logged action for clear, factual case notes. Screenshots are used as extra context when attached."
  orgId={report.orgId}
  reportId={report.id}
  investigationId={linkedInvestigation?.id}
@@ -589,6 +607,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  caseCategory={report.category}
  caseType={report.caseType}
  createdBy={dataStore.currentUser.id}
+ contextAttachments={responseContextFiles}
  employeeEmail={reporter?.email}
  employeeName={reporter ? `${reporter.firstName} ${reporter.lastName}`.trim() : undefined}
  onApplySuggestion={(_subject, nextBody) => {
@@ -624,7 +643,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  bodyOnly
  task="employee_outcome"
  title="Generate outcome from actual response"
- description="AI drafts how the employee responded and next steps from the Actual Response, in your chosen tone (Empathetic–Direct)."
+ description="AI drafts how the employee responded and next steps from the Actual Response (and screenshots when attached)."
  orgId={report.orgId}
  reportId={report.id}
  investigationId={linkedInvestigation?.id}
@@ -634,6 +653,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  caseCategory={report.category}
  caseType={report.caseType}
  createdBy={dataStore.currentUser.id}
+ contextAttachments={responseContextFiles}
  employeeEmail={reporter?.email}
  employeeName={reporter ? `${reporter.firstName} ${reporter.lastName}`.trim() : undefined}
  onApplySuggestion={(_subject, nextBody) => {
@@ -837,7 +857,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  <h2 className="text-sm uppercase tracking-wide text-[var(--color-text-secondary)]">Response assessment</h2>
  {isAiFeaturesEnabled() ? (
  <p className="text-sm text-[var(--color-text-secondary)]">
- Use Soften with AI on each Response workflow field to check tone, flag risky language, and apply a revised draft before saving.
+ Use Soften with AI / Draft from screenshots on Response workflow fields to check tone and draft follow-ups from uploaded message screenshots before saving.
  </p>
  ) : (
  <p className="text-sm text-[var(--color-text-secondary)]">

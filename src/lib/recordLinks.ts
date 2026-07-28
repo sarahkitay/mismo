@@ -22,10 +22,7 @@ export function linkedReportForPromptRow(
   reports: Report[]
 ): Report | undefined {
   if (row.answer === 'UNANSWERED') return undefined;
-  return (
-    reports.find((r) => r.sourcePromptResponseId === row.id) ??
-    reports.find((r) => r.createdByUserId === row.userId && r.reportSourceType === 'EMPLOYEE_PROMPT_RESPONSE')
-  );
+  return findReportForPromptResponse(row.id, reports, row.userId);
 }
 
 export function promptResponseForReport(report: Report, responses: PromptResponse[]): PromptResponse | undefined {
@@ -33,8 +30,21 @@ export function promptResponseForReport(report: Report, responses: PromptRespons
   return responses.find((r) => r.id === report.sourcePromptResponseId);
 }
 
-export function findReportForPromptResponse(responseId: string, reports: Report[]): Report | undefined {
-  return reports.find((r) => r.sourcePromptResponseId === responseId);
+export function findReportForPromptResponse(responseId: string, reports: Report[], userId?: string): Report | undefined {
+  const bySource = reports.find((r) => r.sourcePromptResponseId === responseId);
+  if (bySource) return bySource;
+  // Deterministic case id from Yes flow: report-${responseId}
+  const byId = reports.find((r) => r.id === `report-${responseId}`);
+  if (byId) return byId;
+  if (userId) {
+    return reports.find(
+      (r) =>
+        r.createdByUserId === userId &&
+        r.reportSourceType === 'EMPLOYEE_PROMPT_RESPONSE' &&
+        !['RESOLVED', 'CLOSED'].includes(r.status)
+    );
+  }
+  return undefined;
 }
 
 export function findReportForDelivery(
@@ -107,7 +117,7 @@ export function buildCaseNav(report: Report | undefined): RecordNavTarget | unde
     page: 'report-detail',
     params: { id: report.id },
     label: formatCaseReference(report),
-    sublabel: report.summary.slice(0, 72),
+    sublabel: `Open case · ${report.summary.slice(0, 56)}`,
   };
 }
 
@@ -118,7 +128,7 @@ export function buildInvestigationNav(inv: Investigation | undefined): RecordNav
     page: 'investigation-detail',
     params: { id: inv.id, tab: 'page-1' },
     label: getInvestigationDisplayId(inv),
-    sublabel: inv.status === 'OPEN' ? 'Open investigation' : 'Closed investigation',
+    sublabel: inv.status === 'OPEN' ? 'Open investigation workspace' : 'Closed investigation',
   };
 }
 
@@ -149,29 +159,29 @@ export function buildDeliveryNav(delivery: PromptDelivery, promptTitle?: string)
 /** All related records for a prompt response (check-in query). */
 export function relatedNavForPromptResponse(
   dataStore: DataStore,
-  response: PromptResponse
+  response: PromptResponse,
+  options?: { includeSelf?: boolean }
 ): RecordNavTarget[] {
   const { users, reports, investigations, prompts } = dataStore;
   const prompt = prompts.find((p) => p.id === response.promptId);
   const employee = users.find((u) => u.id === response.userId);
-  const linkedCase = findReportForPromptResponse(response.id, reports);
+  const linkedCase = findReportForPromptResponse(response.id, reports, response.userId);
   const linkedInv = findInvestigationForPromptResponse(response.id, reports, investigations);
-  const delivery = dataStore.deliveries.find((d) => d.id === response.promptDeliveryId);
 
   const links: RecordNavTarget[] = [];
   const emp = buildEmployeeNav(employee, response.userId);
   if (emp) links.push(emp);
-  const query = buildPromptResponseNav(response, prompt?.title);
-  if (query) links.push(query);
-  if (delivery) {
-    links.push({
-      kind: 'query',
-      page: 'prompt-responses',
-      params: { view: 'prompts', channel: 'incident' },
-      label: 'Check-in register',
-      sublabel: 'All prompt responses',
-    });
+  if (options?.includeSelf) {
+    const query = buildPromptResponseNav(response, prompt?.title);
+    if (query) links.push(query);
   }
+  links.push({
+    kind: 'register',
+    page: 'prompt-responses',
+    params: { view: 'prompts', channel: 'incident' },
+    label: 'Check-in register',
+    sublabel: 'All prompt responses',
+  });
   const caseLink = buildCaseNav(linkedCase);
   if (caseLink) links.push(caseLink);
   const invLink = buildInvestigationNav(linkedInv);
@@ -233,7 +243,13 @@ export function relatedNavForReport(
     links.push({ ...buildEmployeeNav(assignee)!, sublabel: 'Assigned owner' });
   }
   if (sourceResponse) {
-    links.push(buildPromptResponseNav(sourceResponse, sourcePrompt?.title)!);
+    links.push({
+      ...buildPromptResponseNav(sourceResponse, sourcePrompt?.title)!,
+      sublabel:
+        sourceResponse.answer === 'HAS_ISSUE'
+          ? 'Open Yes response · Mark reviewed'
+          : 'Open check-in response',
+    });
   } else if (sourcePrompt) {
     links.push({
       kind: 'prompt',

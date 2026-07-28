@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { coachOutreachDraft, isAiFeaturesEnabled } from '@/lib/api/aiServices';
+import { prepareContextImagesForAi } from '@/lib/prepareContextImages';
 import {
   OUTREACH_TONE_SCALE,
   toneColorClass,
@@ -28,12 +29,14 @@ interface OutreachToneCoachProps {
   title?: string;
   description?: string;
   /**
-   * When `employee_outcome`, generate/revise the outcome note from `sourceMaterial`
-   * (Actual Response). Body may be empty if source material is present.
+   * When `employee_outcome`, generate/revise the outcome note from `sourceMaterial`.
+   * When `draft_from_screenshots`, draft a follow-up from context screenshots (Planned Response).
    */
-  task?: 'soften' | 'employee_outcome';
+  task?: 'soften' | 'employee_outcome' | 'draft_from_screenshots';
   /** Source text for generation (e.g. Actual Response field). */
   sourceMaterial?: string;
+  /** Handling-ledger screenshot entries (data URLs). */
+  contextAttachments?: Array<{ fileName?: string; text?: string; fileDataUrl?: string }>;
   /** Employee email for "Email to employee" (opens mailto). */
   employeeEmail?: string;
   employeeName?: string;
@@ -62,51 +65,84 @@ export function OutreachToneCoach({
   description,
   task = 'soften',
   sourceMaterial,
+  contextAttachments = [],
   employeeEmail,
   employeeName,
   onApplySuggestion,
 }: OutreachToneCoachProps) {
   const [loading, setLoading] = useState(false);
-  const [toneTarget, setToneTarget] = useState<number>(bodyOnly ? 2 : 2);
+  const [toneTarget, setToneTarget] = useState<number>(2);
   const [result, setResult] = useState<OutreachCoachResponse | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   if (!isAiFeaturesEnabled()) return null;
 
   const isOutcomeGenerate = task === 'employee_outcome';
+  const isScreenshotDraft = task === 'draft_from_screenshots';
   const hasBody = Boolean(body.trim());
   const hasSource = Boolean(sourceMaterial?.trim());
-  const canRun = isOutcomeGenerate ? hasBody || hasSource : hasBody;
-  const generateFresh = isOutcomeGenerate && !hasBody && hasSource;
+  const imageAttachmentCount = contextAttachments.filter(
+    (e) =>
+      Boolean(e.fileDataUrl?.startsWith('data:image/')) ||
+      /\.(png|jpe?g|gif|webp)$/i.test(e.fileName ?? e.text ?? '')
+  ).length;
+  const hasImages = imageAttachmentCount > 0;
+
+  const canRun = isScreenshotDraft
+    ? hasImages || hasBody
+    : isOutcomeGenerate
+      ? hasBody || hasSource || hasImages
+      : hasBody || hasImages;
+
+  const generateFresh =
+    (isOutcomeGenerate && !hasBody && (hasSource || hasImages)) ||
+    (isScreenshotDraft && !hasBody && hasImages);
 
   const heading =
     title ??
-    (isOutcomeGenerate
-      ? 'Generate outcome from actual response'
-      : bodyOnly
-        ? 'AI language assist'
-        : 'AI outreach tone coach');
+    (isScreenshotDraft
+      ? 'Draft follow-up from screenshots'
+      : isOutcomeGenerate
+        ? 'Generate outcome from actual response'
+        : bodyOnly
+          ? 'AI language assist'
+          : 'AI outreach tone coach');
   const blurb =
     description ??
-    (isOutcomeGenerate
-      ? 'Uses the Actual Response to draft how the employee responded and next steps, in your chosen tone.'
-      : bodyOnly
-        ? 'Softens wording, flags risky language, and suggests a clearer professional draft you can apply before saving.'
-        : 'Rates wording from empathetic (1) to harsh (6). Suggests safer drafts for case outreach.');
+    (isScreenshotDraft
+      ? 'AI reads uploaded text/email screenshots and drafts a professional follow-up for Planned Response.'
+      : isOutcomeGenerate
+        ? 'Uses the Actual Response to draft how the employee responded and next steps, in your chosen tone.'
+        : bodyOnly
+          ? 'Softens wording, flags risky language, and suggests a clearer professional draft you can apply before saving.'
+          : 'Rates wording from empathetic (1) to harsh (6). Suggests safer drafts for case outreach.');
 
   const runCoach = async () => {
     if (!canRun) {
       toast.error(
-        isOutcomeGenerate
-          ? 'Save or enter an Actual Response first (or draft an outcome to soften).'
-          : bodyOnly
-            ? 'Enter text before asking AI to revise it.'
-            : 'Enter a message body before running the tone coach.'
+        isScreenshotDraft
+          ? 'Upload a screenshot under Context attachments first (or enter a draft to revise).'
+          : isOutcomeGenerate
+            ? 'Save or enter an Actual Response first (or draft an outcome to soften).'
+            : bodyOnly
+              ? 'Enter text or upload a screenshot before asking AI.'
+              : 'Enter a message body before running the tone coach.'
       );
       return;
     }
     setLoading(true);
     try {
+      const contextImages = hasImages ? await prepareContextImagesForAi(contextAttachments) : [];
+      if (isScreenshotDraft && contextImages.length === 0 && !hasBody) {
+        toast.error('Could not read screenshot images. Re-upload a PNG or JPG and try again.');
+        return;
+      }
+      const effectiveTask =
+        isScreenshotDraft || (!hasBody && hasImages && !isOutcomeGenerate)
+          ? 'draft_from_screenshots'
+          : isOutcomeGenerate
+            ? 'employee_outcome'
+            : 'soften';
       const res = await coachOutreachDraft({
         orgId,
         reportId,
@@ -118,8 +154,9 @@ export function OutreachToneCoach({
         caseType,
         toneTarget,
         createdBy,
-        task: isOutcomeGenerate ? 'employee_outcome' : 'soften',
+        task: effectiveTask,
         sourceMaterial: sourceMaterial?.trim() || undefined,
+        contextImages: contextImages.length ? contextImages : undefined,
       });
       setResult(res);
       setExpanded(true);
@@ -167,10 +204,14 @@ export function OutreachToneCoach({
       ? 'Generating…'
       : 'Analyzing…'
     : generateFresh
-      ? 'Generate with AI'
-      : bodyOnly
-        ? 'Soften with AI'
-        : 'Analyze tone';
+      ? isScreenshotDraft
+        ? 'Draft from screenshots'
+        : 'Generate with AI'
+      : hasImages && hasBody
+        ? 'Revise with AI + screenshots'
+        : bodyOnly
+          ? 'Soften with AI'
+          : 'Analyze tone';
 
   return (
     <div className="rounded-lg border border-[var(--color-border-200)] bg-[var(--color-surface-200)]/50 p-3 space-y-3">
@@ -181,16 +222,25 @@ export function OutreachToneCoach({
             {heading}
           </p>
           <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">{blurb}</p>
+          {hasImages && (
+            <p className="text-xs text-[var(--mismo-blue)] mt-1">
+              Using {imageAttachmentCount} screenshot{imageAttachmentCount === 1 ? '' : 's'} as context
+            </p>
+          )}
         </div>
-        <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={loading || !canRun} onClick={runCoach}>
+        <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={loading || !canRun} onClick={() => void runCoach()}>
           {actionLabel}
         </Button>
       </div>
 
       <div className="space-y-2">
-        <Label className="text-xs">{bodyOnly || isOutcomeGenerate ? 'Preferred tone' : 'Target tone (optional)'}</Label>
+        <Label className="text-xs">
+          {bodyOnly || isOutcomeGenerate || isScreenshotDraft ? 'Preferred tone' : 'Target tone (optional)'}
+        </Label>
         <div className="flex flex-wrap gap-1.5">
-          {OUTREACH_TONE_SCALE.filter((t) => (bodyOnly || isOutcomeGenerate ? t.score <= 4 : true)).map((t) => (
+          {OUTREACH_TONE_SCALE.filter((t) =>
+            bodyOnly || isOutcomeGenerate || isScreenshotDraft ? t.score <= 4 : true
+          ).map((t) => (
             <button
               key={t.score}
               type="button"
@@ -208,7 +258,13 @@ export function OutreachToneCoach({
         </div>
       </div>
 
-      {isOutcomeGenerate && !hasSource && (
+      {isScreenshotDraft && !hasImages && (
+        <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+          Upload a text or email screenshot under Context attachments so AI can draft the follow-up.
+        </p>
+      )}
+
+      {isOutcomeGenerate && !hasSource && !hasImages && (
         <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
           Add text under Actual Response so AI can draft an appropriate outcome.
         </p>
@@ -246,7 +302,7 @@ export function OutreachToneCoach({
 
           <div className="space-y-2">
             <p className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">
-              {generateFresh ? 'Suggested outcome' : 'Suggested revision'}
+              {generateFresh ? 'Suggested follow-up' : 'Suggested revision'}
             </p>
             {!bodyOnly && <p className="text-sm font-medium">{result.suggested_subject}</p>}
             <p className="text-sm text-[var(--color-text-secondary)] whitespace-pre-wrap">{result.suggested_body}</p>
@@ -258,7 +314,7 @@ export function OutreachToneCoach({
                 onClick={() => {
                   onApplySuggestion(result.suggested_subject, result.suggested_body);
                   toast.success(
-                    bodyOnly || isOutcomeGenerate
+                    bodyOnly || isOutcomeGenerate || isScreenshotDraft
                       ? 'Suggested wording applied. Review before saving.'
                       : 'Suggested wording applied - review before sending.'
                   );
