@@ -204,7 +204,7 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
             </div>
             <Button
               variant="outline"
-              className="shrink-0 border-amber-600 text-amber-900 hover:bg-amber-100"
+              className="shrink-0 border-amber-600 bg-white text-amber-900 hover:bg-amber-100 hover:text-amber-950"
               onClick={() =>
                 onNavigate('prompt-responses', {
                   view: 'prompts',
