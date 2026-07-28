@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { DateRangeFilter } from '@/components/DateRangeFilter';
 import { defaultDateRange, inDateRange, type DateRangeState } from '@/lib/dateFilters';
 import { formatRelativeTime, getCategoryLabel } from '@/lib/utils';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface ManagerDashboardProps {
   dataStore: DataStore;
@@ -49,9 +50,9 @@ export function ManagerDashboard({ dataStore, onNavigate }: ManagerDashboardProp
     <div className="space-y-6">
       <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-6 py-5">
         <h1 className="mismo-heading text-3xl text-[var(--color-primary-900)]">Human Resources Dashboard</h1>
-        <p className="text-[var(--color-text-secondary)] mt-1">
+        <PageMoreInfo>
           {currentUser.firstName}, all report intake, handling actions, and employee response evidence are centralized here first.
-        </p>
+        </PageMoreInfo>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

@@ -10,6 +10,7 @@ import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
 import { ReportBuilderDialog } from '@/components/admin/ReportBuilderDialog';
 import { downloadCsv } from '@/lib/exportCsv';
 import { toast } from 'sonner';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface AdminAnalyticsProps {
  dataStore: DataStore;
@@ -136,9 +137,9 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  {/* Header */}
  <div className="analytics-header">
  <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Analytics</h1>
- <p className="text-[var(--mismo-text-secondary)] mt-1">
- Comprehensive insights into your organization's compliance health
- </p>
+ <PageMoreInfo>
+ Comprehensive insights into your organization&apos;s compliance health
+ </PageMoreInfo>
  </div>
  <div className="flex flex-wrap items-center justify-between gap-3">
  <DateRangeFilter value={dateRange} onChange={setDateRange} />

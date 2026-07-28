@@ -13,6 +13,7 @@ import {
  truncateText,
  isIncidentIntakeComplete,
 } from '@/lib/utils';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface EmployeeReportsProps {
  dataStore: DataStore;
@@ -62,7 +63,7 @@ export function EmployeeReports({ dataStore, onNavigate }: EmployeeReportsProps)
  {/* Header */}
  <div className="reports-header">
  <h1 className="text-2xl font-bold text-[var(--mismo-text)]">My reports</h1>
- <p className="text-[var(--mismo-text-secondary)] mt-1">Workplace concerns and wage &amp; hour submissions. Category and severity are assigned by HR.</p>
+ <PageMoreInfo>Workplace concerns and wage &amp; hour submissions. Category and severity are assigned by HR.</PageMoreInfo>
  </div>
  
  {/* Filters */}

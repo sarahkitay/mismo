@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { formatDate } from '@/lib/utils';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface AdminClientsProps {
   dataStore: DataStore;
@@ -85,9 +86,9 @@ export function AdminClients({ dataStore, onNavigate }: AdminClientsProps) {
             Mismo Internal
           </p>
           <h1 className="text-2xl font-bold text-[var(--mismo-text)] mt-1">Client companies</h1>
-          <p className="text-[var(--mismo-text-secondary)] mt-1">
+          <PageMoreInfo>
             Create and oversee all companies. Open a company for profile, contacts, billing, and printable Client Summary.
-          </p>
+          </PageMoreInfo>
         </div>
         <Button className="bg-[var(--mismo-blue)] hover:bg-blue-600" onClick={handleAdd}>
           <Icons.add className="h-4 w-4 mr-2" />

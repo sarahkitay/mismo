@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatDate } from '@/lib/utils';
 import { toast } from 'sonner';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface AdminCampaignsProps {
   dataStore: DataStore;
@@ -80,9 +81,7 @@ export function AdminCampaigns({ dataStore, onNavigate }: AdminCampaignsProps) {
       <div className="campaigns-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Campaigns</h1>
-          <p className="text-[var(--mismo-text-secondary)] mt-1">
-            Monitor active compliance campaigns and their progress
-          </p>
+          <PageMoreInfo>Monitor active compliance campaigns and their progress</PageMoreInfo>
         </div>
         <Button 
           className="bg-[var(--mismo-blue)] hover:bg-blue-600"

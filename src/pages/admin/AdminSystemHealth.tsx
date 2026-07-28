@@ -2,6 +2,7 @@ import type { DataStore } from '@/hooks/useDataStore';
 import { Icons } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface AdminSystemHealthProps {
   dataStore: DataStore;
@@ -91,9 +92,7 @@ export function AdminSystemHealth({ dataStore }: AdminSystemHealthProps) {
       {/* Header */}
       <div className="health-header">
         <h1 className="text-2xl font-bold text-[var(--mismo-text)]">System Health</h1>
-        <p className="text-[var(--mismo-text-secondary)] mt-1">
-          Monitor system status and service availability
-        </p>
+        <PageMoreInfo>Monitor system status and service availability</PageMoreInfo>
       </div>
       
       {/* Overall Status */}

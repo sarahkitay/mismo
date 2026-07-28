@@ -341,7 +341,7 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  <>
  {checkInStepLabel && <p className="text-sm font-medium text-[var(--color-primary-700)]">{checkInStepLabel}</p>}
  <p className="text-xs tracking-[0.08em] uppercase text-[var(--color-text-secondary)] mt-2">
- {isIncidentGate ? 'Daily check-in required' : 'Compliance Check-In Required'}
+ {isIncidentGate ? 'Daily check-in' : 'Compliance Check-In Required'}
  </p>
  {isIncidentGate ? (
  <>

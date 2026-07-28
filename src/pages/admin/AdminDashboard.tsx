@@ -8,6 +8,7 @@ import { Icons } from '@/lib/icons';
 import { fetchHrNextTasks, isAiFeaturesEnabled, type HrNextTask } from '@/lib/api/aiServices';
 import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
 import { DailyCheckInGate, useDailyCheckInViewState } from '@/components/DailyCheckInGate';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 interface AdminDashboardProps {
@@ -186,9 +187,9 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  <>
  <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-6 py-5 rounded-[var(--radius-medium)]">
  <h1 className="font-command text-[28px] sm:text-[32px] font-medium text-[var(--color-primary-900)]">Risk Command Center</h1>
- <p className="mt-1 text-base text-[var(--color-text-secondary)]">
+ <PageMoreInfo>
  Employee relations and compliance command center. Every count below opens the underlying filtered register.
- </p>
+ </PageMoreInfo>
  <div className="mt-4 flex flex-wrap gap-2">
  <Button variant="outline" size="sm" onClick={() => onNavigate('case-register', { view: 'register', action: 'pending' })}>
  Open action register

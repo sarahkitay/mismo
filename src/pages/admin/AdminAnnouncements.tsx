@@ -7,6 +7,7 @@ import { DateRangeFilter } from '@/components/DateRangeFilter';
 import { defaultDateRange, inDateRange, type DateRangeState } from '@/lib/dateFilters';
 import { formatDate } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface AdminAnnouncementsProps {
   dataStore: DataStore;
@@ -44,7 +45,7 @@ export function AdminAnnouncements({ dataStore, onNavigate }: AdminAnnouncements
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Announcements</h1>
-          <p className="text-[var(--mismo-text-secondary)]">Search announcements by title, body, tags, audience, and date.</p>
+          <PageMoreInfo>Search announcements by title, body, tags, audience, and date.</PageMoreInfo>
         </div>
         <Button onClick={() => onNavigate('announcement-detail', { id: 'new' })}>Create Announcement</Button>
       </div>

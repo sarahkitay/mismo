@@ -19,6 +19,7 @@ import { formatCaseReference } from '@/lib/caseTypes';
 import { downloadCsv } from '@/lib/exportCsv';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 const INV_SLA_DAYS = 14;
 
@@ -137,9 +138,9 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
       <div className="investigations-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="mismo-heading text-3xl text-[var(--color-primary-900)]">Investigations</h1>
-          <p className="text-[var(--mismo-text-secondary)] mt-1">
+          <PageMoreInfo>
             Formal investigation files plus Yes check-in responses under HR review before or alongside a case file.
-          </p>
+          </PageMoreInfo>
         </div>
         <div className="flex items-center gap-2">
           <Button

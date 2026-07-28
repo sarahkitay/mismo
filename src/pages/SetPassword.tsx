@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { EmailOtpType } from '@supabase/supabase-js';
+import type { EmailOtpType, SupabaseClient } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,27 @@ function readAuthConfirmParams(): { tokenHash: string; type: EmailOtpType } | nu
   const type = params.get('type')?.trim() as EmailOtpType | null;
   if (!tokenHash || !type) return null;
   return { tokenHash, type };
+}
+
+/** One verify per token across Strict Mode remounts (invite OTPs are single-use). */
+const otpVerifyInflight = new Map<string, Promise<{ ok: boolean; message?: string }>>();
+
+function verifyOtpOnce(
+  supabase: SupabaseClient,
+  tokenHash: string,
+  type: EmailOtpType
+): Promise<{ ok: boolean; message?: string }> {
+  const key = `${type}:${tokenHash}`;
+  let pending = otpVerifyInflight.get(key);
+  if (!pending) {
+    pending = (async () => {
+      const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
+      if (error) return { ok: false, message: error.message };
+      return { ok: true };
+    })();
+    otpVerifyInflight.set(key, pending);
+  }
+  return pending;
 }
 
 /**
@@ -42,17 +63,36 @@ export function SetPassword({ onDone }: SetPasswordProps) {
         const supabase = getSupabaseClient();
         const confirmParams = readAuthConfirmParams();
 
+        // Already signed in (e.g. remount after a successful verify).
+        const existing = await supabase.auth.getSession();
+        if (cancelled) return;
+        if (existing.data.session) {
+          if (confirmParams?.type === 'magiclink' || confirmParams?.type === 'email') {
+            window.history.replaceState(null, '', window.location.pathname);
+            toast.success('Signed in. Welcome to Mismo.');
+            onDone();
+            return;
+          }
+          setNeedsPassword(true);
+          setSessionReady(true);
+          if (confirmParams) {
+            window.history.replaceState(null, '', '/auth/confirm');
+          }
+          return;
+        }
+
         if (confirmParams) {
-          const { error: verifyErr } = await supabase.auth.verifyOtp({
-            token_hash: confirmParams.tokenHash,
-            type: confirmParams.type,
-          });
+          const result = await verifyOtpOnce(supabase, confirmParams.tokenHash, confirmParams.type);
           if (cancelled) return;
-          if (verifyErr) {
+
+          // Token may already be consumed by a concurrent mount; session still counts.
+          const after = await supabase.auth.getSession();
+          if (cancelled) return;
+          if (!result.ok && !after.data.session) {
             setLinkInvalid(true);
             return;
           }
-          // Magic links only need sign-in; invite/recovery set a password.
+
           if (confirmParams.type === 'magiclink' || confirmParams.type === 'email') {
             window.history.replaceState(null, '', window.location.pathname);
             toast.success('Signed in. Welcome to Mismo.');
@@ -182,7 +222,7 @@ export function SetPassword({ onDone }: SetPasswordProps) {
                 </Button>
               </form>
             ) : (
-              <p className="text-sm text-center text-[var(--color-text-secondary)]">Signing you in…</p>
+              <p className="text-sm text-center text-[var(--mismo-text-secondary)]">Signing you in…</p>
             )}
           </CardContent>
         </Card>

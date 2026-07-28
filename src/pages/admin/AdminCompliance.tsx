@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatPercent } from '@/lib/utils';
 import { downloadCsv } from '@/lib/exportCsv';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 import {
  fetchApiHealth,
  fetchHrLawUpdates,
@@ -159,14 +160,14 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  <div className="space-y-5">
  <div>
  <h1 className="text-2xl font-bold text-[var(--color-primary-900)]">State compliance</h1>
- <p className="text-[var(--mismo-text-secondary)]">
+ <PageMoreInfo>
  Federal and state posting requirements, policy acknowledgements, and exportable compliance posture.{' '}
  {onNavigate && (
  <button type="button" className="text-[var(--mismo-blue)] underline font-medium" onClick={() => onNavigate('policies')}>
  Open memos & announcements
  </button>
  )}
- </p>
+ </PageMoreInfo>
  </div>
  <div className="flex gap-2">
  <button className={`interactive-control px-3 py-2 border text-sm ${tab === 'DASHBOARD' ? 'bg-[var(--mismo-blue)] text-white' : ''}`} onClick={() => setTab('DASHBOARD')}>

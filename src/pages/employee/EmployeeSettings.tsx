@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface EmployeeSettingsProps {
   dataStore: DataStore;
@@ -81,9 +82,7 @@ export function EmployeeSettings({ dataStore }: EmployeeSettingsProps) {
       {/* Header */}
       <div className="settings-header">
         <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Settings</h1>
-        <p className="text-[var(--mismo-text-secondary)] mt-1">
-          Manage your profile and notification preferences
-        </p>
+        <PageMoreInfo>Manage your profile and notification preferences</PageMoreInfo>
       </div>
       
       {/* Profile Settings */}

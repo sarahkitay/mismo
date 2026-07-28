@@ -69,6 +69,7 @@ import {
  persistPromptUpdate,
  persistPromptResponse,
  persistPromptDelivery,
+ persistResponseThenReport,
  persistReportChange,
  persistInvestigation,
  persistPolicy,
@@ -621,14 +622,43 @@ export function useDataStore() {
  const submitPromptResponse = useCallback((
  deliveryId: string,
  answer: PromptAnswer,
- notes?: string
+ notes?: string,
+ options?: { skipPersist?: boolean }
  ): PromptResponse | undefined => {
  const delivery = deliveries.find(d => d.id === deliveryId);
  if (!delivery) return undefined;
- 
+
+ // Idempotent: one response per delivery (DB unique on prompt_delivery_id).
+ const existing = responses.find((r) => r.promptDeliveryId === deliveryId);
+ if (existing) {
  const now = new Date();
- const responseId = `response-${Date.now()}`;
- 
+ const updated: PromptResponse = {
+ ...existing,
+ answer,
+ notes: notes ?? existing.notes,
+ needsReview: answer === 'HAS_ISSUE',
+ finalizedAt: existing.finalizedAt ?? now,
+ submittedAt: existing.submittedAt ?? now,
+ updatedAt: now,
+ };
+ setResponses((prev) => prev.map((r) => (r.id === existing.id ? updated : r)));
+ const completedDelivery: PromptDelivery = {
+ ...delivery,
+ status: 'COMPLETED',
+ completedAt: delivery.completedAt ?? now,
+ updatedAt: now,
+ };
+ setDeliveries((prev) => prev.map((d) => (d.id === deliveryId ? completedDelivery : d)));
+ if (!options?.skipPersist) {
+ void persistPromptResponse(updated, completedDelivery);
+ }
+ return updated;
+ }
+
+ const now = new Date();
+ // Stable id so retries upsert cleanly instead of colliding on delivery.
+ const responseId = `response-${deliveryId}`;
+
  const newResponse: PromptResponse = {
  id: responseId,
  orgId: delivery.orgId,
@@ -643,7 +673,7 @@ export function useDataStore() {
  createdAt: now,
  updatedAt: now,
  };
- 
+
  setResponses(prev => [...prev, newResponse]);
 
  const completedDelivery: PromptDelivery = {
@@ -654,8 +684,10 @@ export function useDataStore() {
  };
  setDeliveries(prev => prev.map(d => (d.id === deliveryId ? completedDelivery : d)));
 
+ if (!options?.skipPersist) {
  void persistPromptResponse(newResponse, completedDelivery);
- 
+ }
+
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
  orgId: delivery.orgId,
@@ -664,7 +696,7 @@ export function useDataStore() {
  metadata: { promptId: delivery.promptId, answer, responseId, deliveryId },
  createdAt: now,
  };
- 
+
  setActivities(prev => [newActivity, ...prev]);
 
  setAuditLogs((prev) => [
@@ -684,10 +716,20 @@ export function useDataStore() {
  ]);
 
  return newResponse;
- }, [deliveries]);
+ }, [deliveries, responses, effectiveOrgId]);
 
  const beginIncidentCaseFromPrompt = useCallback(
  (userId: string, delivery: PromptDelivery, response: PromptResponse) => {
+ const existingCase = reports.find(
+ (r) =>
+ r.sourcePromptResponseId === response.id ||
+ (r.sourcePromptId === delivery.promptId &&
+ r.createdByUserId === userId &&
+ r.reportSourceType === 'EMPLOYEE_PROMPT_RESPONSE' &&
+ r.needsExtendedIncidentIntake)
+ );
+ if (existingCase) return existingCase;
+
  const now = new Date();
  const prompt = prompts.find((p) => p.id === delivery.promptId);
  const refNum = allocateCaseReferenceNumber(reports, effectiveOrgId, 'WORKPLACE_INVESTIGATION');
@@ -713,7 +755,7 @@ export function useDataStore() {
  });
  }
  const newReport: Report = {
- id: `report-${Date.now()}`,
+ id: `report-${response.id}`,
  orgId: effectiveOrgId,
  createdByUserId: userId,
  isAnonymous: false,
@@ -768,7 +810,14 @@ export function useDataStore() {
  },
  ...prev,
  ]);
- void persistReport(newReport);
+ // Response must land before report (FK on source_prompt_response_id).
+ const completedDelivery: PromptDelivery = {
+ ...delivery,
+ status: 'COMPLETED',
+ completedAt: delivery.completedAt ?? now,
+ updatedAt: now,
+ };
+ void persistResponseThenReport(response, completedDelivery, newReport);
  return newReport;
  },
  [prompts, reports, effectiveOrgId, users]
@@ -779,7 +828,8 @@ export function useDataStore() {
  (deliveryId: string, notes?: string) => {
  const delivery = deliveries.find((d) => d.id === deliveryId);
  if (!delivery) return undefined;
- const response = submitPromptResponse(deliveryId, 'HAS_ISSUE', notes);
+ // Persist is deferred to beginIncidentCaseFromPrompt (response must exist before report FK).
+ const response = submitPromptResponse(deliveryId, 'HAS_ISSUE', notes, { skipPersist: true });
  if (!response) return undefined;
  const report = beginIncidentCaseFromPrompt(delivery.userId, delivery, response);
  const employee = users.find((u) => u.id === delivery.userId);
@@ -1040,14 +1090,19 @@ export function useDataStore() {
  const defaultAdmin = users.find((u) => u.role === 'ADMIN' || u.role === 'HR');
 
  let responseId: string | undefined;
+ let linkedResponse: PromptResponse | undefined;
+ let linkedDelivery: PromptDelivery | undefined;
  if (opts?.deliveryId) {
  const delivery = deliveries.find((d) => d.id === opts.deliveryId);
  if (delivery) {
  const note =
  opts.promptNotes ??
  'Payroll memo: employee reported a payroll issue with no additional details (expedited 24h path).';
- const response = submitPromptResponse(delivery.id, 'HAS_ISSUE', note);
+ // Defer persist so report FK waits on the response row.
+ const response = submitPromptResponse(delivery.id, 'HAS_ISSUE', note, { skipPersist: true });
  responseId = response?.id;
+ linkedResponse = response;
+ linkedDelivery = delivery;
  if (responseId) {
  setResponses((prev) =>
  prev.map((r) =>
@@ -1056,6 +1111,9 @@ export function useDataStore() {
  : r
  )
  );
+ if (linkedResponse) {
+ linkedResponse = { ...linkedResponse, needsReview: false, reviewedAt: now };
+ }
  }
  }
  }
@@ -1133,6 +1191,18 @@ export function useDataStore() {
  },
  ...prev,
  ]);
+
+ if (linkedResponse && linkedDelivery) {
+ const completedDelivery: PromptDelivery = {
+ ...linkedDelivery,
+ status: 'COMPLETED',
+ completedAt: linkedDelivery.completedAt ?? now,
+ updatedAt: now,
+ };
+ void persistResponseThenReport(linkedResponse, completedDelivery, newReport);
+ } else {
+ void persistReport(newReport);
+ }
 
  return newReport;
  },

@@ -47,11 +47,12 @@ type GeneratedLink = {
   status: 'invited' | 'already_registered';
 };
 
-type LinkType = 'invite' | 'magiclink';
+type LinkType = 'invite' | 'magiclink' | 'recovery';
 
 /**
  * Build a Mismo app URL for invites so shared links never show the vendor auth host.
  * Uses token_hash + type; the app verifies via verifyOtp on /auth/confirm.
+ * Prefer `hashed_token` from generateLink — that is what verifyOtp expects.
  */
 function toBrandedActionLink(
   appOrigin: string | undefined,
@@ -65,7 +66,12 @@ function toBrandedActionLink(
     (() => {
       if (!actionLink) return undefined;
       try {
-        return new URL(actionLink).searchParams.get('token') ?? undefined;
+        const url = new URL(actionLink);
+        return (
+          url.searchParams.get('token_hash') ??
+          url.searchParams.get('token') ??
+          undefined
+        );
       } catch {
         return undefined;
       }
@@ -116,12 +122,30 @@ async function generateLoginLink(
   const alreadyExists = msg.includes('already') || msg.includes('registered') || msg.includes('exist');
   if (!alreadyExists) throw new Error(invite.error.message);
 
+  // Prefer recovery so the employee can still set a password on "Create your login".
+  // Magic links skip the password form and are a last resort.
+  const recovery = await admin.auth.admin.generateLink({
+    type: 'recovery',
+    email,
+    options: { redirectTo: appOrigin },
+  });
+  if (!recovery.error) {
+    const props = recovery.data?.properties as
+      | { action_link?: string; hashed_token?: string }
+      | undefined;
+    return {
+      actionLink: toBrandedActionLink(appOrigin, 'recovery', props?.action_link, props?.hashed_token),
+      authUserId: recovery.data?.user?.id,
+      status: 'already_registered',
+    };
+  }
+
   const magic = await admin.auth.admin.generateLink({
     type: 'magiclink',
     email,
     options: { redirectTo: appOrigin },
   });
-  if (magic.error) throw new Error(magic.error.message);
+  if (magic.error) throw new Error(magic.error.message || recovery.error.message);
 
   const props = magic.data?.properties as
     | { action_link?: string; hashed_token?: string }
