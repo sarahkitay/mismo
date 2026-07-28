@@ -27,6 +27,14 @@ import {
  API_UNREACHABLE,
  sanitizeInfraError,
 } from '@/lib/infraMessaging';
+import {
+ buildLawDigestMeta,
+ countEmployeesNeedingLawDigestAck,
+ findLawDigestPolicy,
+ formatLawDigestContent,
+ LAW_DIGEST_TAG,
+ lawDigestStateTag,
+} from '@/lib/lawDigestMemo';
 import { toast } from 'sonner';
 
 interface AdminComplianceProps {
@@ -98,6 +106,90 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  void loadStateData(selectedState);
  }
  }, [tab, selectedState, loadStateData]);
+
+ const [publishingMemo, setPublishingMemo] = useState(false);
+
+ const existingLawMemo = useMemo(
+ () => findLawDigestPolicy(dataStore.policies, selectedState),
+ [dataStore.policies, selectedState]
+ );
+
+ const employeesNeedingAck = useMemo(() => {
+ if (!existingLawMemo) return 0;
+ return countEmployeesNeedingLawDigestAck(
+ existingLawMemo,
+ dataStore.users,
+ dataStore.policyAcknowledgements
+ );
+ }, [existingLawMemo, dataStore.users, dataStore.policyAcknowledgements]);
+
+ const handlePublishLawMemo = () => {
+ if (laws.length === 0) {
+ toast.error('Sync laws for this state before publishing a memo.');
+ return;
+ }
+ const state = findStateByCode(selectedState);
+ if (!state) {
+ toast.error('Select a valid US state.');
+ return;
+ }
+ setPublishingMemo(true);
+ try {
+ const lawDigest = buildLawDigestMeta(state.code, state.name, laws);
+ const content = formatLawDigestContent(state.name, lawDigest.entries);
+ const title = `${state.name} employment law acknowledgement`;
+ const tags = [LAW_DIGEST_TAG, lawDigestStateTag(state.code), 'Compliance'];
+ if (existingLawMemo) {
+ dataStore.updatePolicy(existingLawMemo.id, {
+ title,
+ content,
+ lawDigest,
+ acknowledgmentRequired: true,
+ status: 'PUBLISHED',
+ publishedAt: existingLawMemo.publishedAt ?? new Date(),
+ type: 'LEGAL',
+ memoCategory: 'Compliance',
+ tags: [...new Set([...(existingLawMemo.tags ?? []), ...tags])],
+ effectiveDate: new Date(),
+ });
+ const pending = countEmployeesNeedingLawDigestAck(
+ {
+ ...existingLawMemo,
+ lawDigest,
+ acknowledgmentRequired: true,
+ status: 'PUBLISHED',
+ },
+ dataStore.users,
+ dataStore.policyAcknowledgements
+ );
+ toast.success(
+ `Updated signable memo with ${laws.length} laws. ${pending} employee${pending === 1 ? '' : 's'} need to review changes.`
+ );
+ } else {
+ dataStore.createPolicy({
+ title,
+ content,
+ lawDigest,
+ acknowledgmentRequired: true,
+ status: 'PUBLISHED',
+ publishedAt: new Date(),
+ effectiveDate: new Date(),
+ type: 'LEGAL',
+ memoCategory: 'Compliance',
+ tags,
+ bodySource: 'EDITOR',
+ });
+ toast.success(
+ `Published signable memo with ${laws.length} laws. Employees will see it on their dashboard until they sign.`
+ );
+ }
+ if (onNavigate) {
+ // Stay on compliance; optional peek at memos via toast action not needed.
+ }
+ } finally {
+ setPublishingMemo(false);
+ }
+ };
 
  const handleSync = async (stateCode = selectedState) => {
  const state = findStateByCode(stateCode);
@@ -298,6 +390,40 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  >
  {syncingAll ? 'Syncing all states…' : 'Sync all states (OpenAI)'}
  </Button>
+ <Button
+ type="button"
+ variant="secondary"
+ onClick={handlePublishLawMemo}
+ disabled={publishingMemo || laws.length === 0}
+ >
+ {publishingMemo
+ ? 'Publishing…'
+ : existingLawMemo
+   ? `Update signable memo (${laws.length} laws)`
+   : `Publish signable memo (${laws.length || 0} laws)`}
+ </Button>
+ {existingLawMemo ? (
+ <p className="text-xs text-[var(--color-text-muted)] max-w-[16rem]">
+ Memo live · {employeesNeedingAck} employee{employeesNeedingAck === 1 ? '' : 's'} still need to sign
+ {employeesNeedingAck > 0 ? ' (includes updates since last signature)' : ''}.
+ {onNavigate ? (
+ <>
+ {' '}
+ <button
+ type="button"
+ className="text-[var(--mismo-blue)] underline"
+ onClick={() => onNavigate('policies', { id: existingLawMemo.id })}
+ >
+ Open memo
+ </button>
+ </>
+ ) : null}
+ </p>
+ ) : (
+ <p className="text-xs text-[var(--color-text-muted)] max-w-[16rem]">
+ After laws are synced, publish a memo so employees must sign on their dashboard.
+ </p>
+ )}
  </div>
  </div>
 

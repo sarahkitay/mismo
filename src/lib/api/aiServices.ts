@@ -71,6 +71,41 @@ export async function coachOutreachDraft(req: OutreachCoachRequest): Promise<Out
  return res.json() as Promise<OutreachCoachResponse>;
 }
 
+export type HelpAssistantAskRequest = {
+  question: string;
+  role: string;
+  orgId?: string;
+  stateCode?: string;
+};
+
+export type HelpAssistantAskResponse = {
+  answer: string;
+  steps: string[];
+  navigate?: { page: string; params?: Record<string, string>; label: string };
+  related: { page: string; params?: Record<string, string>; label: string }[];
+  source: 'openai' | 'fallback';
+  model?: string;
+};
+
+export async function askMismoHelp(req: HelpAssistantAskRequest): Promise<HelpAssistantAskResponse> {
+  if (!API_BASE) {
+    throw new Error(API_NOT_CONFIGURED);
+  }
+
+  const res = await fetch(apiUrl('/ai/help/ask'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(sanitizeInfraError(err.error ?? `Help assistant failed (${res.status})`));
+  }
+
+  return res.json() as Promise<HelpAssistantAskResponse>;
+}
+
 export async function fetchHrLaws(stateCode: string, topic?: string): Promise<{ laws: HrLawRecord[] }> {
  if (!API_BASE) return { laws: [] };
  const params = new URLSearchParams({ state: stateCode });

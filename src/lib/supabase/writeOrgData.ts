@@ -374,6 +374,7 @@ function policyRow(policy: Policy): Record<string, unknown> {
     body_source: policy.bodySource ?? null,
     body_attachment_file_name: policy.bodyAttachmentFileName ?? null,
     body_source_url: policy.bodySourceUrl ?? null,
+    law_digest: policy.lawDigest ?? null,
     updated_at: iso(policy.updatedAt) ?? new Date().toISOString(),
   };
 }
@@ -385,6 +386,7 @@ function policyAckRow(ack: PolicyAcknowledgement): Record<string, unknown> {
     acknowledged_at: iso(ack.acknowledgedAt) ?? new Date().toISOString(),
     outcome: ack.outcome ?? null,
     clarification_note: ack.clarificationNote ?? null,
+    acknowledged_law_digest: ack.acknowledgedLawDigest ?? null,
   };
 }
 

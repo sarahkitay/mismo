@@ -44,6 +44,7 @@ import type {
  ClientNote,
  ClientPayment,
  ClientSupportEntry,
+ LawDigestEntry,
 } from '@/types';
 import {
  buildDefaultChecklistStages,
@@ -51,7 +52,11 @@ import {
  inferReportSourceType,
 } from '@/lib/investigationWorkflow';
 import { allocateCaseReferenceNumber } from '@/lib/caseReference';
-import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
+import {
+  computeOpenInvestigationWorkload,
+  computePromptResponsesNavCount,
+  openCaseRegisterReports,
+} from '@/lib/investigationWorkload';
 import {
  DEFAULT_ORG_ID,
  DEFAULT_ORG_NAME,
@@ -79,6 +84,7 @@ import {
  persistOrgSettings,
 } from '@/lib/supabase/writeOrgData';
 import { notifyIncidentYes, notifyWageHourYes } from '@/lib/api/notifications';
+import { employeeNeedsPolicyAck } from '@/lib/lawDigestMemo';
 import {
  loadClientData,
  persistClientCompany,
@@ -2226,6 +2232,7 @@ export function useDataStore() {
  outcome?: 'READ_UNDERSTOOD' | 'REQUEST_CLARIFICATION';
  signatureDataUrl?: string;
  clarificationNote?: string;
+ acknowledgedLawDigest?: LawDigestEntry[];
  }
  ) => {
  let persistTarget: PolicyAcknowledgement | null = null;
@@ -2240,6 +2247,7 @@ export function useDataStore() {
  outcome: opts?.outcome ?? ack.outcome ?? 'READ_UNDERSTOOD',
  signatureDataUrl: opts?.signatureDataUrl ?? ack.signatureDataUrl,
  clarificationNote: opts?.clarificationNote ?? ack.clarificationNote,
+ acknowledgedLawDigest: opts?.acknowledgedLawDigest ?? ack.acknowledgedLawDigest,
  };
  persistTarget = next;
  return next;
@@ -2252,6 +2260,7 @@ export function useDataStore() {
  outcome: opts?.outcome ?? 'READ_UNDERSTOOD',
  signatureDataUrl: opts?.signatureDataUrl,
  clarificationNote: opts?.clarificationNote,
+ acknowledgedLawDigest: opts?.acknowledgedLawDigest,
  };
  persistTarget = created;
  return [...prev, created];
@@ -3051,17 +3060,18 @@ export function useDataStore() {
  memoAcknowledgementsPending: (() => {
  const activeEmployees = effectiveUsers.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');
  const requiredPolicies = effectivePolicies.filter((p) => p.status === 'PUBLISHED' && p.acknowledgmentRequired);
- const totalRequiredAcks = activeEmployees.length * requiredPolicies.length;
- return Math.max(0, totalRequiredAcks - effectivePolicyAcknowledgements.length);
+ let pending = 0;
+ for (const emp of activeEmployees) {
+ for (const policy of requiredPolicies) {
+ const ack = effectivePolicyAcknowledgements.find((a) => a.policyId === policy.id && a.userId === emp.id);
+ if (employeeNeedsPolicyAck(policy, ack)) pending += 1;
+ }
+ }
+ return pending;
  })(),
  memosNeedingClarification: effectivePolicyAcknowledgements.filter((a) => a.outcome === 'REQUEST_CLARIFICATION').length,
  actionRequiredTotal: 0,
- openCaseRegisterCount: effectiveReports.filter((r) => {
- if (['RESOLVED', 'CLOSED'].includes(r.status)) return false;
- if (!r.investigationId) return true;
- const inv = effectiveInvestigations.find((i) => i.id === r.investigationId);
- return inv?.status !== 'OPEN';
- }).length,
+ openCaseRegisterCount: openCaseRegisterReports(effectiveReports, effectiveInvestigations).length,
  wageHourPendingReview: effectiveReports.filter((r) => r.status === 'PENDING_WAGE_HOUR_REVIEW').length,
  payrollExpeditedOpen: effectiveReports.filter(
  (r) => r.status === 'PAYROLL_EXPEDITED' && r.expeditedPayroll
@@ -3072,9 +3082,17 @@ export function useDataStore() {
  effectiveResponses,
  effectiveReports
  );
+ const unansweredPromptDeliveries = dashboardCounts.unansweredPromptDeliveries;
+ const promptResponsesNavCount = computePromptResponsesNavCount({
+ responses: effectiveResponses,
+ reports: effectiveReports,
+ investigations: effectiveInvestigations,
+ unansweredPromptDeliveries,
+ });
  const dashboardCountsWithWorkload = {
  ...dashboardCounts,
  openInvestigationWorkload: investigationWorkload.totalCount,
+ promptResponsesNavCount,
  };
  const actionRequiredTotal =
  dashboardCountsWithWorkload.yesResponsesNeedingReview +

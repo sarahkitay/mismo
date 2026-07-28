@@ -1,5 +1,6 @@
 import type { Policy, PolicyAcknowledgement, User } from '@/types';
 import { formatDate } from '@/lib/utils';
+import { employeeNeedsPolicyAck } from '@/lib/lawDigestMemo';
 
 export function getMemoUnacknowledgedEmployees(
   policyId: string,
@@ -8,12 +9,11 @@ export function getMemoUnacknowledgedEmployees(
   acknowledgements: PolicyAcknowledgement[]
 ): User[] {
   if (!policy?.acknowledgmentRequired || policy.status !== 'PUBLISHED') return [];
-  return users.filter(
-    (u) =>
-      u.role === 'EMPLOYEE' &&
-      u.status === 'active' &&
-      !acknowledgements.some((a) => a.policyId === policyId && a.userId === u.id)
-  );
+  return users.filter((u) => {
+    if (u.role !== 'EMPLOYEE' || u.status !== 'active') return false;
+    const ack = acknowledgements.find((a) => a.policyId === policyId && a.userId === u.id);
+    return employeeNeedsPolicyAck(policy, ack);
+  });
 }
 
 export function buildMemoReminderContent(policy: Policy): {

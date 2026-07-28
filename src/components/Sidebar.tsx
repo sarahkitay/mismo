@@ -3,6 +3,7 @@ import type { IconName } from '@/lib/icons';
 import { Icons } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { employeeNeedsPolicyAck } from '@/lib/lawDigestMemo';
 
 interface NavItem {
   id: string;
@@ -21,7 +22,7 @@ const employeeNavItems: NavItem[] = [
 const adminNavItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { id: 'prompt-responses', label: 'Prompt Responses', icon: 'reports' },
-  { id: 'investigations', label: 'Investigations', icon: 'investigations', badgeKey: 'openInvestigationWorkload' },
+  { id: 'investigations', label: 'Investigations', icon: 'investigations', badgeKey: 'activeInvestigations' },
   { id: 'policies', label: "Memos & Announcements", icon: 'bookOpen' },
   { id: 'analytics', label: 'Analytics', icon: 'analytics' },
   { id: 'compliance', label: 'State Compliance', icon: 'shield' },
@@ -64,13 +65,13 @@ function SidebarContent({
   const getBadgeCount = (item: NavItem): number | undefined => {
     if (currentRole === 'CLIENT') return undefined;
     if (currentRole === 'EMPLOYEE') {
-      const pendingMemos = dataStore.policies.filter(
-        (p) =>
-          p.status === 'PUBLISHED' &&
-          p.acknowledgmentRequired &&
-          !dataStore.policyAcknowledgements.some(
-            (a) => a.policyId === p.id && a.userId === dataStore.currentUser.id && a.outcome !== 'REQUEST_CLARIFICATION'
+      const pendingMemos = dataStore.policies.filter((p) =>
+        employeeNeedsPolicyAck(
+          p,
+          dataStore.policyAcknowledgements.find(
+            (a) => a.policyId === p.id && a.userId === dataStore.currentUser.id
           )
+        )
       ).length;
       switch (item.id) {
         case 'home':
@@ -85,12 +86,8 @@ function SidebarContent({
       return dataStore.pendingPromptsForEmployee.length;
     }
     if (item.id === 'prompt-responses') {
-      // Match what HR can act on in the hub: Yes needing review, unanswered employee
-      // check-ins, and open case-register items. Do not inflate with HR's own gate.
-      const n =
-        dashboardCounts.yesResponsesNeedingReview +
-        dashboardCounts.unansweredPromptDeliveries +
-        dashboardCounts.openCaseRegisterCount;
+      // Deduped: unanswered + open cases + Yes needing review that don't already have an open case.
+      const n = dashboardCounts.promptResponsesNavCount;
       return n > 0 ? n : undefined;
     }
     if (!item.badgeKey) return undefined;

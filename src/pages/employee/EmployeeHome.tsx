@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { employeeIncidentReportHeadline, formatRelativeTime, getStatusColor, isEmployeeReportIntakeComplete } from '@/lib/utils';
 import { DailyCheckInGate, useDailyCheckInViewState } from '@/components/DailyCheckInGate';
 import { ReportConcernSection } from '@/components/employee/ReportConcernSection';
+import { employeeNeedsPolicyAck, pendingLawDigestEntries } from '@/lib/lawDigestMemo';
 
 interface EmployeeHomeProps {
  dataStore: DataStore;
@@ -15,11 +16,11 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
  const { currentUser, pendingPromptsForEmployee, employeeReports, policies, policyAcknowledgements } = dataStore;
  const { showCheckInGate } = useDailyCheckInViewState(dataStore);
 
- const unreadPolicies = policies.filter(
- (p) =>
- p.status === 'PUBLISHED' &&
- p.acknowledgmentRequired &&
- !policyAcknowledgements.some((a) => a.policyId === p.id && a.userId === currentUser.id)
+ const unreadPolicies = policies.filter((p) =>
+ employeeNeedsPolicyAck(
+ p,
+ policyAcknowledgements.find((a) => a.policyId === p.id && a.userId === currentUser.id)
+ )
  );
 
  const isFullyCaughtUp = pendingPromptsForEmployee.length === 0 && unreadPolicies.length === 0;
@@ -108,7 +109,14 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
  Open your library to read and sign. Your dashboard will feel even lighter when these are done.
  </p>
  <div className="mt-3 space-y-2">
- {unreadPolicies.slice(0, 5).map((policy) => (
+ {unreadPolicies.slice(0, 5).map((policy) => {
+ const ack = policyAcknowledgements.find((a) => a.policyId === policy.id && a.userId === currentUser.id);
+ const pendingLaws = policy.lawDigest ? pendingLawDigestEntries(policy, ack).length : 0;
+ const actionLabel =
+ policy.lawDigest && ack?.acknowledgedLawDigest?.length && pendingLaws > 0
+ ? `${pendingLaws} update${pendingLaws === 1 ? '' : 's'} to review`
+ : 'Action needed';
+ return (
  <Card
  key={policy.id}
  className="mismo-card border border-[var(--color-border-200)] cursor-pointer hover:border-[var(--mismo-blue)] transition-colors"
@@ -125,10 +133,11 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
  <CardContent className="p-3 flex items-center gap-2">
  <Icons.bookOpen className="h-4 w-4 text-[var(--mismo-blue)] shrink-0" />
  <span className="flex-1 text-left text-sm font-medium">{policy.title}</span>
- <span className="text-xs text-[var(--mismo-amber)]">Action needed</span>
+ <span className="text-xs text-[var(--mismo-amber)]">{actionLabel}</span>
  </CardContent>
  </Card>
- ))}
+ );
+ })}
  </div>
  </CardContent>
  </Card>
