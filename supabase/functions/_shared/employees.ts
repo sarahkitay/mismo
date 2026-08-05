@@ -1,31 +1,7 @@
 import { getSupabaseAdmin } from './supabase.ts';
-
-const PRIVILEGED_ROLES = new Set(['ADMIN', 'HR', 'SUPER_ADMIN']);
-
-type Caller = { authUserId: string; role: string; orgId: string };
-
-/** Validate the bearer token and confirm the caller may invite employees. */
-async function authorizeInviter(authHeader: string | null): Promise<Caller> {
-  const token = authHeader?.replace(/^Bearer\s+/i, '').trim();
-  if (!token) throw new Error('AUTH_REQUIRED');
-
-  const admin = getSupabaseAdmin();
-  const { data: userData, error: userErr } = await admin.auth.getUser(token);
-  if (userErr || !userData?.user) throw new Error('AUTH_INVALID');
-
-  const authUserId = userData.user.id;
-  const { data: row, error: rowErr } = await admin
-    .from('users')
-    .select('role, org_id')
-    .eq('auth_user_id', authUserId)
-    .maybeSingle();
-  if (rowErr || !row) throw new Error('AUTH_NO_PROFILE');
-
-  const role = String(row.role);
-  if (!PRIVILEGED_ROLES.has(role)) throw new Error('FORBIDDEN');
-
-  return { authUserId, role, orgId: String(row.org_id) };
-}
+import { authorizeCaller, displayName } from './auth.ts';
+import { sendEmailAndNotify } from './app-notifications.ts';
+import { isResendConfigured } from './resend.ts';
 
 export type InviteEmployeeInput = {
   email: string;
@@ -39,6 +15,8 @@ export type InviteEmployeeResult = {
   message: string;
   /** Shareable link the admin can hand to the employee instead of email. */
   actionLink?: string;
+  emailStatus?: string;
+  resendConfigured?: boolean;
 };
 
 type GeneratedLink = {
@@ -163,7 +141,7 @@ async function generateLoginLink(
  * user to their directory record. Requires an authenticated HR/Admin caller.
  */
 export async function inviteEmployee(input: InviteEmployeeInput): Promise<InviteEmployeeResult> {
-  const caller = await authorizeInviter(input.authHeader);
+  const caller = await authorizeCaller(input.authHeader, { privilegedOnly: true });
   const email = input.email.trim().toLowerCase();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error('A valid email is required to send an invite.');
@@ -174,7 +152,7 @@ export async function inviteEmployee(input: InviteEmployeeInput): Promise<Invite
   // The directory record must exist in the caller's org before inviting.
   const { data: appUser, error: appUserErr } = await admin
     .from('users')
-    .select('id, org_id, auth_user_id')
+    .select('id, org_id, auth_user_id, first_name, last_name')
     .eq('org_id', caller.orgId)
     .ilike('email', email)
     .maybeSingle();
@@ -195,13 +173,50 @@ export async function inviteEmployee(input: InviteEmployeeInput): Promise<Invite
       .eq('id', appUser.id);
   }
 
+  const { data: org } = await admin.from('organizations').select('name').eq('id', caller.orgId).maybeSingle();
+  const orgName = org?.name ? String(org.name) : 'your organization';
+  const userName =
+    `${appUser.first_name ?? ''} ${appUser.last_name ?? ''}`.trim() || email;
+  const inviteUrl = link.actionLink ?? '';
+
+  const { email: mail } = await sendEmailAndNotify({
+    orgId: caller.orgId,
+    userId: String(appUser.id),
+    toEmail: email,
+    kind: 'INVITE',
+    title:
+      link.status === 'already_registered'
+        ? 'Sign-in link ready'
+        : `You've been invited to ${orgName} on Mismo`,
+    body: `${displayName(caller)} sent you a link to join ${orgName} on Mismo.`,
+    templateId: 'welcome',
+    vars: { userName, orgName, inviteUrl },
+    actionPage: 'dashboard',
+    actorUserId: caller.appUserId,
+    force: true,
+  });
+
+  const emailStatus =
+    mail.ok && mail.status === 'sent'
+      ? 'sent'
+      : mail.ok
+        ? `skipped:${mail.reason}`
+        : `failed:${'error' in mail ? mail.error : 'unknown'}`;
+
+  const emailed = mail.status === 'sent';
   return {
     ok: true,
     status: link.status,
     actionLink: link.actionLink,
+    emailStatus,
+    resendConfigured: isResendConfigured(),
     message:
       link.status === 'already_registered'
-        ? 'This person already has a login. Share the sign-in link below.'
-        : 'Invite email sent. You can also share the link below.',
+        ? emailed
+          ? 'This person already has a login. A sign-in email was sent; you can also share the link below.'
+          : 'This person already has a login. Share the sign-in link below.'
+        : emailed
+          ? 'Invite email sent. You can also share the link below.'
+          : `Invite link ready. Email ${emailStatus.startsWith('skipped') ? 'skipped' : 'failed'} — share the link below.`,
   };
 }

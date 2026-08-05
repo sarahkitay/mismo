@@ -79,8 +79,8 @@ export const CONTACT_METHOD_LABELS: Record<string, string> = {
   IN_PERSON: 'In person',
 };
 
-/** Simplified 3-page investigation workflow */
-export type InvestigationTab = 'page-1' | 'page-2' | 'page-3';
+/** Simplified investigation workflow pages + related records landing */
+export type InvestigationTab = 'page-1' | 'page-2' | 'page-3' | 'related';
 
 export const INVESTIGATION_PAGES: { id: InvestigationTab; label: string; step: number; description: string }[] = [
   {
@@ -102,6 +102,12 @@ export const INVESTIGATION_PAGES: { id: InvestigationTab; label: string; step: n
     description: 'Final findings, resolution, employee outcome letter, and export.',
   },
 ];
+
+export const INVESTIGATION_RELATED_TAB: { id: InvestigationTab; label: string; description: string } = {
+  id: 'related',
+  label: 'Related records',
+  description: 'Linked case, check-in response, employee profile, and registers.',
+};
 
 /** @deprecated Use INVESTIGATION_PAGES */
 export const INVESTIGATION_TABS = INVESTIGATION_PAGES.map((p) => ({
@@ -129,12 +135,14 @@ const LEGACY_TAB_MAP: Record<string, InvestigationTab> = {
   findings: 'page-3',
   resolution: 'page-3',
   audit: 'page-3',
+  related: 'related',
+  'related-records': 'related',
 };
 
 export function parseInvestigationTab(raw?: string): InvestigationTab {
   if (!raw) return 'page-1';
   if (LEGACY_TAB_MAP[raw]) return LEGACY_TAB_MAP[raw];
-  if (raw === 'page-1' || raw === 'page-2' || raw === 'page-3') return raw;
+  if (raw === 'page-1' || raw === 'page-2' || raw === 'page-3' || raw === 'related') return raw;
   return 'page-1';
 }
 
@@ -152,6 +160,10 @@ export interface CompletenessCheck {
   label: string;
   pass: boolean;
   detail: string;
+  /** Where to navigate when the check is clicked */
+  tab: InvestigationTab;
+  /** Optional DOM id to scroll into view after navigation */
+  sectionId?: string;
 }
 
 export function formatReportReference(reportOrId: string | Pick<Report, 'id' | 'referenceNumber' | 'caseType'>): string {
@@ -331,42 +343,56 @@ export function getCompletenessReview(inv: Investigation): { checks: Completenes
       label: 'Intake reviewed & investigator assigned',
       pass: Boolean(inv.ownerId && inv.pickedUpAt),
       detail: inv.ownerId ? 'Case owner assigned' : 'Assign lead investigator',
+      tab: 'page-1',
+      sectionId: 'inv-section-intake',
     },
     {
       id: 'persons',
       label: 'Key parties identified',
       pass: hasReportingParty && persons.length >= 2,
       detail: `${persons.length} persons on file`,
+      tab: 'page-2',
+      sectionId: 'inv-section-persons',
     },
     {
       id: 'evidence',
       label: 'Evidence collected & preserved',
       pass: evidence.length >= 1 && preservedCount >= 1,
       detail: `${evidence.length} file(s), ${preservedCount} preserved`,
+      tab: 'page-2',
+      sectionId: 'inv-section-evidence',
     },
     {
       id: 'interviews',
       label: 'Interviews / statements documented',
       pass: interviewNotes.length >= 1 || requests.some((r) => r.status === 'SUBMITTED'),
       detail: `${interviewNotes.length} interview notes, ${requests.filter((r) => r.status === 'SUBMITTED').length} responses received`,
+      tab: 'page-2',
+      sectionId: 'inv-section-notes',
     },
     {
       id: 'requests',
       label: 'No pending response requests',
       pass: pendingRequests.length === 0,
       detail: pendingRequests.length ? `${pendingRequests.length} request(s) outstanding` : 'All requests resolved',
+      tab: 'page-2',
+      sectionId: 'inv-section-notes',
     },
     {
       id: 'findings',
       label: 'Findings rationale documented',
       pass: Boolean(inv.findingsRationale?.trim()),
       detail: inv.findingsRationale?.trim() ? 'Rationale on file' : 'Document findings rationale before submission',
+      tab: 'page-2',
+      sectionId: 'inv-section-analysis',
     },
     {
       id: 'outcome',
       label: 'Outcome determination selected',
       pass: Boolean(inv.outcomeClassification),
       detail: inv.outcomeClassification ? OUTCOME_CLASSIFICATION_LABELS[inv.outcomeClassification] : 'Select outcome classification',
+      tab: 'page-3',
+      sectionId: 'inv-section-outcome',
     },
   ];
 

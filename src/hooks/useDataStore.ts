@@ -36,8 +36,8 @@ import type {
  InvestigationCorrectiveAction,
  InvestigationFollowUp,
  InvestigationNoteType,
- WageHourIntakeData,
  WageHourScreeningAcknowledgement,
+ WageHourIntakeData,
  ClientCompany,
  ClientContact,
  ClientDocument,
@@ -45,6 +45,7 @@ import type {
  ClientPayment,
  ClientSupportEntry,
  LawDigestEntry,
+ AppNotification,
 } from '@/types';
 import {
  buildDefaultChecklistStages,
@@ -83,7 +84,7 @@ import {
  deleteDepartmentRecord,
  persistOrgSettings,
 } from '@/lib/supabase/writeOrgData';
-import { notifyIncidentYes, notifyWageHourYes } from '@/lib/api/notifications';
+import { notifyIncidentYes, notifyWageHourYes, sendNotificationEmail } from '@/lib/api/notifications';
 import { employeeNeedsPolicyAck } from '@/lib/lawDigestMemo';
 import {
  loadClientData,
@@ -232,6 +233,9 @@ export function useDataStore() {
  const [responses, setResponses] = useState<PromptResponse[]>(persisted?.responses ?? []);
  const [investigations, setInvestigations] = useState<Investigation[]>(persisted?.investigations ?? []);
  const [nudges, setNudges] = useState<Nudge[]>(persisted?.nudges ?? []);
+ const [appNotifications, setAppNotifications] = useState<AppNotification[]>(
+   (persisted as { appNotifications?: AppNotification[] } | null)?.appNotifications ?? []
+ );
  const [activities, setActivities] = useState<ActivityEvent[]>(persisted?.activities ?? []);
  const [reportStatusEvents, setReportStatusEvents] = useState<ReportStatusEvent[]>(
  persisted?.reportStatusEvents ?? []
@@ -407,6 +411,7 @@ export function useDataStore() {
  setPolicyAcknowledgements(snapshot.policyAcknowledgements);
  setAnnouncements(snapshot.announcements);
  setNudges(snapshot.nudges);
+ setAppNotifications(snapshot.appNotifications ?? []);
  setActivities(snapshot.activities);
  setReportStatusEvents(snapshot.reportStatusEvents);
  setAuditLogs(snapshot.auditLogs);
@@ -447,6 +452,7 @@ export function useDataStore() {
  responses,
  investigations,
  nudges,
+ appNotifications,
  activities,
  reportStatusEvents,
  policies,
@@ -465,6 +471,7 @@ export function useDataStore() {
  deliveries,
  investigations,
  nudges,
+ appNotifications,
  reportStatusEvents,
  policies,
  policyAcknowledgements,
@@ -1410,6 +1417,16 @@ export function useDataStore() {
  return newInvestigation;
  }, [reports, investigations, currentUser.id]);
 
+ const saveInvestigationProgress = useCallback((investigationId: string) => {
+ setInvestigations((prev) => {
+ const inv = prev.find((i) => i.id === investigationId);
+ if (!inv) return prev;
+ const next = { ...inv, updatedAt: new Date(), lastUpdateAt: new Date() };
+ void persistInvestigation(next);
+ return prev.map((i) => (i.id === investigationId ? next : i));
+ });
+ }, []);
+
  const appendInvestigationAudit = useCallback(
  (investigationId: string, field: string, oldValue: string, newValue: string, reason?: string) => {
  const entry: AuditLogEntry = {
@@ -2032,7 +2049,146 @@ export function useDataStore() {
  };
  
  setActivities(prev => [newActivity, ...prev]);
- }, [currentUser.id]);
+
+ if (channel === 'EMAIL' && orgSettings.enableEmail !== false) {
+   const subjectMatch = message.match(/^Subject:\s*(.+?)(?:\n\n|\n)([\s\S]*)$/i);
+   const subject = subjectMatch?.[1]?.trim() || context.relatedLabel || 'Message from HR on Mismo';
+   const body = (subjectMatch?.[2] ?? message).trim();
+   const actionPage =
+     context.type === 'MEMO_REMINDER'
+       ? 'resources'
+       : context.type === 'CASE_REPORT_REMINDER'
+         ? 'reports'
+         : context.type === 'PROMPT_REMINDER'
+           ? 'prompts'
+           : 'dashboard';
+   const actionParams: Record<string, string> = {};
+   if (context.policyId) actionParams.id = context.policyId;
+   if (context.reportId) actionParams.id = context.reportId;
+   if (context.promptId) actionParams.promptId = context.promptId;
+
+   const kind =
+     context.type === 'MEMO_REMINDER'
+       ? ('MEMO' as const)
+       : context.type === 'PROMPT_REMINDER'
+         ? ('PROMPT' as const)
+         : ('MESSAGE' as const);
+
+   void sendNotificationEmail({
+     recipientUserId: targetUserId,
+     subject,
+     body,
+     kind,
+     actionPage,
+     actionParams: Object.keys(actionParams).length ? actionParams : undefined,
+     templateId: context.type === 'MEMO_REMINDER' ? 'new_memo' : context.type === 'PROMPT_REMINDER' ? 'prompt_notice' : 'new_message',
+   }).then((result) => {
+     if (!result) return;
+     // Optimistically mirror recipient notification locally for the sender dashboard.
+     const local: AppNotification = {
+       id: result.notificationId ?? `notif-local-${Date.now()}`,
+       orgId: effectiveOrgId,
+       userId: targetUserId,
+       kind,
+       title: subject,
+       body: body.slice(0, 500),
+       actionPage,
+       actionParams: Object.keys(actionParams).length ? actionParams : undefined,
+       emailStatus: result.emailStatus,
+       actorUserId: currentUser.id,
+       createdAt: new Date(),
+     };
+     setAppNotifications((prev) => [local, ...prev.filter((n) => n.id !== local.id)]);
+     const sentConfirm: AppNotification = {
+       id: `notif-sent-${Date.now()}`,
+       orgId: effectiveOrgId,
+       userId: currentUser.id,
+       kind: 'SYSTEM',
+       title: `Sent: ${subject}`,
+       body: `Emailed reminder to employee (${result.emailStatus ?? 'unknown'}).`,
+       actionPage: 'users',
+       actionParams: { id: targetUserId },
+       emailStatus: result.emailStatus,
+       actorUserId: currentUser.id,
+       createdAt: new Date(),
+     };
+     setAppNotifications((prev) => [sentConfirm, ...prev]);
+   });
+ }
+ }, [currentUser.id, orgSettings.enableEmail]);
+
+ const markNotificationRead = useCallback((notificationId: string) => {
+   const now = new Date();
+   setAppNotifications((prev) =>
+     prev.map((n) => (n.id === notificationId && !n.readAt ? { ...n, readAt: now } : n))
+   );
+   if (useCloudBackend()) {
+     void getSupabaseClient()
+       .from('app_notifications')
+       .update({ read_at: now.toISOString() })
+       .eq('id', notificationId)
+       .then(() => undefined);
+   }
+ }, []);
+
+ const markAllNotificationsRead = useCallback(() => {
+   const now = new Date();
+   const unreadIds = appNotifications
+     .filter((n) => n.userId === currentUser.id && !n.readAt)
+     .map((n) => n.id);
+   if (unreadIds.length === 0) return;
+   setAppNotifications((prev) =>
+     prev.map((n) => (unreadIds.includes(n.id) ? { ...n, readAt: now } : n))
+   );
+   if (useCloudBackend()) {
+     void getSupabaseClient()
+       .from('app_notifications')
+       .update({ read_at: now.toISOString() })
+       .in('id', unreadIds)
+       .then(() => undefined);
+   }
+ }, [appNotifications, currentUser.id]);
+
+ const refreshAppNotifications = useCallback(async () => {
+   if (!useCloudBackend() || !session?.orgId) return;
+   try {
+     const { data, error } = await getSupabaseClient()
+       .from('app_notifications')
+       .select('*')
+       .eq('org_id', session.orgId)
+       .order('created_at', { ascending: false })
+       .limit(100);
+     if (error || !data) return;
+     setAppNotifications(
+       data.map((row) => {
+         const r = row as Record<string, unknown>;
+         const params = r.action_params;
+         return {
+           id: String(r.id),
+           orgId: String(r.org_id),
+           userId: String(r.user_id),
+           kind: r.kind as AppNotification['kind'],
+           title: String(r.title ?? ''),
+           body: String(r.body ?? ''),
+           actionPage: r.action_page ? String(r.action_page) : undefined,
+           actionParams:
+             params && typeof params === 'object' && !Array.isArray(params)
+               ? Object.fromEntries(
+                   Object.entries(params as Record<string, unknown>).map(([k, v]) => [k, String(v)])
+                 )
+               : undefined,
+           relatedEmail: r.related_email ? String(r.related_email) : undefined,
+           emailStatus: r.email_status ? String(r.email_status) : undefined,
+           actorUserId: r.actor_user_id ? String(r.actor_user_id) : undefined,
+           readAt: r.read_at ? new Date(String(r.read_at)) : undefined,
+           createdAt: new Date(String(r.created_at)),
+         } satisfies AppNotification;
+       })
+     );
+   } catch {
+     // non-blocking
+   }
+ }, [session?.orgId]);
 
  const markPromptResponseReviewed = useCallback(
  (responseId: string) => {
@@ -2314,7 +2470,64 @@ export function useDataStore() {
  : report
  )
  );
- }, [currentUser.id]);
+ const report = reports.find((r) => r.id === reportId);
+ if (report && body.trim() && orgSettings.enableEmail !== false) {
+   const reporterId = report.createdByUserId;
+   const assigneeId = report.assignedTo;
+   const preferredRecipient =
+     currentUser.id === reporterId ? assigneeId : reporterId;
+   const toUserId =
+     preferredRecipient && preferredRecipient !== currentUser.id
+       ? preferredRecipient
+       : assigneeId && assigneeId !== currentUser.id
+         ? assigneeId
+         : reporterId && reporterId !== currentUser.id
+           ? reporterId
+           : null;
+   if (toUserId) {
+     void sendNotificationEmail({
+       recipientUserId: toUserId,
+       subject: 'Case update on Mismo',
+       body: body.trim(),
+       kind: 'CASE_UPDATE',
+       actionPage: 'report-detail',
+       actionParams: { id: reportId },
+       templateId: 'new_message',
+     }).then((result) => {
+       if (!result) return;
+       setAppNotifications((prev) => [
+         {
+           id: result.notificationId ?? `notif-case-${Date.now()}`,
+           orgId: effectiveOrgId,
+           userId: toUserId,
+           kind: 'CASE_UPDATE',
+           title: 'Case update on Mismo',
+           body: body.trim().slice(0, 500),
+           actionPage: 'report-detail',
+           actionParams: { id: reportId },
+           emailStatus: result.emailStatus,
+           actorUserId: currentUser.id,
+           createdAt: new Date(),
+         },
+         {
+           id: `notif-case-sent-${Date.now()}`,
+           orgId: effectiveOrgId,
+           userId: currentUser.id,
+           kind: 'SYSTEM',
+           title: 'Case message sent',
+           body: `Update emailed (${result.emailStatus ?? 'unknown'}).`,
+           actionPage: 'report-detail',
+           actionParams: { id: reportId },
+           emailStatus: result.emailStatus,
+           actorUserId: currentUser.id,
+           createdAt: new Date(),
+         },
+         ...prev,
+       ]);
+     });
+   }
+ }
+ }, [currentUser.id, reports, orgSettings.enableEmail, effectiveOrgId]);
 
  const addReportHandlingEntry = useCallback((reportId: string, type: ReportHandlingEntryType, text: string) => {
  if (!text.trim()) return;
@@ -3111,6 +3324,7 @@ export function useDataStore() {
  responses: effectiveResponses,
  investigations: effectiveInvestigations,
  nudges: effectiveNudges,
+ appNotifications,
  activities: effectiveActivities,
  reportStatusEvents: effectiveReportStatusEvents,
  policies: effectivePolicies,
@@ -3161,6 +3375,7 @@ export function useDataStore() {
  updateReportStatus,
  assignReport,
  createInvestigation,
+ saveInvestigationProgress,
  pickUpInvestigation,
  assignInvestigationOwner,
  advanceInvestigationStage,
@@ -3186,6 +3401,9 @@ export function useDataStore() {
  closeInvestigation,
  completeIncidentIntake,
  sendNudge,
+ markNotificationRead,
+ markAllNotificationsRead,
+ refreshAppNotifications,
  markPromptResponseReviewed,
  sendMemoReminderToUnacknowledged,
  createPrompt,

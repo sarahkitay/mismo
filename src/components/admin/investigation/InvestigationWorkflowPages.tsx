@@ -122,6 +122,7 @@ export function IntakeTriageModule(ctx: WorkflowContext) {
  completionPercent={progress.percent}
  status={progress.status}
  >
+ <div id="inv-section-intake" className="space-y-4">
  {primaryReport && (
  <InvestigationSubModule title="Automatic intake from report" badge={isIncidentIntakeComplete(primaryReport) ? 'EI complete' : 'EI pending'}>
  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
@@ -262,6 +263,7 @@ export function IntakeTriageModule(ctx: WorkflowContext) {
  'Confirm reporting party receipt acknowledgment will be sent automatically.',
  ]}
  />
+ </div>
  </InvestigationModuleShell>
  );
 }
@@ -378,6 +380,7 @@ export function InformationGatheringModule(ctx: WorkflowContext) {
  />
  </InvestigationSubModule>
 
+ <div id="inv-section-evidence">
  <InvestigationSubModule
  title="Evidence collection"
  description="Use guided prompts to collect the right materials - screenshots, communications, policies, and statements."
@@ -430,6 +433,7 @@ export function InformationGatheringModule(ctx: WorkflowContext) {
  )}
  </ul>
  </InvestigationSubModule>
+ </div>
 
  <AIGuidancePanel
  items={[
@@ -448,32 +452,129 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
  const persons = getInvestigationPersons(investigation, ctx.owner);
  const [noteBody, setNoteBody] = useState('');
  const [noteType, setNoteType] = useState<'INTERVIEW' | 'PRIVATE_HR' | 'LEGAL' | 'SHARED'>('INTERVIEW');
- const [sharedNoteBody, setSharedNoteBody] = useState('');
  const [reqParty, setReqParty] = useState('');
  const [reqMethod, setReqMethod] = useState<ResponseRequestMethod>('IN_APP');
  const [reqMessage, setReqMessage] = useState('');
  const [reqDeadline, setReqDeadline] = useState('');
+ const [notesTab, setNotesTab] = useState<'compose' | 'request' | 'timeline'>('compose');
 
  const partyOptions = persons.filter((p) => p.userId);
+ const allNotes = [...(investigation.notes ?? [])].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+ const requests = investigation.responseRequests ?? [];
+
+ const saveNote = () => {
+ if (!noteBody.trim()) {
+ toast.error('Enter a note before saving.');
+ return;
+ }
+ const isShared = noteType === 'SHARED';
+ dataStore.addInvestigationNote(investigation.id, {
+ visibility: isShared ? 'EMPLOYEE' : 'INTERNAL',
+ body: noteBody.trim(),
+ noteType: isShared ? 'SHARED' : noteType,
+ });
+ setNoteBody('');
+ toast.success(isShared ? 'Shared note sent to employee portal.' : 'Note saved with timestamp.');
+ dataStore.saveInvestigationProgress?.(investigation.id);
+ };
 
  return (
+ <div id="inv-section-notes">
  <InvestigationModuleShell
- title="Interviews & Notes"
- subtitle="Document interviews automatically with timestamps. Request party responses through a tracked communication workflow - not checkboxes."
+ title="Notes"
+ subtitle="One place for interview notes, employee-visible updates, and tracked response requests."
  completionPercent={progress.percent}
  status={progress.status}
  >
- <InvestigationSubModule title="Response request workflow" description="Allow each party to respond to allegations through a tracked, deadline-aware process.">
+ <div className="flex flex-wrap gap-2 mb-3">
+ {(
+ [
+ { id: 'compose' as const, label: 'Write note' },
+ { id: 'request' as const, label: 'Response request' },
+ { id: 'timeline' as const, label: 'Timeline' },
+ ] as const
+ ).map((tab) => (
+ <button
+ key={tab.id}
+ type="button"
+ onClick={() => setNotesTab(tab.id)}
+ className={`text-sm px-3 py-1.5 border transition-colors ${
+ notesTab === tab.id
+ ? 'border-[var(--color-primary-900)] bg-[var(--color-primary-900)] text-white'
+ : 'border-[var(--color-border-200)] bg-white hover:border-[var(--color-primary-700)]'
+ }`}
+ >
+ {tab.label}
+ </button>
+ ))}
+ </div>
+
+ {notesTab === 'compose' && (
+ <InvestigationSubModule
+ title="Add a note"
+ description="Interview and internal notes stay in this workspace. Shared notes appear on the employee report portal."
+ >
+ <div className="space-y-2">
+ <Label className="text-xs">Note type</Label>
+ <Select value={noteType} onValueChange={(v) => setNoteType(v as typeof noteType)}>
+ <SelectTrigger className="max-w-xs">
+ <SelectValue />
+ </SelectTrigger>
+ <SelectContent>
+ <SelectItem value="INTERVIEW">Interview note</SelectItem>
+ <SelectItem value="PRIVATE_HR">Private HR note</SelectItem>
+ <SelectItem value="LEGAL">Legal note</SelectItem>
+ <SelectItem value="SHARED">Shared note to employee</SelectItem>
+ </SelectContent>
+ </Select>
+ </div>
+ <Textarea
+ rows={5}
+ className="mt-2"
+ placeholder={
+ noteType === 'SHARED'
+ ? 'Message the reporting employee will see in My Reports…'
+ : 'Document interview, outreach, or internal observation…'
+ }
+ value={noteBody}
+ onChange={(e) => setNoteBody(e.target.value)}
+ />
+ <div className="mt-2 flex flex-wrap gap-2">
+ <Button onClick={saveNote}>{noteType === 'SHARED' ? 'Send shared note' : 'Save note'}</Button>
+ <Button
+ type="button"
+ variant="outline"
+ disabled={!noteBody.trim()}
+ onClick={() => {
+ saveNote();
+ setNotesTab('timeline');
+ }}
+ >
+ Save &amp; view timeline
+ </Button>
+ </div>
+ </InvestigationSubModule>
+ )}
+
+ {notesTab === 'request' && (
+ <InvestigationSubModule
+ title="Response request"
+ description="Ask a party to respond to allegations through a tracked, deadline-aware process."
+ >
  <div className="grid sm:grid-cols-2 gap-3">
  <div className="space-y-1">
  <Label className="text-xs">Party</Label>
  <Select value={reqParty} onValueChange={setReqParty}>
- <SelectTrigger><SelectValue placeholder="Select party" /></SelectTrigger>
+ <SelectTrigger>
+ <SelectValue placeholder="Select party" />
+ </SelectTrigger>
  <SelectContent>
  {partyOptions.map((p) => {
  const u = users.find((x) => x.id === p.userId);
  return u ? (
- <SelectItem key={p.id} value={p.userId!}>{PERSON_ROLE_LABELS[p.role]} - {u.firstName} {u.lastName}</SelectItem>
+ <SelectItem key={p.id} value={p.userId!}>
+ {PERSON_ROLE_LABELS[p.role]} - {u.firstName} {u.lastName}
+ </SelectItem>
  ) : null;
  })}
  </SelectContent>
@@ -482,20 +583,29 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
  <div className="space-y-1">
  <Label className="text-xs">Response method</Label>
  <Select value={reqMethod} onValueChange={(v) => setReqMethod(v as ResponseRequestMethod)}>
- <SelectTrigger><SelectValue /></SelectTrigger>
+ <SelectTrigger>
+ <SelectValue />
+ </SelectTrigger>
  <SelectContent>
  {(Object.keys(RESPONSE_METHOD_LABELS) as ResponseRequestMethod[]).map((k) => (
- <SelectItem key={k} value={k}>{RESPONSE_METHOD_LABELS[k]}</SelectItem>
+ <SelectItem key={k} value={k}>
+ {RESPONSE_METHOD_LABELS[k]}
+ </SelectItem>
  ))}
  </SelectContent>
  </Select>
  </div>
  </div>
- <Textarea rows={3} className="mt-2" placeholder="Request message / allegations summary for party…" value={reqMessage} onChange={(e) => setReqMessage(e.target.value)} />
+ <Textarea
+ rows={3}
+ className="mt-2"
+ placeholder="Request message / allegations summary for party…"
+ value={reqMessage}
+ onChange={(e) => setReqMessage(e.target.value)}
+ />
  <Input type="date" className="mt-2 max-w-xs" value={reqDeadline} onChange={(e) => setReqDeadline(e.target.value)} />
  <Button
  className="mt-2"
- variant="outline"
  onClick={() => {
  if (!reqParty || !reqMessage.trim()) {
  toast.error('Select a party and enter a request message.');
@@ -511,18 +621,49 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
  sentAt: new Date(),
  });
  setReqMessage('');
- toast.success('Response request sent and logged to timeline.');
+ toast.success('Response request sent and logged.');
+ dataStore.saveInvestigationProgress?.(investigation.id);
+ setNotesTab('timeline');
  }}
  >
  Send response request
  </Button>
- <ul className="mt-4 space-y-2">
- {(investigation.responseRequests ?? []).map((r) => {
+ </InvestigationSubModule>
+ )}
+
+ {notesTab === 'timeline' && (
+ <InvestigationSubModule title="Notes & requests timeline" description="Everything logged for this investigation in one list.">
+ <ul className="space-y-2 max-h-96 overflow-y-auto">
+ {allNotes.map((n) => {
+ const author = users.find((u) => u.id === n.createdByUserId);
+ return (
+ <li
+ key={n.id}
+ className={`border p-3 text-sm ${
+ n.visibility === 'EMPLOYEE'
+ ? 'border-[var(--mismo-blue)]/40 bg-blue-50/40'
+ : n.pinned
+ ? 'border-[var(--mismo-blue)] bg-blue-50/40'
+ : 'border-[var(--color-border-200)]'
+ }`}
+ >
+ <p className="text-xs text-[var(--color-text-muted)]">
+ {n.visibility === 'EMPLOYEE' ? 'SHARED' : n.noteType ?? 'NOTE'} · {author?.firstName}{' '}
+ {author?.lastName} · {formatRelativeTime(n.createdAt)}
+ </p>
+ <p className="mt-1 whitespace-pre-wrap">{n.body}</p>
+ </li>
+ );
+ })}
+ {requests.map((r) => {
  const u = users.find((x) => x.id === r.partyUserId);
  return (
  <li key={r.id} className="border border-[var(--color-border-200)] p-3 text-sm">
  <div className="flex flex-wrap justify-between gap-2">
- <span className="font-medium">{u ? `${u.firstName} ${u.lastName}` : r.partyUserId} · {RESPONSE_METHOD_LABELS[r.method]}</span>
+ <span className="font-medium">
+ Response request · {u ? `${u.firstName} ${u.lastName}` : r.partyUserId} ·{' '}
+ {RESPONSE_METHOD_LABELS[r.method]}
+ </span>
  <Badge variant="outline">{r.status}</Badge>
  </div>
  <p className="text-xs text-[var(--color-text-muted)] mt-1">
@@ -531,14 +672,33 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
  {r.viewedAt && ` · Viewed ${formatRelativeTime(r.viewedAt)}`}
  {r.submittedAt && ` · Submitted ${formatRelativeTime(r.submittedAt)}`}
  </p>
+ <p className="mt-1 whitespace-pre-wrap text-[var(--color-text-secondary)]">{r.message}</p>
  <div className="flex gap-2 mt-2">
  {r.status === 'SENT' && (
- <Button size="sm" variant="outline" onClick={() => dataStore.updateInvestigationResponseRequest(investigation.id, r.id, { status: 'VIEWED', viewedAt: new Date() })}>
+ <Button
+ size="sm"
+ variant="outline"
+ onClick={() =>
+ dataStore.updateInvestigationResponseRequest(investigation.id, r.id, {
+ status: 'VIEWED',
+ viewedAt: new Date(),
+ })
+ }
+ >
  Mark viewed
  </Button>
  )}
  {['SENT', 'VIEWED'].includes(r.status) && (
- <Button size="sm" variant="outline" onClick={() => dataStore.updateInvestigationResponseRequest(investigation.id, r.id, { status: 'SUBMITTED', submittedAt: new Date() })}>
+ <Button
+ size="sm"
+ variant="outline"
+ onClick={() =>
+ dataStore.updateInvestigationResponseRequest(investigation.id, r.id, {
+ status: 'SUBMITTED',
+ submittedAt: new Date(),
+ })
+ }
+ >
  Mark submitted
  </Button>
  )}
@@ -546,80 +706,14 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
  </li>
  );
  })}
+ {allNotes.length === 0 && requests.length === 0 && (
+ <li className="text-sm text-[var(--color-text-secondary)]">No notes or response requests yet.</li>
+ )}
  </ul>
  </InvestigationSubModule>
-
- <InvestigationSubModule
- title="Shared note to employee"
- description="Employee-visible updates appear on their report portal. Internal notes never leave this workspace."
- >
- <Textarea
- rows={3}
- placeholder="Message the reporting employee will see in My Reports…"
- value={sharedNoteBody}
- onChange={(e) => setSharedNoteBody(e.target.value)}
- />
- <Button
- className="mt-2"
- variant="outline"
- onClick={() => {
- if (!sharedNoteBody.trim()) return;
- dataStore.addInvestigationNote(investigation.id, {
- visibility: 'EMPLOYEE',
- body: sharedNoteBody.trim(),
- noteType: 'SHARED',
- });
- setSharedNoteBody('');
- toast.success('Shared note sent to employee portal.');
- }}
- >
- Send shared note
- </Button>
- </InvestigationSubModule>
-
- <InvestigationSubModule title="Investigation notes center" description="Interview notes are auto-timestamped. Tag people and link evidence from other modules.">
- <Select value={noteType} onValueChange={(v) => setNoteType(v as typeof noteType)}>
- <SelectTrigger className="max-w-xs"><SelectValue /></SelectTrigger>
- <SelectContent>
- <SelectItem value="INTERVIEW">Interview note</SelectItem>
- <SelectItem value="PRIVATE_HR">Private HR note</SelectItem>
- <SelectItem value="LEGAL">Legal note</SelectItem>
- </SelectContent>
- </Select>
- <Textarea rows={4} className="mt-2" placeholder="Document interview or internal observation…" value={noteBody} onChange={(e) => setNoteBody(e.target.value)} />
- <Button
- className="mt-2"
- onClick={() => {
- if (!noteBody.trim()) return;
- dataStore.addInvestigationNote(investigation.id, {
- visibility: 'INTERNAL',
- body: noteBody.trim(),
- noteType: noteType === 'SHARED' ? 'PRIVATE_HR' : noteType,
- });
- setNoteBody('');
- toast.success('Note added with automatic timestamp and author log.');
- }}
- >
- Add internal note
- </Button>
- <ul className="mt-4 space-y-2 max-h-64 overflow-y-auto">
- {(investigation.notes ?? [])
- .filter((n) => n.visibility === 'INTERNAL')
- .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
- .map((n) => {
- const author = users.find((u) => u.id === n.createdByUserId);
- return (
- <li key={n.id} className={`border p-3 text-sm ${n.pinned ? 'border-[var(--mismo-blue)] bg-blue-50/40' : 'border-[var(--color-border-200)]'}`}>
- <p className="text-xs text-[var(--color-text-muted)]">
- {n.noteType ?? 'NOTE'} · {author?.firstName} {author?.lastName} · {formatRelativeTime(n.createdAt)}
- </p>
- <p className="mt-1 whitespace-pre-wrap">{n.body}</p>
- </li>
- );
- })}
- </ul>
- </InvestigationSubModule>
+ )}
  </InvestigationModuleShell>
+ </div>
  );
 }
 
@@ -632,6 +726,7 @@ export function EvidenceAnalysisModule(ctx: WorkflowContext) {
  const policies = dataStore.policies.filter((p) => p.status === 'PUBLISHED').slice(0, 6);
 
  return (
+ <div id="inv-section-analysis">
  <InvestigationModuleShell
  title="Evidence & Analysis"
  subtitle="Review collected materials, compare facts to policy language, and document your findings rationale before outcome determination."
@@ -641,12 +736,28 @@ export function EvidenceAnalysisModule(ctx: WorkflowContext) {
  <InvestigationSubModule title="Pre-submission completeness review" badge={review.ready ? 'Ready' : 'Gaps identified'}>
  <ul className="space-y-2 text-sm">
  {review.checks.map((c) => (
- <li key={c.id} className={`flex items-start gap-2 p-2 border ${c.pass ? 'border-emerald-200 bg-emerald-50/50' : 'border-amber-200 bg-amber-50/50'}`}>
+ <li key={c.id}>
+ <button
+ type="button"
+ onClick={() => {
+ ctx.onTabChange(c.tab);
+ if (c.sectionId) {
+ window.setTimeout(() => {
+ document.getElementById(c.sectionId!)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+ }, 80);
+ }
+ }}
+ className={`w-full text-left flex items-start gap-2 p-2 border transition-colors hover:border-[var(--mismo-blue)] ${
+ c.pass ? 'border-emerald-200 bg-emerald-50/50' : 'border-amber-200 bg-amber-50/50'
+ }`}
+ >
  <span className={c.pass ? 'text-emerald-700' : 'text-amber-700'}>{c.pass ? '✓' : '○'}</span>
- <div>
+ <div className="min-w-0 flex-1">
  <p className="font-medium">{c.label}</p>
  <p className="text-xs text-[var(--color-text-muted)]">{c.detail}</p>
+ <p className="text-[10px] text-[var(--mismo-blue)] mt-1">Open section →</p>
  </div>
+ </button>
  </li>
  ))}
  </ul>
@@ -696,6 +807,7 @@ export function EvidenceAnalysisModule(ctx: WorkflowContext) {
  />
  </InvestigationSubModule>
  </InvestigationModuleShell>
+ </div>
  );
 }
 
@@ -716,6 +828,7 @@ export function FindingsOutcomeModule(ctx: WorkflowContext) {
  ];
 
  return (
+ <div id="inv-section-outcome">
  <InvestigationModuleShell
  title="Page 3 - Outcome & close"
  subtitle="Finalize findings, record resolution, send the outcome letter, and export the investigation file."
@@ -771,6 +884,7 @@ export function FindingsOutcomeModule(ctx: WorkflowContext) {
  <Textarea rows={8} value={finalReport} onChange={(e) => setFinalReport(e.target.value)} onBlur={() => dataStore.updateInvestigationAnalysis(investigation.id, { finalFindingsReport: finalReport })} />
  </InvestigationSubModule>
  </InvestigationModuleShell>
+ </div>
  );
 }
 

@@ -31,7 +31,7 @@ export async function sendTemplatedEmail(opts: {
     return { ok: true, status: 'skipped', reason: `Template ${opts.templateId} is not auto-send by default` };
   }
 
-  const from = Deno.env.get('RESEND_FROM')?.trim() || 'Mismo <onboarding@resend.dev>';
+  const from = Deno.env.get('RESEND_FROM')?.trim() || 'Mismo <noreply@mismo.co>';
   const to = Array.isArray(opts.to) ? opts.to : [opts.to];
 
   try {

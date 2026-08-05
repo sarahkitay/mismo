@@ -30,6 +30,9 @@ import {
   buildEmployeePromptRegisterRows,
   exportEmployeePromptRegisterCsv,
 } from '@/lib/employeePromptRegister';
+import { inviteEmployeeToMismo } from '@/lib/api/employees';
+import { sendEmployeePasswordReset } from '@/lib/api/notifications';
+import { sanitizeInfraError } from '@/lib/infraMessaging';
 
 interface AdminEmployeeDetailProps {
   dataStore: DataStore;
@@ -839,6 +842,50 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  <Button variant="outline" size="sm" onClick={() => setManualOpen(true)}>
  Log manual outreach…
  </Button>
+ <Button
+ variant="outline"
+ size="sm"
+ onClick={() => {
+ void inviteEmployeeToMismo(employee.email)
+ .then((result) => {
+ toast.success(result.message);
+ if (result.actionLink) {
+ void navigator.clipboard.writeText(result.actionLink).then(
+ () => toast.info('Invite link copied to clipboard.'),
+ () => undefined
+ );
+ }
+ void dataStore.refreshAppNotifications?.();
+ })
+ .catch((err) => {
+ toast.error(sanitizeInfraError(err instanceof Error ? err.message : 'Invite failed.'));
+ });
+ }}
+ >
+ Resend invite email
+ </Button>
+ <Button
+ variant="outline"
+ size="sm"
+ onClick={() => {
+ void sendEmployeePasswordReset({ targetUserId: employee.id, email: employee.email })
+ .then((result) => {
+ toast.success(result.message);
+ if (result.actionLink && result.emailStatus && !result.emailStatus.startsWith('sent')) {
+ void navigator.clipboard.writeText(result.actionLink).then(
+ () => toast.info('Reset link copied (email was not sent).'),
+ () => undefined
+ );
+ }
+ void dataStore.refreshAppNotifications?.();
+ })
+ .catch((err) => {
+ toast.error(sanitizeInfraError(err instanceof Error ? err.message : 'Password reset failed.'));
+ });
+ }}
+ >
+ Email password reset
+ </Button>
  </div>
  {nudgesToEmployee.length === 0 ? (
  <p className="text-sm text-[var(--color-text-secondary)]">
@@ -912,6 +959,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  });
  });
  toast.success(`Reminder logged via ${payload.channels.join(' & ')}.`);
+ void dataStore.refreshAppNotifications?.();
  }}
  />
 
@@ -933,7 +981,8 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  if (payload.relatedItem?.startsWith('prompt:')) context.promptId = payload.relatedItem.slice(7);
  if (payload.relatedItem?.startsWith('memo:')) context.policyId = payload.relatedItem.slice(5);
  dataStore.sendNudge(employee.id, channel, message, context);
- toast.success('Manual outreach logged.');
+ toast.success(channel === 'EMAIL' ? 'Outreach emailed and logged.' : 'Manual outreach logged.');
+ void dataStore.refreshAppNotifications?.();
  }}
  />
 

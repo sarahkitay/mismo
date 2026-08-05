@@ -139,7 +139,7 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
     const inv = dataStore.createInvestigation(linkedCase.id, dataStore.currentUser.id);
     if (inv?.id) {
       toast.success('Investigation opened.');
-      onNavigate('investigation-detail', { id: inv.id, tab: 'page-1' });
+      onNavigate('investigation-detail', { id: inv.id, tab: 'page-2' });
       return;
     }
     onNavigate('report-detail', { id: linkedCase.id });
