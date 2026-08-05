@@ -1,6 +1,10 @@
 /** Public app URL for sign-in / invite handoff. Override with VITE_APP_URL. */
 export const APP_URL = (import.meta.env.VITE_APP_URL as string | undefined)?.trim() || 'https://mismo-app.vercel.app';
 
+/** Builder credit / backlink. */
+export const BUILDER_SITE_URL = 'https://www.sarahkitay.com';
+export const BUILDER_NAME = 'Sarah Kitay';
+
 /** Invitation / sales contact. Override with VITE_INVITE_EMAIL. */
 export const INVITE_EMAIL =
   (import.meta.env.VITE_INVITE_EMAIL as string | undefined)?.trim() || 'hello@mismo.com';

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PageMoreInfo } from '@/components/PageMoreInfo';
 import { AskMismoAi } from '@/components/AskMismoAi';
+import { BuiltByCredit } from '@/components/BuiltByCredit';
 
 interface HelpSupportProps {
   dataStore: DataStore;
@@ -144,6 +145,8 @@ export function HelpSupport({ dataStore, onNavigate }: HelpSupportProps) {
           </Button>
         )}
       </div>
+
+      <BuiltByCredit tone="muted" />
     </div>
   );
 }
