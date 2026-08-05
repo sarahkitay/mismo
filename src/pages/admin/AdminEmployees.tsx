@@ -1224,6 +1224,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  </div>
  <p className="text-xs text-[var(--color-text-secondary)]">
  This link is single use and expires. If it stops working, resend the invite to generate a new one.
+ Open it in a private/incognito window (or sign out first) so it is not applied to your admin session.
  </p>
  </div>
  </DialogContent>

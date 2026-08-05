@@ -1,5 +1,5 @@
 import type { MarketingPage } from '../App';
-import { inviteMailto } from '../config';
+import { BUILDER_NAME, BUILDER_SITE_URL, inviteMailto } from '../config';
 
 interface SiteFooterProps {
   page: MarketingPage;
@@ -77,6 +77,13 @@ export function SiteFooter({ onNavigate }: SiteFooterProps) {
         <a href={inviteMailto('Beta terms')} style={{ color: 'inherit', textDecoration: 'underline' }}>
           Beta Terms &amp; Conditions
         </a>
+        <span className="footer-built-by">
+          {' '}
+          · Built by{' '}
+          <a href={BUILDER_SITE_URL} target="_blank" rel="noopener">
+            {BUILDER_NAME}
+          </a>
+        </span>
       </div>
     </footer>
   );

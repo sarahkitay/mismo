@@ -928,6 +928,16 @@ img {
   color: rgba(255, 255, 255, 0.45);
 }
 
+.footer-built-by a {
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.footer-built-by a:hover {
+  color: #fff;
+}
+
 @media (max-width: 800px) {
   .footer-inner {
     grid-template-columns: 1fr;

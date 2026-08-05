@@ -4,6 +4,7 @@ import { Icons } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { employeeNeedsPolicyAck } from '@/lib/lawDigestMemo';
+import { BuiltByCredit } from '@/components/BuiltByCredit';
 
 interface NavItem {
   id: string;
@@ -207,6 +208,7 @@ function SidebarContent({
           <Icons.info className={cn('h-4.5 w-4.5 flex-shrink-0', activePage === 'settings' ? 'text-white' : 'text-white/55')} />
           <span className="flex-1 text-left">Settings</span>
         </button>
+        <BuiltByCredit className="mt-3 px-3 pb-1" tone="onDark" />
       </div>
     </nav>
   );

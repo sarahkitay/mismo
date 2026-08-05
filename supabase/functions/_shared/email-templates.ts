@@ -42,6 +42,7 @@ function wrapHtml(title: string, bodyHtml: string): string {
   </div>
   ${bodyHtml}
   <p style="margin-top: 32px; font-size: 12px; color: #666;">Need help? Contact your administrator or Mismo support.</p>
+  <p style="margin-top: 12px; font-size: 11px; color: #888;">Built by <a href="https://www.sarahkitay.com" style="color:#666;">Sarah Kitay</a></p>
 </body>
 </html>`;
 }

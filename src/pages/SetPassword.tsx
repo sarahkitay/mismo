@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { sanitizeInfraError } from '@/lib/infraMessaging';
+import { BuiltByCredit } from '@/components/BuiltByCredit';
 
 interface SetPasswordProps {
   onDone: () => void;
@@ -22,20 +23,28 @@ function readAuthConfirmParams(): { tokenHash: string; type: EmailOtpType } | nu
 }
 
 /** One verify per token across Strict Mode remounts (invite OTPs are single-use). */
-const otpVerifyInflight = new Map<string, Promise<{ ok: boolean; message?: string }>>();
+const otpVerifyInflight = new Map<string, Promise<{ ok: boolean; message?: string; email?: string }>>();
 
+/**
+ * Always clear any existing session before verifying an invite/recovery token.
+ * Otherwise an admin already signed in on this browser would keep their session,
+ * skip verifyOtp, and updateUser({ password }) would change the admin password.
+ */
 function verifyOtpOnce(
   supabase: SupabaseClient,
   tokenHash: string,
   type: EmailOtpType
-): Promise<{ ok: boolean; message?: string }> {
+): Promise<{ ok: boolean; message?: string; email?: string }> {
   const key = `${type}:${tokenHash}`;
   let pending = otpVerifyInflight.get(key);
   if (!pending) {
     pending = (async () => {
-      const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
+      // Local scope only — do not revoke refresh tokens on other devices.
+      await supabase.auth.signOut({ scope: 'local' });
+      const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
       if (error) return { ok: false, message: error.message };
-      return { ok: true };
+      const email = data.user?.email ?? data.session?.user?.email ?? undefined;
+      return { ok: true, email };
     })();
     otpVerifyInflight.set(key, pending);
   }
@@ -55,6 +64,7 @@ export function SetPassword({ onDone }: SetPasswordProps) {
   const [sessionReady, setSessionReady] = useState(false);
   const [linkInvalid, setLinkInvalid] = useState(false);
   const [needsPassword, setNeedsPassword] = useState(true);
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,29 +73,12 @@ export function SetPassword({ onDone }: SetPasswordProps) {
         const supabase = getSupabaseClient();
         const confirmParams = readAuthConfirmParams();
 
-        // Already signed in (e.g. remount after a successful verify).
-        const existing = await supabase.auth.getSession();
-        if (cancelled) return;
-        if (existing.data.session) {
-          if (confirmParams?.type === 'magiclink' || confirmParams?.type === 'email') {
-            window.history.replaceState(null, '', window.location.pathname);
-            toast.success('Signed in. Welcome to Mismo.');
-            onDone();
-            return;
-          }
-          setNeedsPassword(true);
-          setSessionReady(true);
-          if (confirmParams) {
-            window.history.replaceState(null, '', '/auth/confirm');
-          }
-          return;
-        }
-
+        // Invite / recovery / magic links must always verify the token.
+        // Never reuse a prior browser session (e.g. HR testing the link while logged in).
         if (confirmParams) {
           const result = await verifyOtpOnce(supabase, confirmParams.tokenHash, confirmParams.type);
           if (cancelled) return;
 
-          // Token may already be consumed by a concurrent mount; session still counts.
           const after = await supabase.auth.getSession();
           if (cancelled) return;
           if (!result.ok && !after.data.session) {
@@ -93,30 +86,42 @@ export function SetPassword({ onDone }: SetPasswordProps) {
             return;
           }
 
+          const email =
+            result.email ??
+            after.data.session?.user?.email ??
+            null;
+          if (email) setAccountEmail(email);
+
           if (confirmParams.type === 'magiclink' || confirmParams.type === 'email') {
             window.history.replaceState(null, '', window.location.pathname);
             toast.success('Signed in. Welcome to Mismo.');
             onDone();
             return;
           }
+
           setNeedsPassword(true);
           setSessionReady(true);
           window.history.replaceState(null, '', '/auth/confirm');
           return;
         }
 
+        // Remount after URL was cleaned — use the session established by verifyOtp.
         const { data } = await supabase.auth.getSession();
         if (cancelled) return;
         if (data.session) {
+          if (data.session.user?.email) setAccountEmail(data.session.user.email);
           setSessionReady(true);
           return;
         }
+
         // Give detectSessionInUrl a moment for hash-based vendor redirects.
         setTimeout(() => {
           void supabase.auth.getSession().then(({ data: retry }) => {
             if (cancelled) return;
-            if (retry.session) setSessionReady(true);
-            else setLinkInvalid(true);
+            if (retry.session) {
+              if (retry.session.user?.email) setAccountEmail(retry.session.user.email);
+              setSessionReady(true);
+            } else setLinkInvalid(true);
           });
         }, 600);
       } catch {
@@ -142,9 +147,18 @@ export function SetPassword({ onDone }: SetPasswordProps) {
     setSubmitting(true);
     try {
       const supabase = getSupabaseClient();
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        throw new Error('Your invite session expired. Open the invite link again.');
+      }
+      // Guard: never set password without a verified invite/recovery session.
+      const email = sessionData.session.user?.email;
+      if (accountEmail && email && email.toLowerCase() !== accountEmail.toLowerCase()) {
+        throw new Error('Signed-in account does not match this invite. Open the invite link in a private window.');
+      }
       const { error: err } = await supabase.auth.updateUser({ password });
       if (err) throw new Error(err.message);
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      window.history.replaceState(null, '', '/');
       toast.success('Password set. Welcome to Mismo.');
       onDone();
     } catch (err) {
@@ -162,6 +176,11 @@ export function SetPassword({ onDone }: SetPasswordProps) {
             <div className="text-center pb-2">
               <h1 className="text-2xl font-semibold text-[var(--color-primary-900)] tracking-tight">Mismo</h1>
               <p className="text-sm text-[var(--color-text-secondary)] mt-1">Create your login</p>
+              {accountEmail && (
+                <p className="text-xs text-[var(--color-text-muted)] mt-2">
+                  Setting password for <span className="font-medium text-[var(--mismo-text)]">{accountEmail}</span>
+                </p>
+              )}
             </div>
 
             {linkInvalid ? (
@@ -226,6 +245,7 @@ export function SetPassword({ onDone }: SetPasswordProps) {
             )}
           </CardContent>
         </Card>
+        <BuiltByCredit className="mt-4 text-center" tone="muted" />
       </div>
     </div>
   );

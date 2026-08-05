@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { sanitizeInfraError } from '@/lib/infraMessaging';
+import { BuiltByCredit } from '@/components/BuiltByCredit';
 
 interface LoginProps {
   dataStore: DataStore;
@@ -75,6 +76,7 @@ export function Login({ dataStore }: LoginProps) {
             </form>
           </CardContent>
         </Card>
+        <BuiltByCredit className="mt-4 text-center" tone="muted" />
       </div>
     </div>
   );
