@@ -1,6 +1,7 @@
 import type {
   ActivityEvent,
   Announcement,
+  AppNotification,
   AuditLogEntry,
   CompanyResource,
   Department,
@@ -382,6 +383,30 @@ function mapHotline(row: Record<string, unknown>): EmergencyHotline {
   };
 }
 
+function mapAppNotification(row: Record<string, unknown>): AppNotification {
+  const params = row.action_params;
+  return {
+    id: String(row.id),
+    orgId: String(row.org_id),
+    userId: String(row.user_id),
+    kind: row.kind as AppNotification['kind'],
+    title: String(row.title ?? ''),
+    body: String(row.body ?? ''),
+    actionPage: row.action_page ? String(row.action_page) : undefined,
+    actionParams:
+      params && typeof params === 'object' && !Array.isArray(params)
+        ? Object.fromEntries(
+            Object.entries(params as Record<string, unknown>).map(([k, v]) => [k, String(v)])
+          )
+        : undefined,
+    relatedEmail: row.related_email ? String(row.related_email) : undefined,
+    emailStatus: row.email_status ? String(row.email_status) : undefined,
+    actorUserId: row.actor_user_id ? String(row.actor_user_id) : undefined,
+    readAt: optDate(row.read_at as string | null),
+    createdAt: d(row.created_at as string),
+  };
+}
+
 export type OrgDataSnapshot = {
   organizationName: string;
   orgSettings: Organization['settings'];
@@ -401,6 +426,7 @@ export type OrgDataSnapshot = {
   auditLogs: AuditLogEntry[];
   companyResources: CompanyResource[];
   emergencyHotlines: EmergencyHotline[];
+  appNotifications: AppNotification[];
 };
 
 export async function loadOrgDataFromSupabase(orgId: string): Promise<OrgDataSnapshot> {
@@ -445,6 +471,7 @@ export async function loadOrgDataFromSupabase(orgId: string): Promise<OrgDataSna
     auditRes,
     resourcesRes,
     hotlinesRes,
+    notificationsRes,
   ] = await Promise.all([
     q('departments'),
     q('users'),
@@ -463,6 +490,7 @@ export async function loadOrgDataFromSupabase(orgId: string): Promise<OrgDataSna
     q('audit_logs'),
     q('company_resources'),
     q('emergency_hotlines'),
+    q('app_notifications'),
   ]);
 
   const errors = [
@@ -488,6 +516,11 @@ export async function loadOrgDataFromSupabase(orgId: string): Promise<OrgDataSna
   if (errors.length) {
     throw new Error(errors[0]!.message);
   }
+
+  // Notifications table may not exist until migration 21 is applied — don't fail hydrate.
+  const appNotifications = notificationsRes.error
+    ? []
+    : (notificationsRes.data ?? []).map((r) => mapAppNotification(r as Record<string, unknown>));
 
   const policyIds = new Set((policiesRes.data ?? []).map((p) => p.id));
   const linkedByInv = new Map<string, string[]>();
@@ -523,6 +556,7 @@ export async function loadOrgDataFromSupabase(orgId: string): Promise<OrgDataSna
     auditLogs: (auditRes.data ?? []).map((r) => mapAuditLog(r as Record<string, unknown>)),
     companyResources: (resourcesRes.data ?? []).map((r) => mapCompanyResource(r as Record<string, unknown>)),
     emergencyHotlines: (hotlinesRes.data ?? []).map((r) => mapHotline(r as Record<string, unknown>)),
+    appNotifications,
   };
 }
 

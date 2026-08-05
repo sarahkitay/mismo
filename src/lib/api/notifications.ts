@@ -1,4 +1,25 @@
 import { getApiBaseUrl } from '@/lib/api/aiServices';
+import { getSupabaseClient } from '@/lib/supabaseClient';
+import { isSupabaseAppConfigured } from '@/data/orgDefaults';
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (!isSupabaseAppConfigured()) return headers;
+  try {
+    const supabase = getSupabaseClient();
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch {
+    // ignore
+  }
+  return headers;
+}
+
+function appOrigin(): string {
+  const publicAppUrl = (import.meta.env.VITE_PUBLIC_APP_URL as string | undefined)?.trim();
+  return (publicAppUrl || window.location.origin).replace(/\/$/, '');
+}
 
 /**
  * Fire-and-forget Yes-response notice emails (employee + admins).
@@ -8,19 +29,21 @@ export async function notifyIncidentYes(opts: {
   employeeEmail: string;
   orgId: string;
   caseId?: string;
+  employeeUserId?: string;
 }): Promise<void> {
   const apiBase = getApiBaseUrl();
   if (!apiBase || !opts.employeeEmail || !opts.orgId) return;
-  const origin = (import.meta.env.VITE_PUBLIC_APP_URL as string | undefined)?.trim() || window.location.origin;
+  const origin = appOrigin();
   try {
     await fetch(`${apiBase.replace(/\/$/, '')}/notifications/incident-yes`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({
         employeeEmail: opts.employeeEmail,
         orgId: opts.orgId,
-        dashboardUrl: `${origin.replace(/\/$/, '')}/`,
-        caseUrl: opts.caseId ? `${origin.replace(/\/$/, '')}/?report=${opts.caseId}` : `${origin.replace(/\/$/, '')}/`,
+        employeeUserId: opts.employeeUserId,
+        dashboardUrl: `${origin}/`,
+        caseUrl: opts.caseId ? `${origin}/?report=${opts.caseId}` : `${origin}/`,
       }),
     });
   } catch {
@@ -32,22 +55,106 @@ export async function notifyWageHourYes(opts: {
   employeeEmail: string;
   orgId: string;
   caseId?: string;
+  employeeUserId?: string;
 }): Promise<void> {
   const apiBase = getApiBaseUrl();
   if (!apiBase || !opts.employeeEmail || !opts.orgId) return;
-  const origin = (import.meta.env.VITE_PUBLIC_APP_URL as string | undefined)?.trim() || window.location.origin;
+  const origin = appOrigin();
   try {
     await fetch(`${apiBase.replace(/\/$/, '')}/notifications/wage-hour-yes`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({
         employeeEmail: opts.employeeEmail,
         orgId: opts.orgId,
-        dashboardUrl: `${origin.replace(/\/$/, '')}/`,
-        caseUrl: opts.caseId ? `${origin.replace(/\/$/, '')}/?report=${opts.caseId}` : `${origin.replace(/\/$/, '')}/`,
+        employeeUserId: opts.employeeUserId,
+        dashboardUrl: `${origin}/`,
+        caseUrl: opts.caseId ? `${origin}/?report=${opts.caseId}` : `${origin}/`,
       }),
     });
   } catch {
     // Non-blocking
   }
+}
+
+export type SendNotificationEmailResult = {
+  ok: boolean;
+  message: string;
+  emailStatus?: string;
+  notificationId?: string | null;
+  resendConfigured?: boolean;
+};
+
+/** Send a message/update email (+ in-app notification) to another org user. */
+export async function sendNotificationEmail(opts: {
+  recipientUserId: string;
+  subject: string;
+  body: string;
+  kind?: 'MESSAGE' | 'MEMO' | 'PROMPT' | 'CASE_UPDATE' | 'SYSTEM';
+  actionPage?: string;
+  actionParams?: Record<string, string>;
+  templateId?: 'new_message' | 'new_memo' | 'prompt_notice';
+}): Promise<SendNotificationEmailResult | null> {
+  const apiBase = getApiBaseUrl();
+  if (!apiBase || !opts.recipientUserId) return null;
+  try {
+    const res = await fetch(`${apiBase.replace(/\/$/, '')}/notifications/send`, {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify({
+        ...opts,
+        redirectTo: appOrigin(),
+      }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      return { ok: false, message: err.error ?? `Send failed (${res.status})` };
+    }
+    return (await res.json()) as SendNotificationEmailResult;
+  } catch {
+    return null;
+  }
+}
+
+export type PasswordResetEmailResult = {
+  ok: boolean;
+  message: string;
+  emailStatus?: string;
+  actionLink?: string;
+  resendConfigured?: boolean;
+};
+
+/** HR/Admin: email a password-reset link to an employee. */
+export async function sendEmployeePasswordReset(opts: {
+  targetUserId?: string;
+  email?: string;
+}): Promise<PasswordResetEmailResult> {
+  const apiBase = getApiBaseUrl();
+  if (!apiBase) throw new Error('API is not configured.');
+  const res = await fetch(`${apiBase.replace(/\/$/, '')}/employees/password-reset`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ ...opts, redirectTo: appOrigin() }),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Password reset failed (${res.status})`);
+  }
+  return (await res.json()) as PasswordResetEmailResult;
+}
+
+/** Signed-in user: email themselves a password-reset link. */
+export async function sendSelfPasswordResetEmail(): Promise<PasswordResetEmailResult> {
+  const apiBase = getApiBaseUrl();
+  if (!apiBase) throw new Error('API is not configured.');
+  const res = await fetch(`${apiBase.replace(/\/$/, '')}/employees/password-reset`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ self: true, redirectTo: appOrigin() }),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? `Password reset failed (${res.status})`);
+  }
+  return (await res.json()) as PasswordResetEmailResult;
 }

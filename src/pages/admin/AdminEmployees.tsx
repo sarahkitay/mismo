@@ -195,6 +195,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  setInvitingUserId(employee.id);
  void inviteEmployeeToMismo(employee.email)
  .then((result) => {
+ toast.success(result.message);
  if (result.actionLink) {
  setInviteLinkName(`${employee.firstName} ${employee.lastName}`);
  setInviteLink(result.actionLink);
@@ -400,9 +401,9 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  setInviteLink(result.actionLink);
  }
  if (result.status === 'already_registered') {
- toast.info(`${firstName} ${lastName} already has a login.`);
+ toast.info(result.message);
  } else {
- toast.success(`Invite email sent to ${email}.`);
+ toast.success(result.message);
  }
  })
  .catch((err) => {

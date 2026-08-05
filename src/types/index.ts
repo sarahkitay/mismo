@@ -707,6 +707,33 @@ export interface Nudge {
  updatedAt: Date;
 }
 
+/** In-app notification (often paired with a Resend email). */
+export type AppNotificationKind =
+ | 'INVITE'
+ | 'PASSWORD_RESET'
+ | 'PASSWORD_CHANGED'
+ | 'MESSAGE'
+ | 'MEMO'
+ | 'PROMPT'
+ | 'CASE_UPDATE'
+ | 'SYSTEM';
+
+export interface AppNotification {
+ id: string;
+ orgId: string;
+ userId: string;
+ kind: AppNotificationKind;
+ title: string;
+ body: string;
+ actionPage?: string;
+ actionParams?: Record<string, string>;
+ relatedEmail?: string;
+ emailStatus?: string;
+ actorUserId?: string;
+ readAt?: Date;
+ createdAt: Date;
+}
+
 // Activity Event
 export interface ActivityEvent {
  id: string;

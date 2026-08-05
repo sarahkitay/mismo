@@ -107,6 +107,7 @@ SELECT public.enable_org_rls('prompts');
 SELECT public.enable_org_rls('prompt_deliveries');
 SELECT public.enable_org_rls('prompt_responses');
 -- reports: custom policy below (employees see own cases only)
+SELECT public.enable_org_rls('report_status_events');
 SELECT public.enable_org_rls('investigations');
 SELECT public.enable_org_rls('policies');
 SELECT public.enable_org_rls('company_resources');

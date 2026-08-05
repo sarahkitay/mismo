@@ -9,6 +9,7 @@ import { fetchHrNextTasks, isAiFeaturesEnabled, type HrNextTask } from '@/lib/ap
 import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
 import { DailyCheckInGate, useDailyCheckInViewState } from '@/components/DailyCheckInGate';
 import { PageMoreInfo } from '@/components/PageMoreInfo';
+import { DashboardNotifications } from '@/components/DashboardNotifications';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 interface AdminDashboardProps {
@@ -298,6 +299,8 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  </CardContent>
  </Card>
  </div>
+
+ <DashboardNotifications dataStore={dataStore} onNavigate={onNavigate} />
 
  {isAiFeaturesEnabled() && (
  <Card className="mismo-card">

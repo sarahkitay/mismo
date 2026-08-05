@@ -150,20 +150,23 @@ Click the link below to unlock your account:
 
   new_message: {
     id: 'new_message',
-    subject: 'You have a new memo on Mismo',
-    when: 'When a memo/message is available for the employee to review. Prefer reminder digests over firing on every publish unless configured.',
-    autoSendDefault: false,
+    subject: '{{subject}}',
+    when: 'When HR or an employee sends a direct message / case update.',
+    autoSendDefault: true,
     text: `Hi {{userName}},
 
-You have a new memo on Mismo. Please click here to review.
+{{senderName}} sent you a message on Mismo:
 
-Read message:
-{{memoUrl}}`,
+{{messageBody}}
+
+Open in Mismo:
+{{actionUrl}}`,
     html: wrapHtml(
-      'New memo',
+      'New message',
       `<p>Hi {{userName}},</p>
-<p>You have a new memo on Mismo. Please click here to review.</p>
-<p><a href="{{memoUrl}}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">Read message</a></p>`
+<p><strong>{{senderName}}</strong> sent you a message on Mismo:</p>
+<p style="white-space:pre-wrap;background:#f8fafc;padding:12px;border-radius:6px;">{{messageBody}}</p>
+<p><a href="{{actionUrl}}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">Open in Mismo</a></p>`
     ),
   },
 

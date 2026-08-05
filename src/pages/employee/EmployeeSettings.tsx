@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { PageMoreInfo } from '@/components/PageMoreInfo';
+import { sendSelfPasswordResetEmail } from '@/lib/api/notifications';
+import { sanitizeInfraError } from '@/lib/infraMessaging';
 
 interface EmployeeSettingsProps {
   dataStore: DataStore;
@@ -26,6 +28,7 @@ export function EmployeeSettings({ dataStore }: EmployeeSettingsProps) {
   const [promptReminders, setPromptReminders] = useState(true);
   const [reportUpdates, setReportUpdates] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [passwordResetBusy, setPasswordResetBusy] = useState(false);
 
   useEffect(() => {
     try {
@@ -77,6 +80,18 @@ export function EmployeeSettings({ dataStore }: EmployeeSettingsProps) {
     setIsSaving(false);
   };
   
+  const handleChangePassword = async () => {
+    setPasswordResetBusy(true);
+    try {
+      const result = await sendSelfPasswordResetEmail();
+      toast.success(result.message);
+    } catch (err) {
+      toast.error(sanitizeInfraError(err instanceof Error ? err.message : 'Could not send password reset.'));
+    } finally {
+      setPasswordResetBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-3xl">
       {/* Header */}
@@ -264,11 +279,11 @@ export function EmployeeSettings({ dataStore }: EmployeeSettingsProps) {
             <div>
               <p className="font-medium text-[var(--mismo-text)]">Password</p>
               <p className="text-sm text-[var(--mismo-text-secondary)]">
-                Last changed 3 months ago
+                We email you a secure link to set a new password.
               </p>
             </div>
-            <Button variant="outline" onClick={() => toast.info('Password reset flow is configured through your identity provider.')}>
-              Change Password
+            <Button variant="outline" disabled={passwordResetBusy} onClick={() => void handleChangePassword()}>
+              {passwordResetBusy ? 'Sending…' : 'Change Password'}
             </Button>
           </div>
           

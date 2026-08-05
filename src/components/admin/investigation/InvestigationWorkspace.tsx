@@ -25,6 +25,7 @@ import {
  getSlaStatus,
  INVESTIGATION_STAGE_LABELS,
  INVESTIGATION_PAGES,
+ INVESTIGATION_RELATED_TAB,
  PERSON_ROLE_LABELS,
  REPORT_SOURCE_LABELS,
  type InvestigationTab,
@@ -277,7 +278,7 @@ export function InvestigationWorkspace({
 
  const renderPage2 = () => (
  <div className="space-y-4">
- {renderPersons()}
+ <div id="inv-section-persons">{renderPersons()}</div>
  <InformationGatheringModule {...workflowCtx} />
  <InterviewsNotesModule {...workflowCtx} />
  <EvidenceAnalysisModule {...workflowCtx} />
@@ -293,10 +294,29 @@ export function InvestigationWorkspace({
  </div>
  );
 
+ const renderRelated = () => (
+ <Card className="mismo-card border border-[var(--color-border-200)]">
+ <CardContent className="p-5 space-y-4">
+ <div>
+ <h2 className="text-xl font-semibold text-[var(--color-primary-900)]">Related records</h2>
+ <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+ Open the linked case, Yes response, employee profile, or registers for this investigation.
+ </p>
+ </div>
+ <RelatedRecordsNav
+ title="Jump to linked records"
+ links={relatedNavForInvestigation(dataStore, investigation)}
+ onNavigate={onNavigate}
+ />
+ </CardContent>
+ </Card>
+ );
+
  const sectionMap: Record<InvestigationTab, () => ReactNode> = {
  'page-1': renderPage1,
  'page-2': renderPage2,
  'page-3': renderPage3,
+ related: renderRelated,
  };
 
  return (
@@ -319,8 +339,6 @@ export function InvestigationWorkspace({
  )}
  </nav>
 
- <RelatedRecordsNav links={relatedNavForInvestigation(dataStore, investigation)} onNavigate={onNavigate} compact />
-
  <Card className="mismo-card border border-[var(--color-border-200)] mb-4">
  <CardContent className="p-5">
  <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-4">
@@ -333,6 +351,20 @@ export function InvestigationWorkspace({
  <Badge className="status-chip status-chip--warn">{INVESTIGATION_STAGE_LABELS[stage]}</Badge>
  <Badge variant="outline">{investigation.priority ?? investigation.severity ?? 'MEDIUM'} priority</Badge>
  <Badge variant="outline" className={sla.tone === 'over' ? 'border-red-400 text-red-700' : ''}>{sla.label} · {ageDays}d aging</Badge>
+ <Button
+ type="button"
+ variant="outline"
+ size="sm"
+ onClick={() => {
+ dataStore.saveInvestigationProgress?.(investigation.id);
+ toast.success('Progress saved.');
+ }}
+ >
+ Save progress
+ </Button>
+ <Button type="button" variant="outline" size="sm" onClick={() => onTabChange('related')}>
+ Related records
+ </Button>
  </div>
  </div>
  <div className="mt-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 text-sm">
@@ -385,21 +417,39 @@ export function InvestigationWorkspace({
  </button>
  );
  })}
-        <div className="px-2 pt-3 pb-2 mt-2 border-t border-[var(--color-border-200)]">
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full h-auto min-h-9 whitespace-normal text-center leading-snug py-2.5 px-2"
-            onClick={() => {
+ <button
+ type="button"
+ onClick={() => onTabChange('related')}
+ className={`w-full text-left px-3 py-2 text-sm rounded-none border-l-2 mb-0.5 ${activeTab === 'related' ? 'border-[var(--color-primary-900)] bg-white font-medium text-[var(--color-primary-900)]' : 'border-transparent text-[var(--color-text-secondary)] hover:bg-white/80'}`}
+ >
+ {INVESTIGATION_RELATED_TAB.label}
+ </button>
+ <div className="px-2 pt-3 pb-2 mt-2 border-t border-[var(--color-border-200)] space-y-2">
+ <Button
+ size="sm"
+ className="w-full"
+ onClick={() => {
+ dataStore.saveInvestigationProgress?.(investigation.id);
+ toast.success('Progress saved.');
+ }}
+ >
+ Save progress
+ </Button>
+ <Button
+ size="sm"
+ variant="outline"
+ className="w-full h-auto min-h-9 whitespace-normal text-center leading-snug py-2.5 px-2"
+ onClick={() => {
  const idx = INVESTIGATION_PAGES.findIndex((p) => p.id === activeTab);
  if (idx < INVESTIGATION_PAGES.length - 1) {
  const pageKey = activeTab === 'page-1' ? 'intake' : activeTab === 'page-2' ? 'gathering' : 'outcome';
  dataStore.markInvestigationPageComplete(investigation.id, pageKey);
+ dataStore.saveInvestigationProgress?.(investigation.id);
  onTabChange(INVESTIGATION_PAGES[idx + 1].id);
  toast.success(`Page ${INVESTIGATION_PAGES[idx].step} marked complete.`);
  }
  }}
- disabled={activeTab === 'page-3'}
+ disabled={activeTab === 'page-3' || activeTab === 'related'}
  >
  Mark page complete &amp; continue
  </Button>

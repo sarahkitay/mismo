@@ -31,7 +31,7 @@ function getSlaLabel(report: { createdAt: Date; updatedAt: Date; status: string 
 }
 import { exportCaseCsv, exportCasePdf } from '@/lib/evidenceExport';
 import { getInvestigationDisplayId, REPORT_SOURCE_LABELS } from '@/lib/investigationWorkflow';
-import { ASSIGN_CASE_TO_ME_ACTION, MARK_INITIAL_REVIEW_ACTION, formatCaseReference, getPayrollExpeditedSlaLabel, getReportStatusLabel } from '@/lib/caseTypes';
+import { ASSIGN_CASE_TO_ME_ACTION, MARK_INITIAL_REVIEW_ACTION, MARK_INITIAL_REVIEW_TOAST, formatCaseReference, getPayrollExpeditedSlaLabel, getReportStatusLabel } from '@/lib/caseTypes';
 import { isIncidentIntakeComplete, isWageHourIntakeComplete } from '@/lib/utils';
 import { EmployeeIntakeReadOnly } from '@/components/admin/EmployeeIntakeReadOnly';
 import { RelatedRecordsNav } from '@/components/admin/RelatedRecordsNav';
@@ -103,6 +103,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  report?.employeeResponseOutcome?.trim()
  )
  );
+ const [showRelatedRecords, setShowRelatedRecords] = useState(false);
  const [evidenceNoteDraft, setEvidenceNoteDraft] = useState<Record<string, string>>({});
  const fileInputRef = useRef<HTMLInputElement>(null);
  const responseContextFileRef = useRef<HTMLInputElement>(null);
@@ -238,7 +239,36 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  </Button>
  )}
 
+ <Card className="mismo-card border border-[var(--color-border-200)]">
+ <CardContent className="p-4 space-y-3">
+ <div className="flex flex-wrap items-center justify-between gap-2">
+ <div>
+ <h2 className="text-sm font-semibold text-[var(--color-primary-900)]">Related records</h2>
+ <p className="text-xs text-[var(--color-text-secondary)]">
+ Case links, employee profile, check-in response, and registers — open as their own page.
+ </p>
+ </div>
+ <div className="flex flex-wrap gap-2">
+ {linkedInvestigation && (
+ <Button
+ type="button"
+ variant="outline"
+ size="sm"
+ onClick={() => onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'related' })}
+ >
+ Open investigation related page
+ </Button>
+ )}
+ <Button type="button" variant="outline" size="sm" onClick={() => setShowRelatedRecords((v) => !v)}>
+ {showRelatedRecords ? 'Hide' : 'Show'} related records
+ </Button>
+ </div>
+ </div>
+ {showRelatedRecords && (
  <RelatedRecordsNav links={relatedNavForReport(dataStore, report, fromInvestigationId)} onNavigate={onNavigate} />
+ )}
+ </CardContent>
+ </Card>
 
  {isExpeditedPayroll && (
  <Card className="mismo-card border-2 border-[var(--color-alert-600)]/50 bg-amber-50/80">
@@ -366,19 +396,50 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  <div className="flex flex-wrap gap-2 border-t border-[var(--color-border-200)] pt-4">
  <Button variant="outline" onClick={() => dataStore.assignReport(report.id, dataStore.currentUser.id)}>{ASSIGN_CASE_TO_ME_ACTION}</Button>
  {!isExpeditedPayroll && (
- <Button variant="outline" onClick={() => dataStore.updateReportStatus(report.id, 'TRIAGED')}>{MARK_INITIAL_REVIEW_ACTION}</Button>
- )}
  <Button
  variant="outline"
  onClick={() => {
+ dataStore.updateReportStatus(report.id, 'TRIAGED', 'Initial review complete');
+ dataStore.addReportHandlingEntry(
+ report.id,
+ 'NOTE',
+ 'Initial review complete. Case triaged and ready for investigation conversion or follow-up.'
+ );
+ toast.success(MARK_INITIAL_REVIEW_TOAST);
+ }}
+ >
+ {MARK_INITIAL_REVIEW_ACTION}
+ </Button>
+ )}
+ {!linkedInvestigation && (
+ <Button
+ size="lg"
+ className="w-full sm:w-auto min-h-12 px-6 text-base font-semibold bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)] text-white"
+ onClick={() => {
  const inv = dataStore.createInvestigation(report.id, dataStore.currentUser.id);
  if (inv) {
- onNavigate('investigation-detail', { id: inv.id, tab: 'page-1' });
+ dataStore.addReportHandlingEntry(
+ report.id,
+ 'NOTE',
+ `Converted to investigation ${inv.referenceNumber ?? inv.id}. Opening gather information (Page 2).`
+ );
+ onNavigate('investigation-detail', { id: inv.id, tab: 'page-2' });
+ toast.success('Investigation opened — continue on Page 2.');
  }
  }}
  >
  Convert to investigation
  </Button>
+ )}
+ {linkedInvestigation && (
+ <Button
+ size="lg"
+ className="w-full sm:w-auto min-h-12 px-6 text-base font-semibold"
+ onClick={() => onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'page-2' })}
+ >
+ Open investigation (Page 2)
+ </Button>
+ )}
  <Button
  className={isExpeditedPayroll ? 'bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)] text-white' : undefined}
  variant={isExpeditedPayroll ? 'default' : 'outline'}
