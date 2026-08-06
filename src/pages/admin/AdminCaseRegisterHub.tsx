@@ -565,7 +565,15 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
           <div className="flex flex-wrap gap-2">
             <BucketBtn
               active={promptChannel === 'wage_hour'}
-              onClick={() => goRegister({ caseType: 'WAGE_HOUR' })}
+              onClick={() =>
+                onNavigate('prompt-responses', {
+                  view: 'register',
+                  register: '1',
+                  channel: 'wage_hour',
+                  caseType: 'WAGE_HOUR',
+                  rangePreset: 'ALL',
+                })
+              }
             >
               Wage &amp; hour cases ({registerReports.filter((r) => inferCaseType(r.category, r.caseType) === 'WAGE_HOUR').length})
             </BucketBtn>

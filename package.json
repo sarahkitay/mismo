@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "qa:report-contract": "node scripts/qa-report-contract.mjs",
     "demo:provision-auth": "node scripts/provision-demo-auth.mjs",
     "demo:bootstrap": "node scripts/demo-bootstrap.mjs"
   },

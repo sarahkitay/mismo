@@ -14,6 +14,7 @@ export type EmailTemplateId =
   | 'new_message'
   | 'new_memo'
   | 'prompt_notice'
+  | 'prompt_reminder'
   | 'incident_yes_employee'
   | 'incident_yes_admin'
   | 'wage_hour_yes_employee'
@@ -215,15 +216,44 @@ I need to report an issue: {{hasIssueUrl}}`,
     ),
   },
 
+  /** Afternoon reminder when a daily check-in is still unanswered. */
+  prompt_reminder: {
+    id: 'prompt_reminder',
+    subject: 'Reminder: please answer your {{orgName}} check-in',
+    when: "Automatically around 3:00 PM local if today's prompt is still unanswered.",
+    autoSendDefault: true,
+    text: `Hi {{userName}},
+
+This is a friendly reminder that your daily check-in from {{orgName}} is still unanswered.
+
+{{promptText}}
+
+Please sign in to Mismo and answer before end of day:
+{{actionUrl}}
+
+If you already responded, you can ignore this email.`,
+    html: wrapHtml(
+      'Check-in reminder',
+      `<p>Hi {{userName}},</p>
+<p>This is a friendly reminder that your daily check-in from <strong>{{orgName}}</strong> is still unanswered.</p>
+<p>{{promptText}}</p>
+<p><a href="{{actionUrl}}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">Answer check-in</a></p>
+<p style="font-size:13px;color:#666;">If you already responded, you can ignore this email.</p>`
+    ),
+  },
+
   /** Fired when employee answers Yes on the incident query. */
   incident_yes_employee: {
     id: 'incident_yes_employee',
-    subject: 'Regarding your Incident Report',
+    subject: 'Regarding your Incident Report — complete your form',
     when: 'Immediately when an employee answers Yes on the Incident Query / workplace concern prompt.',
     autoSendDefault: true,
     text: `Regarding the Incident Report:
 
 Mismo has relayed your response to the individuals designated by this company to receive it. You will be contacted to initially discuss the circumstances surrounding your response in the very near future pursuant to this company's policy.
+
+Please complete the secure intake form now so HR has the details needed to review your concern:
+{{intakeUrl}}
 
 We take all employee reports very seriously. If, after discussing the circumstances with you, it is determined that an investigation is warranted in order to correct or resolve any actual or potential problem, we will undertake to do so.
 
@@ -232,6 +262,8 @@ ${RETALIATION_NOTE}`,
       'Incident Report received',
       `<p><strong>Regarding the Incident Report:</strong></p>
 <p>Mismo has relayed your response to the individuals designated by this company to receive it. You will be contacted to initially discuss the circumstances surrounding your response in the very near future pursuant to this company's policy.</p>
+<p><a href="{{intakeUrl}}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">Complete intake form</a></p>
+<p style="font-size:13px;color:#666;">Or open: {{intakeUrl}}</p>
 <p>We take all employee reports very seriously. If, after discussing the circumstances with you, it is determined that an investigation is warranted in order to correct or resolve any actual or potential problem, we will undertake to do so.</p>
 <p><em>${RETALIATION_NOTE}</em></p>`
     ),
@@ -266,12 +298,15 @@ Case: {{caseUrl}}`,
   /** Fired when employee indicates a wage & hour concern. */
   wage_hour_yes_employee: {
     id: 'wage_hour_yes_employee',
-    subject: 'Regarding Wage and Hour',
+    subject: 'Regarding Wage and Hour — complete your form',
     when: 'Immediately when an employee reports a wage & hour concern.',
     autoSendDefault: true,
     text: `Regarding Wage and Hour:
 
 Mismo has relayed your response to the payroll representative designated by this company to receive it. You will be contacted in the immediate future to discuss the circumstances surrounding your response.
+
+Please complete the secure wage & hour intake form now:
+{{intakeUrl}}
 
 Please have your paycheck, or a copy of your paycheck, readily available for your meeting, as well as your time record if applicable. This will speed up the process of addressing your concerns or to immediately correct any qualified discrepancies in your payroll amount, deductions or benefits calculations.
 
@@ -280,6 +315,8 @@ ${RETALIATION_NOTE}`,
       'Wage and Hour received',
       `<p><strong>Regarding Wage and Hour:</strong></p>
 <p>Mismo has relayed your response to the payroll representative designated by this company to receive it. You will be contacted in the immediate future to discuss the circumstances surrounding your response.</p>
+<p><a href="{{intakeUrl}}" style="display:inline-block;background:#1d4ed8;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">Complete wage &amp; hour form</a></p>
+<p style="font-size:13px;color:#666;">Or open: {{intakeUrl}}</p>
 <p>Please have your paycheck, or a copy of your paycheck, readily available for your meeting, as well as your time record if applicable. This will speed up the process of addressing your concerns or to immediately correct any qualified discrepancies in your payroll amount, deductions or benefits calculations.</p>
 <p><em>${RETALIATION_NOTE}</em></p>`
     ),

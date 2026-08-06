@@ -84,7 +84,7 @@ import {
  deleteDepartmentRecord,
  persistOrgSettings,
 } from '@/lib/supabase/writeOrgData';
-import { notifyIncidentYes, notifyWageHourYes, sendNotificationEmail } from '@/lib/api/notifications';
+import { notifyIncidentYes, notifyWageHourYes, sendNotificationEmail, runPromptReminders } from '@/lib/api/notifications';
 import { employeeNeedsPolicyAck } from '@/lib/lawDigestMemo';
 import {
  loadClientData,
@@ -440,6 +440,29 @@ export function useDataStore() {
  void hydrateFromSupabase(session.orgId);
  }, [session?.orgId, hydrateFromSupabase]);
 
+ // After 3pm local: once per day, email employees with unanswered prompts.
+ useEffect(() => {
+ if (!session?.orgId || !useCloudBackend()) return;
+ if (!['HR', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'].includes(session.role)) return;
+ if (new Date().getHours() < 15) return;
+ const dayKey = new Date().toISOString().slice(0, 10);
+ const storageKey = `mismo-prompt-reminders:${session.orgId}:${dayKey}`;
+ try {
+ if (localStorage.getItem(storageKey)) return;
+ localStorage.setItem(storageKey, 'pending');
+ } catch {
+ // ignore storage failures
+ }
+ void runPromptReminders().then((result) => {
+ try {
+ if (result.ok) localStorage.setItem(storageKey, `sent:${result.sent ?? 0}`);
+ else localStorage.removeItem(storageKey);
+ } catch {
+ // ignore
+ }
+ });
+ }, [session?.orgId, session?.role]);
+
  useEffect(() => {
  if (useCloudBackend()) return;
  localStorage.setItem(
@@ -732,7 +755,7 @@ export function useDataStore() {
  }, [deliveries, responses, effectiveOrgId]);
 
  const beginIncidentCaseFromPrompt = useCallback(
- (userId: string, delivery: PromptDelivery, response: PromptResponse) => {
+ async (userId: string, delivery: PromptDelivery, response: PromptResponse) => {
  const existingCase = reports.find(
  (r) =>
  r.sourcePromptResponseId === response.id ||
@@ -749,6 +772,7 @@ export function useDataStore() {
  const defaultAdmin = users.find((u) => u.role === 'HR' || u.role === 'ADMIN');
  const severity = prompt?.severityOnHasIssue ?? 'HIGH';
  const screeningNote = response.notes?.trim();
+ const activityId = `activity-${Date.now()}`;
  const ledger: Report['handlingLedger'] = [
  {
  id: `ledger-${Date.now()}`,
@@ -794,7 +818,7 @@ export function useDataStore() {
  setReports((prev) => [newReport, ...prev]);
  setActivities((prev) => [
  {
- id: `activity-${Date.now()}`,
+ id: activityId,
  orgId: effectiveOrgId,
  type: 'REPORT_CREATED',
  actorUserId: userId,
@@ -823,14 +847,18 @@ export function useDataStore() {
  },
  ...prev,
  ]);
- // Response must land before report (FK on source_prompt_response_id).
  const completedDelivery: PromptDelivery = {
  ...delivery,
  status: 'COMPLETED',
  completedAt: delivery.completedAt ?? now,
  updatedAt: now,
  };
- void persistResponseThenReport(response, completedDelivery, newReport);
+ const persisted = await persistResponseThenReport(response, completedDelivery, newReport);
+ if (!persisted.ok) {
+ setReports((prev) => prev.filter((r) => r.id !== newReport.id));
+ setActivities((prev) => prev.filter((a) => a.id !== activityId));
+ throw new Error(persisted.message || 'Could not open incident case.');
+ }
  return newReport;
  },
  [prompts, reports, effectiveOrgId, users]
@@ -838,19 +866,19 @@ export function useDataStore() {
 
  /** Finalize incident prompt Yes: log response, open case shell, alert HR queue */
  const submitIncidentPromptYes = useCallback(
- (deliveryId: string, notes?: string) => {
+ async (deliveryId: string, notes?: string) => {
  const delivery = deliveries.find((d) => d.id === deliveryId);
  if (!delivery) return undefined;
- // Persist is deferred to beginIncidentCaseFromPrompt (response must exist before report FK).
  const response = submitPromptResponse(deliveryId, 'HAS_ISSUE', notes, { skipPersist: true });
  if (!response) return undefined;
- const report = beginIncidentCaseFromPrompt(delivery.userId, delivery, response);
+ const report = await beginIncidentCaseFromPrompt(delivery.userId, delivery, response);
  const employee = users.find((u) => u.id === delivery.userId);
  if (employee?.email) {
  void notifyIncidentYes({
  employeeEmail: employee.email,
  orgId: effectiveOrgId,
  caseId: report.id,
+ employeeUserId: delivery.userId,
  });
  }
  return { response, report };
@@ -858,8 +886,8 @@ export function useDataStore() {
  [deliveries, submitPromptResponse, beginIncidentCaseFromPrompt, users, effectiveOrgId]
  );
  
- // Create report
- const createReport = useCallback((reportData: Omit<Report, 'id' | 'orgId' | 'createdAt' | 'updatedAt' | 'status'>) => {
+ // Create report — only succeeds when the database insert succeeds.
+ const createReport = useCallback(async (reportData: Omit<Report, 'id' | 'orgId' | 'createdAt' | 'updatedAt' | 'status'>) => {
  const now = new Date();
  
  const needsExtended = Boolean(reportData.needsExtendedIncidentIntake);
@@ -895,19 +923,22 @@ export function useDataStore() {
  
  setReports(prev => [newReport, ...prev]);
  
- // Add activity event
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
  orgId: effectiveOrgId,
  type: 'REPORT_CREATED',
  actorUserId: reportData.createdByUserId,
- metadata: { reportId: newReport.id, category: reportData.category },
+ metadata: { reportId: newReport.id, category: reportData.category, referenceNumber: refNum },
  createdAt: now,
  };
- 
  setActivities(prev => [newActivity, ...prev]);
 
- void persistReport(newReport);
+ const persisted = await persistReport(newReport);
+ if (!persisted.ok) {
+ setReports((prev) => prev.filter((r) => r.id !== newReport.id));
+ setActivities((prev) => prev.filter((a) => a.id !== newActivity.id));
+ throw new Error(persisted.message || 'Could not save report.');
+ }
 
  return newReport;
  }, [effectiveOrgId, reports, users]);
@@ -954,7 +985,7 @@ export function useDataStore() {
  );
 
  const beginWageHourCase = useCallback(
- (userId: string, sourceType: Report['reportSourceType'] = 'SELF_REPORTED') => {
+ async (userId: string, sourceType: Report['reportSourceType'] = 'SELF_REPORTED') => {
  const now = new Date();
  const refNum = allocateCaseReferenceNumber(reports, effectiveOrgId, 'WAGE_HOUR');
  const defaultAdmin = users.find((u) => u.role === 'HR' || u.role === 'ADMIN');
@@ -988,9 +1019,10 @@ export function useDataStore() {
  updatedAt: now,
  };
  setReports((prev) => [newReport, ...prev]);
+ const activityId = `activity-${Date.now()}`;
  setActivities((prev) => [
  {
- id: `activity-${Date.now()}`,
+ id: activityId,
  orgId: effectiveOrgId,
  type: 'WAGE_HOUR_SCREENING',
  actorUserId: userId,
@@ -1013,13 +1045,20 @@ export function useDataStore() {
  },
  ...prev,
  ]);
- void persistReport(newReport);
+ const persisted = await persistReport(newReport);
+ if (!persisted.ok) {
+ setReports((prev) => prev.filter((r) => r.id !== newReport.id));
+ setActivities((prev) => prev.filter((a) => a.id !== activityId));
+ throw new Error(persisted.message || 'Could not open wage & hour case.');
+ }
  const employee = users.find((u) => u.id === userId);
  if (employee?.email) {
  void notifyWageHourYes({
  employeeEmail: employee.email,
  orgId: effectiveOrgId,
  caseId: newReport.id,
+ referenceNumber: refNum,
+ employeeUserId: userId,
  });
  }
  return newReport;
@@ -1028,14 +1067,13 @@ export function useDataStore() {
  );
 
  const completeWageHourIntake = useCallback(
- (reportId: string, intake: WageHourIntakeData) => {
+ async (reportId: string, intake: WageHourIntakeData) => {
  const now = new Date();
+ const existing = reports.find((r) => r.id === reportId);
+ if (!existing) throw new Error('Case not found.');
  const submitted: WageHourIntakeData = { ...intake, submittedAt: now };
- setReports((prev) =>
- prev.map((r) =>
- r.id === reportId
- ? {
- ...r,
+ const updated: Report = {
+ ...existing,
  wageHourIntake: submitted,
  needsExtendedWageHourIntake: false,
  wageHourIntakeCompletedAt: now,
@@ -1044,26 +1082,24 @@ export function useDataStore() {
  summary: `Wage & Hour: ${intake.issueTypes.map((t) => t.replace(/_/g, ' ')).join(', ')}`,
  updatedAt: now,
  handlingLedger: [
- ...(r.handlingLedger ?? []),
+ ...(existing.handlingLedger ?? []),
  {
  id: `ledger-${Date.now()}`,
  type: 'NOTE',
  text: 'Employee completed wage & hour intake form.',
  createdAt: now,
- createdBy: r.createdByUserId,
+ createdBy: existing.createdByUserId,
  },
  ],
- }
- : r
- )
- );
+ };
+ setReports((prev) => prev.map((r) => (r.id === reportId ? updated : r)));
  setActivities((prev) => [
  {
  id: `activity-${Date.now()}`,
  orgId: effectiveOrgId,
  type: 'WAGE_HOUR_SUBMITTED',
- actorUserId: reports.find((r) => r.id === reportId)?.createdByUserId,
- metadata: { reportId },
+ actorUserId: existing.createdByUserId,
+ metadata: { reportId, referenceNumber: existing.referenceNumber },
  createdAt: now,
  },
  ...prev,
@@ -1077,18 +1113,24 @@ export function useDataStore() {
  field: 'wageHourIntake',
  oldValue: 'draft',
  newValue: 'submitted',
- actorUserId: reports.find((r) => r.id === reportId)?.createdByUserId ?? currentUser.id,
+ actorUserId: existing.createdByUserId ?? currentUser.id,
  createdAt: now,
  },
  ...prev,
  ]);
+ const persisted = await persistReportChange(updated);
+ if (!persisted.ok) {
+ setReports((prev) => prev.map((r) => (r.id === reportId ? existing : r)));
+ throw new Error(persisted.message || 'Could not save wage & hour intake.');
+ }
+ return updated;
  },
- [reports, currentUser.id]
+ [reports, currentUser.id, effectiveOrgId]
  );
 
  /** Payroll memo only: quick flag with no employee details - skips triage, 24h admin SLA. */
  const submitExpeditedPayrollReport = useCallback(
- (
+ async (
  userId: string,
  opts?: {
  deliveryId?: string;
@@ -1134,6 +1176,7 @@ export function useDataStore() {
  const intakeNote =
  'Employee reported a payroll issue through the expedited payroll memo path. No additional details were provided. Administrator must review and resolve within 24 hours.';
 
+ const activityId = `activity-${Date.now()}`;
  const newReport: Report = {
  id: `report-${Date.now()}`,
  orgId: effectiveOrgId,
@@ -1175,7 +1218,7 @@ export function useDataStore() {
  setReports((prev) => [newReport, ...prev]);
  setActivities((prev) => [
  {
- id: `activity-${Date.now()}`,
+ id: activityId,
  orgId: effectiveOrgId,
  type: 'PAYROLL_EXPEDITED',
  actorUserId: userId,
@@ -1205,6 +1248,7 @@ export function useDataStore() {
  ...prev,
  ]);
 
+ let persistedOk = false;
  if (linkedResponse && linkedDelivery) {
  const completedDelivery: PromptDelivery = {
  ...linkedDelivery,
@@ -1212,9 +1256,17 @@ export function useDataStore() {
  completedAt: linkedDelivery.completedAt ?? now,
  updatedAt: now,
  };
- void persistResponseThenReport(linkedResponse, completedDelivery, newReport);
+ const result = await persistResponseThenReport(linkedResponse, completedDelivery, newReport);
+ persistedOk = result.ok;
  } else {
- void persistReport(newReport);
+ const persisted = await persistReport(newReport);
+ persistedOk = persisted.ok;
+ }
+
+ if (!persistedOk) {
+ setReports((prev) => prev.filter((r) => r.id !== newReport.id));
+ setActivities((prev) => prev.filter((a) => a.id !== activityId));
+ throw new Error('Could not save expedited payroll report.');
  }
 
  return newReport;
@@ -1980,38 +2032,46 @@ export function useDataStore() {
  }, [currentUser.id]);
 
  const completeIncidentIntake = useCallback(
- (
+ async (
  reportId: string,
  payload: { description: string; peopleInvolved?: string; location?: string }
  ) => {
  const report = reports.find((r) => r.id === reportId);
- if (!report || report.createdByUserId !== currentUser.id) return;
+ if (!report || report.createdByUserId !== currentUser.id) {
+ throw new Error('Report not found.');
+ }
  const now = new Date();
- setReports((prev) =>
- prev.map((r) =>
- r.id === reportId
- ? {
- ...r,
+ const updated: Report = {
+ ...report,
  description: payload.description,
- peopleInvolved: payload.peopleInvolved ?? r.peopleInvolved,
- location: payload.location ?? r.location,
+ peopleInvolved: payload.peopleInvolved ?? report.peopleInvolved,
+ location: payload.location ?? report.location,
+ needsExtendedIncidentIntake: false,
  incidentIntakeCompletedAt: now,
  updatedAt: now,
- }
- : r
- )
- );
- const newActivity: ActivityEvent = {
- id: `activity-${Date.now()}`,
+ };
+ setReports((prev) => prev.map((r) => (r.id === reportId ? updated : r)));
+ const activityId = `activity-${Date.now()}`;
+ setActivities((prev) => [
+ {
+ id: activityId,
  orgId: effectiveOrgId,
  type: 'REPORT_STATUS_CHANGED',
  actorUserId: currentUser.id,
  metadata: { reportId, action: 'INCIDENT_INTAKE_COMPLETED' },
  createdAt: now,
- };
- setActivities((prev) => [newActivity, ...prev]);
  },
- [reports, currentUser.id]
+ ...prev,
+ ]);
+ const persisted = await persistReportChange(updated);
+ if (!persisted.ok) {
+ setReports((prev) => prev.map((r) => (r.id === reportId ? report : r)));
+ setActivities((prev) => prev.filter((a) => a.id !== activityId));
+ throw new Error(persisted.message || 'Could not save incident form.');
+ }
+ return updated;
+ },
+ [reports, currentUser.id, effectiveOrgId]
  );
  
  // Send nudge

@@ -54,9 +54,32 @@ export function DashboardNotifications({
 
   const openNotification = (n: AppNotification) => {
     if (!n.readAt) markNotificationRead(n.id);
-    if (n.actionPage) {
-      onNavigate(n.actionPage === 'dashboard' ? 'dashboard' : n.actionPage, n.actionParams);
+    if (!n.actionPage) return;
+
+    if (n.actionParams?.id && n.actionPage === 'incident-intake') {
+      onNavigate(`incident-intake/${n.actionParams.id}`);
+      return;
     }
+    if (n.actionParams?.id && n.actionPage === 'wage-hour-intake') {
+      onNavigate(`wage-hour-intake/${n.actionParams.id}`);
+      return;
+    }
+    if (n.actionParams?.id && (n.actionPage === 'report-detail' || n.kind === 'CASE_UPDATE')) {
+      onNavigate('report-detail', { id: n.actionParams.id });
+      return;
+    }
+
+    if (n.actionPage === 'case-register' || (n.kind === 'CASE_UPDATE' && !n.actionParams?.id)) {
+      onNavigate('prompt-responses', {
+        view: 'register',
+        register: '1',
+        channel: n.actionParams?.channel ?? 'register',
+        ...(n.actionParams ?? {}),
+      });
+      return;
+    }
+
+    onNavigate(n.actionPage === 'dashboard' ? 'dashboard' : n.actionPage, n.actionParams);
   };
 
   return (

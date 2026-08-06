@@ -133,7 +133,7 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  onNavigate('report-new', { promptId, deliveryId });
  };
 
- const submitFinancialAndClose = (hasPayConcern: boolean) => {
+ const submitFinancialAndClose = async (hasPayConcern: boolean) => {
  if (!financialFollowUp) return;
  const note = hasPayConcern
  ? 'Financial follow-up: employee indicated a pay, compensation, or benefits-related concern.'
@@ -144,10 +144,17 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  setIncidentStep('question');
 
  if (answer === 'HAS_ISSUE' && isIncidentGate) {
- const result = submitIncidentPromptYes(deliveryId, note);
+ try {
+ const result = await submitIncidentPromptYes(deliveryId, note);
  if (result) {
- toast.success('Response recorded and a secure case has been opened.', { duration: 7000 });
+ toast.success(
+ `Response recorded and a secure case has been opened (${formatCaseReference(result.report)}).`,
+ { duration: 7000 }
+ );
  goToReport(result.report.id);
+ }
+ } catch (err) {
+ toast.error(err instanceof Error ? err.message : 'Could not open incident case.');
  }
  return;
  }
@@ -171,9 +178,10 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  setFinancialPayrollChoice(true);
  };
 
- const submitExpeditedPayrollFromCheckIn = () => {
+ const submitExpeditedPayrollFromCheckIn = async () => {
  if (!financialFollowUp) return;
- const report = submitExpeditedPayrollReport(currentUser.id, {
+ try {
+ const report = await submitExpeditedPayrollReport(currentUser.id, {
  deliveryId: financialFollowUp.deliveryId,
  promptId: heroPrompt?.prompt.id,
  sourceType: 'EMPLOYEE_PROMPT_RESPONSE',
@@ -182,13 +190,14 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  setFinancialPayrollChoice(false);
  setIncidentStep('question');
  toast.success(PAYROLL_EXPEDITED_EMPLOYEE_MESSAGE, { duration: 9000 });
- if (report) {
  toast.message(`Reference ${formatCaseReference(report)}`, { duration: 5000 });
  if (portal === 'staff') onNavigate('report-detail', { id: report.id });
+ } catch (err) {
+ toast.error(err instanceof Error ? err.message : 'Could not submit payroll report.');
  }
  };
 
- const submitFullPayrollFromCheckIn = () => {
+ const submitFullPayrollFromCheckIn = async () => {
  if (!financialFollowUp) return;
  const { deliveryId } = financialFollowUp;
  submitPromptResponse(
@@ -196,12 +205,16 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  'HAS_ISSUE',
  'Financial follow-up: employee chose to complete the full wage & hour report sheet.'
  );
- const report = beginWageHourCase(currentUser.id, 'EMPLOYEE_PROMPT_RESPONSE');
+ try {
+ const report = await beginWageHourCase(currentUser.id, 'EMPLOYEE_PROMPT_RESPONSE');
  setFinancialFollowUp(null);
  setFinancialPayrollChoice(false);
  setIncidentStep('question');
  toast.success(`Complete the report sheet to submit details (${formatCaseReference(report)}).`, { duration: 7000 });
  goToWageHour(report.id);
+ } catch (err) {
+ toast.error(err instanceof Error ? err.message : 'Could not open wage & hour case.');
+ }
  };
 
  const cancelFinancialFollowUp = () => {
@@ -238,16 +251,23 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  goToNewReport(promptId, deliveryId);
  };
 
- const handleIncidentYesSubmit = (deliveryId: string) => {
+ const handleIncidentYesSubmit = async (deliveryId: string) => {
  if (wantsFinancialFollowUp) {
  setFinancialFollowUp({ deliveryId, answer: 'HAS_ISSUE', incidentRestoreStep: 'yes_confirm' });
  return;
  }
- const result = submitIncidentPromptYes(deliveryId);
+ try {
+ const result = await submitIncidentPromptYes(deliveryId);
  setIncidentStep('question');
  if (result) {
- toast.success('Response recorded. Complete intake to add details.', { duration: 7000 });
+ toast.success(
+ `Response recorded. Complete intake to add details (${formatCaseReference(result.report)}).`,
+ { duration: 7000 }
+ );
  goToReport(result.report.id);
+ }
+ } catch (err) {
+ toast.error(err instanceof Error ? err.message : 'Could not open incident case.');
  }
  };
 

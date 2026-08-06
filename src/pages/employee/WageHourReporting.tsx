@@ -47,23 +47,28 @@ export function WageHourReporting({ dataStore, onNavigate }: WageHourReportingPr
     setStep('payroll_choice');
   };
 
-  const handleExpeditedPayroll = () => {
-    const report = submitExpeditedPayrollReport(currentUser.id, { sourceType: 'WAGE_HOUR_PROMPT' });
-    toast.success(PAYROLL_EXPEDITED_EMPLOYEE_MESSAGE, { duration: 9000 });
-    if (report) {
+  const handleExpeditedPayroll = async () => {
+    try {
+      const report = await submitExpeditedPayrollReport(currentUser.id, { sourceType: 'WAGE_HOUR_PROMPT' });
+      toast.success(PAYROLL_EXPEDITED_EMPLOYEE_MESSAGE, { duration: 9000 });
       toast.message(`Reference ${formatCaseReference(report)}`, { duration: 5000 });
+      onNavigate('home');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not submit payroll report.');
     }
-    onNavigate('home');
   };
 
-  const handleFullPayrollSheet = () => {
-    const report = beginWageHourCase(currentUser.id, 'WAGE_HOUR_PROMPT');
-    const ref = formatCaseReference(report);
-    toast.success(
-      `Your response is recorded (${ref}). Complete the intake form next.`,
-      { duration: 8000 }
-    );
-    onNavigate(`wage-hour-intake/${report.id}`);
+  const handleFullPayrollSheet = async () => {
+    try {
+      const report = await beginWageHourCase(currentUser.id, 'WAGE_HOUR_PROMPT');
+      const ref = formatCaseReference(report);
+      toast.success(`Your response is recorded (${ref}). Complete the intake form next.`, {
+        duration: 8000,
+      });
+      onNavigate(`wage-hour-intake/${report.id}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not open wage & hour case.');
+    }
   };
 
   if (step === 'no_ack') {

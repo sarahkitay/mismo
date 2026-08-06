@@ -428,6 +428,8 @@ export interface User {
  hiredDate?: Date;
  state?: string;
  status: UserStatus;
+ /** Linked auth account id when the employee has activated login. */
+ authUserId?: string;
  createdAt: Date;
  updatedAt: Date;
 }

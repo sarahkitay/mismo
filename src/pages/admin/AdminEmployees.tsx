@@ -137,6 +137,8 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  const [addErrors, setAddErrors] = useState<{ firstName?: string; lastName?: string; email?: string }>({});
  const [inviteLink, setInviteLink] = useState<string | null>(null);
  const [inviteLinkName, setInviteLinkName] = useState('');
+ const [inviteEmail, setInviteEmail] = useState<string | null>(null);
+ const [inviteEmailing, setInviteEmailing] = useState(false);
  const [invitingUserId, setInvitingUserId] = useState<string | null>(null);
 
  /** Quick-add dialogs for Role / Department on employee forms */
@@ -193,14 +195,15 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
 
  const handleGenerateInviteLink = (employee: User) => {
  setInvitingUserId(employee.id);
- void inviteEmployeeToMismo(employee.email)
+ void inviteEmployeeToMismo(employee.email, { sendEmail: false })
  .then((result) => {
- toast.success(result.message);
  if (result.actionLink) {
  setInviteLinkName(`${employee.firstName} ${employee.lastName}`);
+ setInviteEmail(employee.email);
  setInviteLink(result.actionLink);
+ toast.success('Sign-in link ready — email it or copy it below.');
  } else {
- toast.info('No shareable link was returned.');
+ toast.info(result.message || 'No shareable link was returned.');
  }
  })
  .catch((err) => {
@@ -219,6 +222,20 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  } catch {
  toast.error('Could not copy automatically. Select the link and copy it manually.');
  }
+ };
+
+ const emailInviteLink = () => {
+ if (!inviteEmail) return;
+ setInviteEmailing(true);
+ void inviteEmployeeToMismo(inviteEmail, { sendEmail: true })
+ .then((result) => {
+ if (result.actionLink) setInviteLink(result.actionLink);
+ toast.success(result.message || 'Invite email sent.');
+ })
+ .catch((err) => {
+ toast.error(sanitizeInfraError(err instanceof Error ? err.message : 'Could not email invite.'));
+ })
+ .finally(() => setInviteEmailing(false));
  };
 
  const clearAddError = (field: keyof typeof addErrors) => {
@@ -393,25 +410,21 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  resetAddForm();
  setIsAddDialogOpen(false);
 
- // Fire off the login invite (email + shareable link) without blocking the add.
- void inviteEmployeeToMismo(email)
+ // Offer email vs copy for the new employee's sign-in link.
+ void inviteEmployeeToMismo(email, { sendEmail: false })
  .then((result) => {
  if (result.actionLink) {
  setInviteLinkName(`${firstName} ${lastName}`);
+ setInviteEmail(email);
  setInviteLink(result.actionLink);
  }
- if (result.status === 'already_registered') {
- toast.info(result.message);
- } else {
- toast.success(result.message);
- }
+ toast.success('Employee added. Email or copy their sign-in link.');
  })
  .catch((err) => {
  toast.error(
  `Employee added, but the invite could not be generated. ${sanitizeInfraError(err instanceof Error ? err.message : '')}`.trim()
  );
  });
- };
 
  const parseCsv = (csvText: string) => {
  const lines = csvText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -761,7 +774,11 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
                       onClick={() => handleGenerateInviteLink(employee)}
                       disabled={invitingUserId === employee.id}
                     >
-                      {invitingUserId === employee.id ? 'Generating…' : 'Invite link'}
+                      {invitingUserId === employee.id
+                        ? 'Generating…'
+                        : employee.authUserId
+                          ? 'Sign-in link'
+                          : 'Invite / sign-in'}
                     </Button>
                   </div>
  </CardContent>
@@ -1203,16 +1220,31 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  </DialogContent>
  </Dialog>
 
- <Dialog open={!!inviteLink} onOpenChange={(open) => { if (!open) setInviteLink(null); }}>
+ <Dialog
+ open={!!inviteLink}
+ onOpenChange={(open) => {
+ if (!open) {
+ setInviteLink(null);
+ setInviteEmail(null);
+ }
+ }}
+ >
  <DialogContent>
  <DialogHeader>
- <DialogTitle>Invite link for {inviteLinkName}</DialogTitle>
+ <DialogTitle>Sign-in link for {inviteLinkName}</DialogTitle>
  </DialogHeader>
  <div className="space-y-3">
  <p className="text-sm text-[var(--color-text-secondary)]">
- Share this link so they can set up their Mismo login. If email delivery is configured, an
- invite email was also sent automatically.
+ Choose how to share this link so they can set up or open their Mismo login.
  </p>
+ <div className="flex flex-wrap gap-2">
+ <Button type="button" onClick={emailInviteLink} disabled={inviteEmailing || !inviteEmail}>
+ {inviteEmailing ? 'Sending…' : 'Email to employee'}
+ </Button>
+ <Button type="button" variant="outline" onClick={copyInviteLink}>
+ Copy link
+ </Button>
+ </div>
  <div className="flex gap-2">
  <Input
  readOnly
@@ -1220,10 +1252,14 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  onFocus={(e) => e.currentTarget.select()}
  className="font-mono text-xs"
  />
- <Button type="button" onClick={copyInviteLink}>Copy</Button>
  </div>
+ {inviteEmail && (
  <p className="text-xs text-[var(--color-text-secondary)]">
- This link is single use and expires. If it stops working, resend the invite to generate a new one.
+ Email will go to <span className="font-medium text-[var(--mismo-text)]">{inviteEmail}</span>.
+ </p>
+ )}
+ <p className="text-xs text-[var(--color-text-secondary)]">
+ This link is single use and expires. If it stops working, generate a new one.
  Open it in a private/incognito window (or sign out first) so it is not applied to your admin session.
  </p>
  </div>

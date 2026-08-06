@@ -27,6 +27,7 @@ import {
  API_UNREACHABLE,
  sanitizeInfraError,
 } from '@/lib/infraMessaging';
+import { validateLawCorpusForPublish } from '@/lib/lawCorpusFreshness';
 import {
  buildLawDigestMeta,
  countEmployeesNeedingLawDigestAck,
@@ -67,12 +68,38 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  : 0;
  const openFindings = dataStore.reports.filter((report) => !['RESOLVED', 'CLOSED'].includes(report.status)).length;
  const overduePrompts = dataStore.deliveries.filter((delivery) => delivery.status === 'PENDING' && delivery.dueAt && delivery.dueAt.getTime() < Date.now()).length;
+ const publishedMemosNeedingAck = dataStore.dashboardCounts.memoAcknowledgementsPending;
+ const urgentUnassigned = dataStore.reports.filter(
+   (r) =>
+     (r.severity === 'CRITICAL' || r.severity === 'HIGH') &&
+     !r.assignedTo &&
+     !['RESOLVED', 'CLOSED'].includes(r.status)
+ ).length;
 
  const actionItems = [
- { id: 'a1', title: 'Unacknowledged memo updates', priority: 'HIGH' as const },
- { id: 'a2', title: 'Open urgent report requires assignment', priority: 'URGENT' as const },
- { id: 'a3', title: 'Overdue prompt reminders pending', priority: 'MEDIUM' as const },
- ].filter((item) => priority === 'ALL' || item.priority === priority);
+   publishedMemosNeedingAck > 0
+     ? {
+         id: 'a1',
+         title: `${publishedMemosNeedingAck} unacknowledged memo sign-off${publishedMemosNeedingAck === 1 ? '' : 's'}`,
+         priority: 'HIGH' as const,
+       }
+     : null,
+   urgentUnassigned > 0
+     ? {
+         id: 'a2',
+         title: `${urgentUnassigned} urgent open report${urgentUnassigned === 1 ? '' : 's'} need assignment`,
+         priority: 'URGENT' as const,
+       }
+     : null,
+   overduePrompts > 0
+     ? {
+         id: 'a3',
+         title: `${overduePrompts} overdue prompt reminder${overduePrompts === 1 ? '' : 's'} pending`,
+         priority: 'MEDIUM' as const,
+       }
+     : null,
+ ].filter((item): item is NonNullable<typeof item> => Boolean(item))
+  .filter((item) => priority === 'ALL' || item.priority === priority);
 
  const loadStateData = useCallback(async (stateCode: string) => {
  if (!getApiBaseUrl()) return;
@@ -126,6 +153,13 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  const handlePublishLawMemo = () => {
  if (laws.length === 0) {
  toast.error('Sync laws for this state before publishing a memo.');
+ return;
+ }
+ const freshnessIssues = validateLawCorpusForPublish(laws);
+ if (freshnessIssues.length > 0) {
+ toast.error(
+ `Cannot publish: ${freshnessIssues[0].title} — ${freshnessIssues[0].reason} Re-sync or correct the corpus first.`
+ );
  return;
  }
  const state = findStateByCode(selectedState);

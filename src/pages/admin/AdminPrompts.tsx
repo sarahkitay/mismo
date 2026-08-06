@@ -70,7 +70,7 @@ const severityOptions: { value: ReportSeverity; label: string }[] = [
 ];
 
 export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPromptsProps) {
-  const { prompts, deliveries, createPrompt, updatePrompt, departments } = dataStore;
+  const { prompts, deliveries, createPrompt, updatePrompt, departments, users } = dataStore;
   
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [viewPromptId, setViewPromptId] = useState<string | null>(null);
@@ -228,14 +228,19 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
     );
   };
   
-  // Get prompt stats
+  // Get prompt stats — only count deliveries to currently active employees
   const getPromptStats = (promptId: string) => {
-    const promptDeliveries = deliveries.filter(d => d.promptId === promptId);
+    const activeIds = new Set(
+      users.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active').map((u) => u.id)
+    );
+    const promptDeliveries = deliveries.filter(
+      (d) => d.promptId === promptId && activeIds.has(d.userId)
+    );
     const total = promptDeliveries.length;
-    const completed = promptDeliveries.filter(d => d.status === 'COMPLETED').length;
-    const pending = promptDeliveries.filter(d => d.status === 'PENDING').length;
+    const completed = promptDeliveries.filter((d) => d.status === 'COMPLETED').length;
+    const pending = promptDeliveries.filter((d) => d.status === 'PENDING').length;
     const completionRate = total > 0 ? (completed / total) * 100 : 0;
-    
+
     return { total, completed, pending, completionRate };
   };
   

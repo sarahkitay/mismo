@@ -59,19 +59,25 @@ export function EmployeeIncidentIntake({ dataStore, reportId, onNavigate }: Empl
  );
  }
 
- const handleSubmit = (e: React.FormEvent) => {
+ const handleSubmit = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!description.trim()) {
  toast.error('Please describe what happened.');
  return;
  }
- completeIncidentIntake(report.id, {
+ try {
+ const updated = await completeIncidentIntake(report.id, {
  description: description.trim(),
  peopleInvolved: peopleInvolved.trim() || undefined,
  location: location.trim() || undefined,
  });
- toast.success('Incident form submitted. HR has been notified.');
+ toast.success(
+ `Incident form submitted (${formatCaseReference(updated)}). HR has been notified.`
+ );
  onNavigate(`report-detail/${report.id}`);
+ } catch (err) {
+ toast.error(err instanceof Error ? err.message : 'Could not submit. Please try again.');
+ }
  };
 
  return (

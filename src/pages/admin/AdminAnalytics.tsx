@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -22,7 +22,6 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  const [dateRange, setDateRange] = useState<DateRangeState>({ ...defaultDateRange, preset: '30D' });
  const [reportOpen, setReportOpen] = useState(false);
  const responseMetricsRef = useRef<HTMLDivElement | null>(null);
- const hasAnimatedRef = useRef(false);
  const reportsInWindow = reports.filter((report) => inDateRange(report.createdAt, dateRange));
  const deliveriesInWindow = deliveries.filter((delivery) => inDateRange(delivery.deliveredAt, dateRange));
  const responsesInWindow = responses.filter((response) => inDateRange(response.submittedAt, dateRange));
@@ -86,52 +85,22 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  { label: 'In progress', count: investigations.filter((i) => i.status === 'OPEN' && i.workflowPhase === 'IN_PROGRESS').length },
  { label: 'Complete', count: investigations.filter((i) => i.status === 'CLOSED').length },
  ];
- const reportsThisMonth = reportsInWindow.filter((r) => {
- const now = new Date();
- return r.createdAt.getMonth() === now.getMonth() && r.createdAt.getFullYear() === now.getFullYear();
- }).length;
- const [displayMetrics, setDisplayMetrics] = useState({
- responseRatePct: 0,
- trainingCompliancePct: 0,
- reportsThisMonth: 0,
- });
+ // Calendar month across all reports (not the selected range) so this never
+ // contradicts Total reports when older-in-range cases exist outside “this month”.
+ const reportsThisMonth = useMemo(() => {
+   const now = new Date();
+   return reports.filter((r) => {
+     const created = r.createdAt instanceof Date ? r.createdAt : new Date(String(r.createdAt));
+     return (
+       !Number.isNaN(created.getTime()) &&
+       created.getMonth() === now.getMonth() &&
+       created.getFullYear() === now.getFullYear()
+     );
+   }).length;
+ }, [reports]);
+ const responseRatePct = Math.round(responseRate * 100);
+ const trainingCompliancePct = Math.round(trainingCompliance * 100);
 
- useEffect(() => {
- hasAnimatedRef.current = false;
- setDisplayMetrics({ responseRatePct: 0, trainingCompliancePct: 0, reportsThisMonth: 0 });
- }, [dateRange]);
-
- useEffect(() => {
- const node = responseMetricsRef.current;
- if (!node) return;
- const observer = new IntersectionObserver(
- (entries) => {
- const entry = entries[0];
- if (!entry?.isIntersecting || hasAnimatedRef.current) return;
- hasAnimatedRef.current = true;
- const start = performance.now();
- const durationMs = 900;
- const targetResponseRate = Math.round(responseRate * 100);
- const targetTrainingCompliance = Math.round(trainingCompliance * 100);
- const targetReportsThisMonth = reportsThisMonth;
- const step = (now: number) => {
- const progress = Math.min(1, (now - start) / durationMs);
- const eased = 1 - Math.pow(1 - progress, 3);
- setDisplayMetrics({
- responseRatePct: Math.round(targetResponseRate * eased),
- trainingCompliancePct: Math.round(targetTrainingCompliance * eased),
- reportsThisMonth: Math.round(targetReportsThisMonth * eased),
- });
- if (progress < 1) requestAnimationFrame(step);
- };
- requestAnimationFrame(step);
- },
- { threshold: 0.2 }
- );
- observer.observe(node);
- return () => observer.disconnect();
- }, [reportsThisMonth, responseRate, trainingCompliance]);
- 
  return (
  <div className="space-y-6">
  {/* Header */}
@@ -364,7 +333,7 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  className="text-center p-4 border border-[var(--color-border-200)] bg-transparent shadow-[var(--shadow-1)] enterprise-interactive"
  onClick={() => onNavigate('prompt-responses', { rangePreset: '30D' })}
  >
- <p className="text-4xl font-bold text-[var(--color-primary-900)]">{displayMetrics.responseRatePct}%</p>
+ <p className="text-4xl font-bold text-[var(--color-primary-900)]">{responseRatePct}%</p>
  <p className="text-sm font-medium text-[var(--color-text-primary)] mt-1">Response rate</p>
  </button>
  <button
@@ -372,7 +341,7 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  className="text-center p-4 border border-[var(--color-border-200)] bg-transparent shadow-[var(--shadow-1)] enterprise-interactive"
  onClick={() => onNavigate('policies')}
  >
- <p className="text-4xl font-bold text-[var(--color-primary-900)]">{displayMetrics.trainingCompliancePct}%</p>
+ <p className="text-4xl font-bold text-[var(--color-primary-900)]">{trainingCompliancePct}%</p>
  <p className="text-sm font-medium text-[var(--color-text-primary)] mt-1">Memo acknowledgement</p>
  </button>
  <button
@@ -388,7 +357,7 @@ export function AdminAnalytics({ dataStore, onNavigate }: AdminAnalyticsProps) {
  });
  }}
  >
- <p className="text-4xl font-bold text-[var(--color-primary-900)]">{displayMetrics.reportsThisMonth}</p>
+ <p className="text-4xl font-bold text-[var(--color-primary-900)]">{reportsThisMonth}</p>
  <p className="text-sm font-medium text-[var(--color-text-primary)] mt-1">Reports this month</p>
  </button>
  </div>

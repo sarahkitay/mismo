@@ -1,12 +1,14 @@
 import { getSupabaseAdmin } from './supabase.ts';
 import { authorizeCaller, displayName } from './auth.ts';
-import { sendEmailAndNotify } from './app-notifications.ts';
+import { sendEmailAndNotify, createAppNotification } from './app-notifications.ts';
 import { isResendConfigured } from './resend.ts';
 
 export type InviteEmployeeInput = {
   email: string;
   redirectTo?: string;
   authHeader: string | null;
+  /** When false, generate a shareable link without emailing. Default true. */
+  sendEmail?: boolean;
 };
 
 export type InviteEmployeeResult = {
@@ -178,32 +180,50 @@ export async function inviteEmployee(input: InviteEmployeeInput): Promise<Invite
   const userName =
     `${appUser.first_name ?? ''} ${appUser.last_name ?? ''}`.trim() || email;
   const inviteUrl = link.actionLink ?? '';
+  const shouldEmail = input.sendEmail !== false;
 
-  const { email: mail } = await sendEmailAndNotify({
-    orgId: caller.orgId,
-    userId: String(appUser.id),
-    toEmail: email,
-    kind: 'INVITE',
-    title:
-      link.status === 'already_registered'
-        ? 'Sign-in link ready'
-        : `You've been invited to ${orgName} on Mismo`,
-    body: `${displayName(caller)} sent you a link to join ${orgName} on Mismo.`,
-    templateId: 'welcome',
-    vars: { userName, orgName, inviteUrl },
-    actionPage: 'dashboard',
-    actorUserId: caller.appUserId,
-    force: true,
-  });
+  let emailStatus = 'skipped:not_requested';
+  let emailed = false;
 
-  const emailStatus =
-    mail.ok && mail.status === 'sent'
-      ? 'sent'
-      : mail.ok
-        ? `skipped:${mail.reason}`
-        : `failed:${'error' in mail ? mail.error : 'unknown'}`;
+  if (shouldEmail) {
+    const { email: mail } = await sendEmailAndNotify({
+      orgId: caller.orgId,
+      userId: String(appUser.id),
+      toEmail: email,
+      kind: 'INVITE',
+      title:
+        link.status === 'already_registered'
+          ? 'Sign-in link ready'
+          : `You've been invited to ${orgName} on Mismo`,
+      body: `${displayName(caller)} sent you a link to join ${orgName} on Mismo.`,
+      templateId: 'welcome',
+      vars: { userName, orgName, inviteUrl },
+      actionPage: 'dashboard',
+      actorUserId: caller.appUserId,
+      force: true,
+    });
 
-  const emailed = mail.status === 'sent';
+    emailStatus =
+      mail.ok && mail.status === 'sent'
+        ? 'sent'
+        : mail.ok
+          ? `skipped:${mail.reason}`
+          : `failed:${'error' in mail ? mail.error : 'unknown'}`;
+    emailed = mail.status === 'sent';
+  } else {
+    await createAppNotification({
+      orgId: caller.orgId,
+      userId: String(appUser.id),
+      kind: 'INVITE',
+      title: 'Sign-in link generated',
+      body: `${displayName(caller)} generated a sign-in link (not emailed yet).`,
+      actionPage: 'dashboard',
+      relatedEmail: email,
+      emailStatus: 'skipped:link_only',
+      actorUserId: caller.appUserId,
+    });
+  }
+
   return {
     ok: true,
     status: link.status,
@@ -214,9 +234,13 @@ export async function inviteEmployee(input: InviteEmployeeInput): Promise<Invite
       link.status === 'already_registered'
         ? emailed
           ? 'This person already has a login. A sign-in email was sent; you can also share the link below.'
-          : 'This person already has a login. Share the sign-in link below.'
+          : shouldEmail
+            ? 'This person already has a login. Share the sign-in link below.'
+            : 'Sign-in link ready. Email it to the employee or copy the link.'
         : emailed
           ? 'Invite email sent. You can also share the link below.'
-          : `Invite link ready. Email ${emailStatus.startsWith('skipped') ? 'skipped' : 'failed'} — share the link below.`,
+          : shouldEmail
+            ? `Invite link ready. Email ${emailStatus.startsWith('skipped') ? 'skipped' : 'failed'} — share the link below.`
+            : 'Invite link ready. Email it to the employee or copy the link.',
   };
 }
