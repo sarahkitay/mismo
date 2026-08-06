@@ -164,20 +164,40 @@ function reportRow(report: Report): Record<string, unknown> {
     is_anonymous: Boolean(report.isAnonymous),
     source_prompt_id: report.sourcePromptId ?? null,
     source_prompt_response_id: report.sourcePromptResponseId ?? null,
+    report_source_type: report.reportSourceType ?? null,
     case_type: report.caseType ?? null,
     reference_number: report.referenceNumber ?? null,
     category: report.category,
     severity: report.severity,
     summary: report.summary ?? '',
     description: report.description ?? '',
+    people_involved: report.peopleInvolved ?? null,
+    location: report.location ?? null,
+    incident_at: iso(report.incidentAt),
     status: report.status,
     assigned_to: report.assignedTo ?? null,
     investigation_id: report.investigationId ?? null,
+    preferred_contact_method: report.preferredContactMethod ?? null,
     needs_extended_incident_intake: Boolean(report.needsExtendedIncidentIntake),
     incident_intake_completed_at: iso(report.incidentIntakeCompletedAt),
+    needs_extended_wage_hour_intake: Boolean(report.needsExtendedWageHourIntake),
+    wage_hour_intake_completed_at: iso(report.wageHourIntakeCompletedAt),
+    wage_hour_intake: report.wageHourIntake
+      ? {
+          ...report.wageHourIntake,
+          submittedAt: report.wageHourIntake.submittedAt
+            ? iso(report.wageHourIntake.submittedAt)
+            : null,
+        }
+      : null,
+    expedited_payroll: Boolean(report.expeditedPayroll),
+    payroll_sla_due_at: iso(report.payrollSlaDueAt),
+    created_at: iso(report.createdAt) ?? new Date().toISOString(),
     updated_at: iso(report.updatedAt) ?? new Date().toISOString(),
   };
 }
+
+export type PersistResult = { ok: true } | { ok: false; message: string };
 
 /** Insert or update users (bulk add + single add). */
 export async function persistUsers(users: User[]): Promise<void> {
@@ -196,16 +216,34 @@ export async function persistUserUpdate(user: User): Promise<void> {
   await persistUsers([user]);
 }
 
-/** Persist a newly created report. */
-export async function persistReport(report: Report): Promise<void> {
-  if (!reportPersistEnabled()) return;
+/** Persist a newly created report. Throws-free: returns result so callers can block success UI. */
+export async function persistReport(report: Report): Promise<PersistResult> {
+  if (!reportPersistEnabled()) return { ok: true };
   try {
     const supabase = getSupabaseClient();
     const row = await reportRowForPersist(supabase, report);
-    const { error } = await supabase.from('reports').upsert(row, { onConflict: 'id' });
-    if (error) notify('report', error);
+    // Prefer INSERT for new cases so employee RLS UPDATE is not required on first write.
+    const { error: insertErr } = await supabase.from('reports').insert(row);
+    if (!insertErr) return { ok: true };
+    if (insertErr.code === '23505') {
+      const { id: _id, org_id: _org, created_at: _ca, ...patch } = row;
+      const { error: updErr } = await supabase
+        .from('reports')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('id', report.id)
+        .eq('org_id', report.orgId);
+      if (updErr) {
+        notify('report', updErr);
+        return { ok: false, message: updErr.message };
+      }
+      return { ok: true };
+    }
+    notify('report', insertErr);
+    return { ok: false, message: insertErr.message };
   } catch (err) {
-    notify('report', { message: err instanceof Error ? err.message : String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    notify('report', { message });
+    return { ok: false, message };
   }
 }
 
@@ -488,30 +526,38 @@ export async function persistResponseThenReport(
   response: PromptResponse,
   delivery: PromptDelivery | undefined,
   report: Report
-): Promise<void> {
-  if (!reportPersistEnabled()) return;
+): Promise<PersistResult> {
+  if (!reportPersistEnabled()) return { ok: true };
   const result = await persistPromptResponse(response, delivery);
-  if (!result.ok) return;
+  if (!result.ok) {
+    return { ok: false, message: 'Could not save prompt response before report.' };
+  }
   const reportToSave =
     result.responseId === report.sourcePromptResponseId
       ? report
       : { ...report, sourcePromptResponseId: result.responseId };
-  await persistReport(reportToSave);
+  return persistReport(reportToSave);
 }
 
 /** Persist a report status/assignment change plus its status-event trail. */
 export async function persistReportChange(
   report: Report,
   statusEvent?: ReportStatusEvent
-): Promise<void> {
-  if (!reportPersistEnabled()) return;
+): Promise<PersistResult> {
+  if (!reportPersistEnabled()) return { ok: true };
   try {
     const supabase = getSupabaseClient();
     const row = await reportRowForPersist(supabase, report);
-    const { error } = await supabase.from('reports').upsert(row, { onConflict: 'id' });
+    const { id: _id, org_id: _org, ...patch } = row;
+    const { error } = await supabase
+      .from('reports')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', report.id)
+      .eq('org_id', report.orgId);
     if (error) {
-      notify('report', error);
-      return;
+      // Row may not exist yet (failed create) — try insert.
+      const inserted = await persistReport(report);
+      if (!inserted.ok) return inserted;
     }
     if (statusEvent) {
       const { error: evtErr } = await supabase
@@ -519,8 +565,11 @@ export async function persistReportChange(
         .upsert(statusEventRow(statusEvent), { onConflict: 'id' });
       if (evtErr) notify('report history', evtErr);
     }
+    return { ok: true };
   } catch (err) {
-    notify('report', { message: err instanceof Error ? err.message : String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    notify('report', { message });
+    return { ok: false, message };
   }
 }
 

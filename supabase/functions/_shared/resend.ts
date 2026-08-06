@@ -68,11 +68,13 @@ export async function sendIncidentYesNotices(opts: {
   adminEmails: string[];
   dashboardUrl: string;
   caseUrl: string;
+  intakeUrl?: string;
 }): Promise<{ employee: SendEmailResult; admins: SendEmailResult }> {
+  const intakeUrl = opts.intakeUrl || opts.caseUrl || opts.dashboardUrl;
   const employee = await sendTemplatedEmail({
     templateId: 'incident_yes_employee',
     to: opts.employeeEmail,
-    vars: {},
+    vars: { intakeUrl },
     force: true,
   });
   const admins =
@@ -93,11 +95,13 @@ export async function sendWageHourYesNotices(opts: {
   payrollEmails: string[];
   dashboardUrl: string;
   caseUrl: string;
+  intakeUrl?: string;
 }): Promise<{ employee: SendEmailResult; payroll: SendEmailResult }> {
+  const intakeUrl = opts.intakeUrl || opts.caseUrl || opts.dashboardUrl;
   const employee = await sendTemplatedEmail({
     templateId: 'wage_hour_yes_employee',
     to: opts.employeeEmail,
-    vars: {},
+    vars: { intakeUrl },
     force: true,
   });
   const payroll =

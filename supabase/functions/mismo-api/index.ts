@@ -18,6 +18,7 @@ import {
   sendPasswordResetForEmployee,
   sendSelfPasswordReset,
 } from '../_shared/product-mail.ts';
+import { runPromptReminders } from '../_shared/prompt-reminders.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -40,10 +41,15 @@ Deno.serve(async (req) => {
     }
 
     if (path === '/employees/invite' && req.method === 'POST') {
-      const body = (await req.json()) as { email: string; redirectTo?: string };
+      const body = (await req.json()) as {
+        email: string;
+        redirectTo?: string;
+        sendEmail?: boolean;
+      };
       const result = await inviteEmployee({
         email: body.email,
         redirectTo: body.redirectTo,
+        sendEmail: body.sendEmail,
         authHeader: req.headers.get('Authorization'),
       });
       return jsonResponse(200, result);
@@ -104,7 +110,9 @@ Deno.serve(async (req) => {
         orgId: string;
         caseUrl?: string;
         dashboardUrl?: string;
+        intakeUrl?: string;
         employeeUserId?: string;
+        caseId?: string;
       };
       if (!body.employeeEmail || !body.orgId) {
         return jsonResponse(400, { error: 'employeeEmail and orgId are required' });
@@ -124,6 +132,7 @@ Deno.serve(async (req) => {
         adminEmails,
         dashboardUrl: body.dashboardUrl ?? '',
         caseUrl: body.caseUrl ?? '',
+        intakeUrl: body.intakeUrl,
       });
 
       let employeeUserId = body.employeeUserId;
@@ -141,9 +150,10 @@ Deno.serve(async (req) => {
           orgId: body.orgId,
           userId: employeeUserId,
           kind: 'CASE_UPDATE',
-          title: 'Incident report received',
-          body: 'Your incident response was relayed to designated administrators.',
-          actionPage: 'reports',
+          title: 'Incident report received — complete your form',
+          body: 'Your incident response was relayed. Please complete the intake form.',
+          actionPage: body.caseId ? 'incident-intake' : 'reports',
+          actionParams: body.caseId ? { id: body.caseId } : undefined,
           relatedEmail: body.employeeEmail,
           emailStatus:
             result.employee.ok && result.employee.status === 'sent'
@@ -160,7 +170,8 @@ Deno.serve(async (req) => {
           kind: 'CASE_UPDATE',
           title: 'Action required: Incident Report response',
           body: 'An employee Yes response needs your attention on the dashboard.',
-          actionPage: 'dashboard',
+          actionPage: body.caseId ? 'report-detail' : 'dashboard',
+          actionParams: body.caseId ? { id: body.caseId } : undefined,
           relatedEmail: String(a.email),
           emailStatus:
             result.admins.ok && result.admins.status === 'sent'
@@ -178,7 +189,10 @@ Deno.serve(async (req) => {
         orgId: string;
         caseUrl?: string;
         dashboardUrl?: string;
+        intakeUrl?: string;
         employeeUserId?: string;
+        caseId?: string;
+        referenceNumber?: string;
       };
       if (!body.employeeEmail || !body.orgId) {
         return jsonResponse(400, { error: 'employeeEmail and orgId are required' });
@@ -198,6 +212,7 @@ Deno.serve(async (req) => {
         payrollEmails,
         dashboardUrl: body.dashboardUrl ?? '',
         caseUrl: body.caseUrl ?? '',
+        intakeUrl: body.intakeUrl,
       });
 
       let employeeUserId = body.employeeUserId;
@@ -210,14 +225,26 @@ Deno.serve(async (req) => {
           .maybeSingle();
         employeeUserId = emp?.id ? String(emp.id) : undefined;
       }
+      const caseLabel = body.referenceNumber || body.caseId || 'wage case';
+      const hrActionPage = body.caseId ? 'report-detail' : 'prompt-responses';
+      const hrActionParams = body.caseId
+        ? { id: body.caseId }
+        : {
+            view: 'register',
+            register: '1',
+            channel: 'wage_hour',
+            caseType: 'WAGE_HOUR',
+            status: 'PENDING_WAGE_HOUR_REVIEW',
+          };
       if (employeeUserId) {
         await createAppNotification({
           orgId: body.orgId,
           userId: employeeUserId,
           kind: 'CASE_UPDATE',
-          title: 'Wage & hour response received',
-          body: 'Your wage & hour response was relayed to payroll administrators.',
-          actionPage: 'reports',
+          title: 'Wage & hour — complete your form',
+          body: `Your wage & hour response (${caseLabel}) was relayed. Please complete the intake form.`,
+          actionPage: body.caseId ? 'wage-hour-intake' : 'reports',
+          actionParams: body.caseId ? { id: body.caseId } : undefined,
           relatedEmail: body.employeeEmail,
           emailStatus:
             result.employee.ok && result.employee.status === 'sent'
@@ -233,8 +260,9 @@ Deno.serve(async (req) => {
           userId: String(a.id),
           kind: 'CASE_UPDATE',
           title: 'Action required: Wage and Hour response',
-          body: 'An employee wage & hour Yes response needs your attention.',
-          actionPage: 'dashboard',
+          body: `Employee wage & hour Yes response (${caseLabel}) needs your attention.`,
+          actionPage: hrActionPage,
+          actionParams: hrActionParams,
           relatedEmail: String(a.email),
           emailStatus:
             result.payroll.ok && result.payroll.status === 'sent'
@@ -244,6 +272,25 @@ Deno.serve(async (req) => {
       }
 
       return jsonResponse(200, { ok: true, resendConfigured: isResendConfigured(), ...result });
+    }
+
+    if (path === '/cron/prompt-reminders' && (req.method === 'POST' || req.method === 'GET')) {
+      const body =
+        req.method === 'POST'
+          ? ((await req.json().catch(() => ({}))) as {
+              force?: boolean;
+              orgId?: string;
+              redirectTo?: string;
+            })
+          : {};
+      const result = await runPromptReminders({
+        authHeader: req.headers.get('Authorization'),
+        cronSecret: req.headers.get('x-cron-secret') ?? url.searchParams.get('secret'),
+        force: body.force === true || url.searchParams.get('force') === '1',
+        orgId: body.orgId ?? url.searchParams.get('orgId') ?? undefined,
+        redirectTo: body.redirectTo ?? undefined,
+      });
+      return jsonResponse(200, result);
     }
 
     if (path === '/ai/outreach/coach' && req.method === 'POST') {

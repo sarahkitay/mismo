@@ -30,10 +30,14 @@ export async function notifyIncidentYes(opts: {
   orgId: string;
   caseId?: string;
   employeeUserId?: string;
+  intakeUrl?: string;
 }): Promise<void> {
   const apiBase = getApiBaseUrl();
   if (!apiBase || !opts.employeeEmail || !opts.orgId) return;
   const origin = appOrigin();
+  const intakeUrl =
+    opts.intakeUrl ||
+    (opts.caseId ? `${origin}/employee/my-reports/${opts.caseId}/intake` : `${origin}/employee/dashboard`);
   try {
     await fetch(`${apiBase.replace(/\/$/, '')}/notifications/incident-yes`, {
       method: 'POST',
@@ -42,8 +46,10 @@ export async function notifyIncidentYes(opts: {
         employeeEmail: opts.employeeEmail,
         orgId: opts.orgId,
         employeeUserId: opts.employeeUserId,
+        caseId: opts.caseId,
         dashboardUrl: `${origin}/`,
-        caseUrl: opts.caseId ? `${origin}/?report=${opts.caseId}` : `${origin}/`,
+        caseUrl: opts.caseId ? `${origin}/admin/all-reports/${opts.caseId}` : `${origin}/`,
+        intakeUrl,
       }),
     });
   } catch {
@@ -55,11 +61,18 @@ export async function notifyWageHourYes(opts: {
   employeeEmail: string;
   orgId: string;
   caseId?: string;
+  referenceNumber?: string;
   employeeUserId?: string;
+  intakeUrl?: string;
 }): Promise<void> {
   const apiBase = getApiBaseUrl();
   if (!apiBase || !opts.employeeEmail || !opts.orgId) return;
   const origin = appOrigin();
+  const intakeUrl =
+    opts.intakeUrl ||
+    (opts.caseId
+      ? `${origin}/employee/my-reports/${opts.caseId}/wage-hour`
+      : `${origin}/employee/report/wage-hour`);
   try {
     await fetch(`${apiBase.replace(/\/$/, '')}/notifications/wage-hour-yes`, {
       method: 'POST',
@@ -68,12 +81,45 @@ export async function notifyWageHourYes(opts: {
         employeeEmail: opts.employeeEmail,
         orgId: opts.orgId,
         employeeUserId: opts.employeeUserId,
+        referenceNumber: opts.referenceNumber,
         dashboardUrl: `${origin}/`,
-        caseUrl: opts.caseId ? `${origin}/?report=${opts.caseId}` : `${origin}/`,
+        caseUrl: opts.caseId
+          ? `${origin}/admin/all-reports/${opts.caseId}`
+          : `${origin}/`,
+        caseId: opts.caseId,
+        intakeUrl,
       }),
     });
   } catch {
     // Non-blocking
+  }
+}
+
+/** HR/cron: send 3pm unanswered-prompt reminder emails (idempotent). */
+export async function runPromptReminders(opts?: { force?: boolean }): Promise<{
+  ok: boolean;
+  sent?: number;
+  scanned?: number;
+  skipped?: number;
+  message?: string;
+}> {
+  const apiBase = getApiBaseUrl();
+  if (!apiBase) return { ok: false, message: 'API not configured' };
+  try {
+    const publicAppUrl = (import.meta.env.VITE_PUBLIC_APP_URL as string | undefined)?.trim();
+    const redirectTo = (publicAppUrl || window.location.origin).replace(/\/$/, '');
+    const res = await fetch(`${apiBase.replace(/\/$/, '')}/cron/prompt-reminders`, {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify({ force: opts?.force === true, redirectTo }),
+    });
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { error?: string };
+      return { ok: false, message: err.error ?? `Reminders failed (${res.status})` };
+    }
+    return (await res.json()) as { ok: boolean; sent?: number; scanned?: number; skipped?: number };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
   }
 }
 

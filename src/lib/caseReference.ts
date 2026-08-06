@@ -9,9 +9,13 @@ export function allocateCaseReferenceNumber(
  const year = new Date().getFullYear();
  const prefix = caseType === 'WAGE_HOUR' ? 'WH' : 'CAS';
  const sameOrg = existingReports.filter((r) => r.orgId === orgId);
- const seq =
- sameOrg.filter((r) => r.referenceNumber?.startsWith(`${prefix}-${year}-`)).length + 1;
- return `${prefix}-${year}-${String(seq).padStart(4, '0')}`;
+ const re = new RegExp(`^${prefix}-${year}-(\\d+)$`);
+ let maxSeq = 0;
+ for (const r of sameOrg) {
+   const m = r.referenceNumber?.match(re);
+   if (m) maxSeq = Math.max(maxSeq, Number.parseInt(m[1], 10));
+ }
+ return `${prefix}-${year}-${String(maxSeq + 1).padStart(4, '0')}`;
 }
 
 export function getUnifiedCaseId(entity: {

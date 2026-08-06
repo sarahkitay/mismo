@@ -1,0 +1,29 @@
+-- =============================================================================
+-- MISMO — Schedule 3pm unanswered-prompt reminder emails (optional)
+-- Requires pg_cron + pg_net (enable in Supabase Dashboard → Database → Extensions).
+-- Replace PROJECT_REF and CRON_SECRET before running.
+-- =============================================================================
+--
+-- Prefer calling the Edge Function on a schedule:
+--   POST https://<PROJECT_REF>.supabase.co/functions/v1/mismo-api/cron/prompt-reminders
+--   Headers: x-cron-secret: <CRON_SECRET>
+--
+-- Until pg_cron is enabled, HR sessions after 3pm local also trigger this
+-- endpoint once per org per day (idempotent).
+
+-- Example (uncomment after enabling extensions and substituting secrets):
+--
+-- select cron.schedule(
+--   'mismo-prompt-reminders',
+--   '15 * * * *',  -- every hour at :15; function no-ops until 3pm local
+--   $$
+--   select net.http_post(
+--     url := 'https://obvlmowlzsfttqixaqvj.supabase.co/functions/v1/mismo-api/cron/prompt-reminders',
+--     headers := jsonb_build_object(
+--       'Content-Type', 'application/json',
+--       'x-cron-secret', current_setting('app.settings.cron_secret', true)
+--     ),
+--     body := '{}'::jsonb
+--   );
+--   $$
+-- );

@@ -47,6 +47,7 @@ function mapUser(row: Record<string, unknown>): User {
     hiredDate: optDate(row.hired_date as string | null),
     state: row.state ? String(row.state) : undefined,
     status: (row.status as User['status']) ?? 'active',
+    authUserId: row.auth_user_id ? String(row.auth_user_id) : undefined,
     archiveStartDate: optDate(row.archive_start_date as string | null),
     archiveEndDate: optDate(row.archive_end_date as string | null),
     createdAt: d(row.created_at as string),
@@ -125,6 +126,15 @@ function mapResponse(row: Record<string, unknown>): PromptResponse {
 }
 
 function mapReport(row: Record<string, unknown>): Report {
+  const wageRaw = row.wage_hour_intake;
+  let wageHourIntake: Report['wageHourIntake'];
+  if (wageRaw && typeof wageRaw === 'object' && !Array.isArray(wageRaw)) {
+    const w = wageRaw as Record<string, unknown>;
+    wageHourIntake = {
+      ...(w as unknown as NonNullable<Report['wageHourIntake']>),
+      submittedAt: w.submittedAt || w.submitted_at ? new Date(String(w.submittedAt ?? w.submitted_at)) : undefined,
+    };
+  }
   return {
     id: String(row.id),
     orgId: String(row.org_id),
@@ -135,16 +145,26 @@ function mapReport(row: Record<string, unknown>): Report {
     severity: row.severity as Report['severity'],
     status: row.status as Report['status'],
     caseType: row.case_type as Report['caseType'],
+    reportSourceType: row.report_source_type as Report['reportSourceType'],
     summary: String(row.summary ?? ''),
     description: String(row.description ?? ''),
+    peopleInvolved: row.people_involved ? String(row.people_involved) : undefined,
+    location: row.location ? String(row.location) : undefined,
+    incidentAt: optDate(row.incident_at as string | null),
     isAnonymous: Boolean(row.is_anonymous),
     investigationId: row.investigation_id ? String(row.investigation_id) : undefined,
     sourcePromptId: row.source_prompt_id ? String(row.source_prompt_id) : undefined,
     sourcePromptResponseId: row.source_prompt_response_id
       ? String(row.source_prompt_response_id)
       : undefined,
+    preferredContactMethod: row.preferred_contact_method as Report['preferredContactMethod'],
     needsExtendedIncidentIntake: Boolean(row.needs_extended_incident_intake),
     incidentIntakeCompletedAt: optDate(row.incident_intake_completed_at as string | null),
+    needsExtendedWageHourIntake: Boolean(row.needs_extended_wage_hour_intake),
+    wageHourIntakeCompletedAt: optDate(row.wage_hour_intake_completed_at as string | null),
+    wageHourIntake,
+    expeditedPayroll: Boolean(row.expedited_payroll),
+    payrollSlaDueAt: optDate(row.payroll_sla_due_at as string | null),
     messages: [],
     handlingLedger: [],
     responseChecklist: [],

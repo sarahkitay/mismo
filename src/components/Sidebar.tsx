@@ -29,7 +29,6 @@ const adminNavItems: NavItem[] = [
   { id: 'compliance', label: 'State Compliance', icon: 'shield' },
   { id: 'users', label: 'Manage Employees', icon: 'employees', badgeKey: 'atRiskEmployees' },
   { id: 'prompts', label: 'Manage Prompts', icon: 'message' },
-  { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
 /** Platform back-office for Mismo leadership (companies + portfolio analytics only). */

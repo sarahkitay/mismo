@@ -169,7 +169,8 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  }, [users, policies, policyAcknowledgements, deliveries, responses, investigations]);
 
  const totalYesResponses = responses.filter((r) => r.answer === 'HAS_ISSUE').length;
- const openReportsCount = reports.filter((r) => !['RESOLVED', 'CLOSED'].includes(r.status)).length;
+ // Same definition as the case register “open” tile (excludes cases under an open investigation).
+ const openReportsCount = dc.openCaseRegisterCount;
  const resolvedReports = reports.filter((r) => ['RESOLVED', 'CLOSED'].includes(r.status));
  const avgResolutionDays = resolvedReports.length
  ? resolvedReports.reduce((sum, r) => sum + (r.updatedAt.getTime() - r.createdAt.getTime()) / (1000 * 60 * 60 * 24), 0) /

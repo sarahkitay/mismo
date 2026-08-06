@@ -95,7 +95,7 @@ export function EmployeeWageHourIntake({ dataStore, reportId, onNavigate }: Empl
  if (next.length) setAttachments((prev) => [...prev, ...next]);
  };
 
- const handleSubmit = (e: React.FormEvent) => {
+ const handleSubmit = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!issueTypes.length) {
  toast.error('Select at least one issue type.');
@@ -105,7 +105,8 @@ export function EmployeeWageHourIntake({ dataStore, reportId, onNavigate }: Empl
  toast.error('Please describe your concern.');
  return;
  }
- completeWageHourIntake(reportId, {
+ try {
+ const updated = await completeWageHourIntake(reportId, {
  issueTypes,
  concernDescription: concernDescription.trim(),
  payPeriods: payPeriods.trim() || undefined,
@@ -117,7 +118,12 @@ export function EmployeeWageHourIntake({ dataStore, reportId, onNavigate }: Empl
  attachments,
  });
  setSubmitted(true);
- toast.success('Your wage & hour concern has been securely submitted.');
+ toast.success(
+ `Your wage & hour concern has been securely submitted (${formatCaseReference(updated)}).`
+ );
+ } catch (err) {
+ toast.error(err instanceof Error ? err.message : 'Could not submit. Please try again.');
+ }
  };
 
  if (submitted || report.wageHourIntakeCompletedAt) {

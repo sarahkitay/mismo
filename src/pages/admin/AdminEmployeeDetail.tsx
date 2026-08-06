@@ -846,12 +846,35 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  variant="outline"
  size="sm"
  onClick={() => {
- void inviteEmployeeToMismo(employee.email)
+ void inviteEmployeeToMismo(employee.email, { sendEmail: false })
+ .then((result) => {
+ if (result.actionLink) {
+ void navigator.clipboard.writeText(result.actionLink).then(
+ () => toast.success('Sign-in link copied. Use Email to employee from Manage Employees if needed.'),
+ () => toast.success(result.message)
+ );
+ } else {
+ toast.info(result.message);
+ }
+ void dataStore.refreshAppNotifications?.();
+ })
+ .catch((err) => {
+ toast.error(sanitizeInfraError(err instanceof Error ? err.message : 'Invite failed.'));
+ });
+ }}
+ >
+ Generate sign-in link
+ </Button>
+ <Button
+ variant="outline"
+ size="sm"
+ onClick={() => {
+ void inviteEmployeeToMismo(employee.email, { sendEmail: true })
  .then((result) => {
  toast.success(result.message);
  if (result.actionLink) {
  void navigator.clipboard.writeText(result.actionLink).then(
- () => toast.info('Invite link copied to clipboard.'),
+ () => toast.info('Link also copied to clipboard.'),
  () => undefined
  );
  }
@@ -862,7 +885,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  });
  }}
  >
- Resend invite email
+ Email sign-in link
  </Button>
  <Button
  variant="outline"

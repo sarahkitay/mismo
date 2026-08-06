@@ -51,7 +51,7 @@ export function NewReport({ dataStore, onNavigate, initialParams }: NewReportPro
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      createReport({
+      const report = await createReport({
         createdByUserId: isAnonymous ? undefined : currentUser.id,
         isAnonymous,
         sourcePromptId: promptId || undefined,
@@ -67,10 +67,10 @@ export function NewReport({ dataStore, onNavigate, initialParams }: NewReportPro
         incidentAt: incidentDate ? new Date(incidentDate) : undefined,
         preferredContactMethod: isAnonymous ? undefined : contactMethod,
       });
-      toast.success('Workplace concern submitted securely');
+      toast.success(`Workplace concern submitted securely (${report.referenceNumber}).`);
       onNavigate('reports');
-    } catch {
-      toast.error('Failed to submit. Please try again.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to submit. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

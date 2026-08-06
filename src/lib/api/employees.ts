@@ -9,14 +9,22 @@ export type InviteEmployeeResult = {
   message: string;
   /** Shareable link the admin can hand to the employee instead of email. */
   actionLink?: string;
+  emailStatus?: string;
+  resendConfigured?: boolean;
+};
+
+export type InviteEmployeeOptions = {
+  /** When false, only generate a shareable link (no email). Default true. */
+  sendEmail?: boolean;
 };
 
 /**
- * Ask the API to email an employee an invite to create their Mismo login.
- * Sends the current user's access token so the server can authorize the caller
- * as HR/Admin. Returns a result the caller can surface as a toast.
+ * Ask the API to generate (and optionally email) an employee invite / sign-in link.
  */
-export async function inviteEmployeeToMismo(email: string): Promise<InviteEmployeeResult> {
+export async function inviteEmployeeToMismo(
+  email: string,
+  opts: InviteEmployeeOptions = {}
+): Promise<InviteEmployeeResult> {
   const apiBase = getApiBaseUrl();
   if (!apiBase) throw new Error(API_NOT_CONFIGURED);
   if (!isSupabaseAppConfigured()) throw new Error(API_NOT_CONFIGURED);
@@ -26,8 +34,6 @@ export async function inviteEmployeeToMismo(email: string): Promise<InviteEmploy
   const token = data.session?.access_token;
   if (!token) throw new Error('Sign in again to send invites.');
 
-  // Prefer an explicit public app URL so shared links never point at a local
-  // dev origin. Falls back to the current origin when not configured.
   const publicAppUrl = (import.meta.env.VITE_PUBLIC_APP_URL as string | undefined)?.trim();
   const redirectTo = publicAppUrl ? publicAppUrl.replace(/\/$/, '') : window.location.origin;
 
@@ -37,7 +43,11 @@ export async function inviteEmployeeToMismo(email: string): Promise<InviteEmploy
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ email, redirectTo }),
+    body: JSON.stringify({
+      email,
+      redirectTo,
+      sendEmail: opts.sendEmail !== false,
+    }),
   });
 
   if (!res.ok) {
