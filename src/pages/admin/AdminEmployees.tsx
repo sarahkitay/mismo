@@ -425,6 +425,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  `Employee added, but the invite could not be generated. ${sanitizeInfraError(err instanceof Error ? err.message : '')}`.trim()
  );
  });
+ };
 
  const parseCsv = (csvText: string) => {
  const lines = csvText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
