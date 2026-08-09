@@ -29,4 +29,4 @@ Keep the product app on a separate project/domain (e.g. `app.mismo.co`).
 
 - `/` - Home (hero + engagement band)
 - `/features` - Feature grid
-- `/pricing` - Custom quote plans
+- `/pricing` - $5/employee/month + $199 AI Assistant add-on

@@ -2,37 +2,38 @@ import { inviteMailto } from '../config';
 
 const PLANS = [
   {
-    name: 'Starter',
-    price: 'Custom',
-    blurb: 'For smaller teams getting started with proactive check-ins.',
-    features: ['Daily employee check-ins', 'Incident & wage-hour reporting', 'Basic analytics', 'Email support'],
-    featured: false,
-  },
-  {
-    name: 'Growth',
-    price: 'Custom',
-    blurb: 'For organizations that need full case and investigation workflows.',
+    name: 'Mismo',
+    price: '$5',
+    period: '/ employee / month',
+    blurb: 'Everything your team needs to check in, report, investigate, and stay compliant.',
     features: [
-      'Everything in Starter',
-      'Investigations & case register',
-      'Memos & acknowledgements',
-      'AI language assist for outreach',
-      'Priority onboarding',
+      'Daily incident & wage-hour check-ins',
+      'Workplace and compensation reporting',
+      'Case register & investigations',
+      'Memos, acknowledgements & employee directory',
+      'Analytics, notifications & state compliance',
+      'Email support',
     ],
+    cta: 'Request Invitation',
+    subject: 'Mismo plan — $5 per employee',
     featured: true,
+    note: 'All product features included. Billed monthly by active employee count.',
   },
   {
-    name: 'Enterprise',
-    price: 'Custom',
-    blurb: 'For multi-site companies with advanced compliance needs.',
+    name: 'AI Assistant',
+    price: '$199',
+    period: '/ month',
+    blurb: 'Optional add-on. Mismo AI helps HR draft, navigate, and follow through — training is next.',
     features: [
-      'Everything in Growth',
-      'State compliance tooling',
-      'Dedicated success partner',
-      'SSO & advanced admin controls',
-      'Custom reporting',
+      'In-app Mismo AI for HR and employees',
+      'Draft outreach, case notes & next steps',
+      'Guided navigation across reports and memos',
+      'Training content & guided learning — coming soon',
     ],
+    cta: 'Add AI Assistant',
+    subject: 'Mismo AI Assistant — $199/month',
     featured: false,
+    note: 'Add-on to Mismo. Training modules will be included as they ship.',
   },
 ];
 
@@ -41,15 +42,16 @@ export function PricingPage() {
     <>
       <div className="page-hero">
         <p className="eyebrow">Pricing</p>
-        <h1>Plans that scale with your workforce</h1>
+        <h1>Simple pricing that scales with your workforce</h1>
         <p>
-          Every engagement is scoped to your employee count and rollout needs. Request an invitation
-          and we&apos;ll tailor pricing with you.
+          <strong>$5 per employee per month</strong> includes every Mismo feature. Add the{' '}
+          <strong>AI Assistant for $199 per month</strong> when you want drafting help now — and
+          training when it lands.
         </p>
       </div>
 
       <section className="section">
-        <div className="pricing-grid">
+        <div className="pricing-grid pricing-grid--two">
           {PLANS.map((plan) => (
             <article key={plan.name} className={`price-card${plan.featured ? ' featured' : ''}`}>
               <div>
@@ -57,15 +59,16 @@ export function PricingPage() {
                 <p style={{ margin: '0.35rem 0 0', color: 'var(--muted)', fontSize: '0.92rem' }}>{plan.blurb}</p>
               </div>
               <p className="price">
-                {plan.price} <span>/ quote</span>
+                {plan.price} <span>{plan.period}</span>
               </p>
               <ul>
                 {plan.features.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
               </ul>
-              <a className={`btn ${plan.featured ? 'btn-teal' : 'btn-dark'}`} href={inviteMailto(`Mismo ${plan.name} plan`)}>
-                Request Invitation
+              {plan.note && <p className="price-note">{plan.note}</p>}
+              <a className={`btn ${plan.featured ? 'btn-teal' : 'btn-dark'}`} href={inviteMailto(plan.subject)}>
+                {plan.cta}
               </a>
             </article>
           ))}
