@@ -11,8 +11,6 @@ dist-ssr
 *.swp
 *.swo
 .cursor/
-.cursorrules
-AGENTS.md
 
 # Env
 .env
