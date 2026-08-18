@@ -1,19 +1,8 @@
 import { getApiBaseUrl } from '@/lib/api/aiServices';
-import { getSupabaseClient } from '@/lib/supabaseClient';
-import { isSupabaseAppConfigured } from '@/data/orgDefaults';
+import { apiAuthHeaders } from '@/lib/api/authHeaders';
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (!isSupabaseAppConfigured()) return headers;
-  try {
-    const supabase = getSupabaseClient();
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
-    if (token) headers.Authorization = `Bearer ${token}`;
-  } catch {
-    // ignore
-  }
-  return headers;
+  return apiAuthHeaders();
 }
 
 function appOrigin(): string {

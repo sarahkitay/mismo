@@ -68,7 +68,7 @@ Mismo is **ready for a guided client demo** on the production deployment after m
 - Table, filters, bulk actions, CSV export  
 - Employee → profile; investigation links
 
-### 6. Investigation (3-page workflow — `cursor/investigation-three-page-bb68`)
+### 6. Investigation (3-page workflow)
 - **Page 1 — Intake & assignment:** Unified case ID (`CAS-YYYY-####` / `WH-YYYY-####`) matches report + EI form; auto reporter/source/date; admin assign; read-only employee submission; initial contact notes  
 - **Page 2 — Gather:** Persons table (search + roles + profile links); interviews/requests; evidence; policy/memo read status at complaint date; legal involvement flag  
 - **Page 3 — Outcome:** Findings, resolution, outcome letter, export/close  

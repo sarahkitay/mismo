@@ -5,6 +5,7 @@ import type {
  OutreachCoachResponse,
 } from '@/types/aiServices';
 import { API_NOT_CONFIGURED, sanitizeInfraError } from '@/lib/infraMessaging';
+import { apiAuthHeaders } from '@/lib/api/authHeaders';
 
 function resolveApiBase(): string | undefined {
   const explicit = import.meta.env.VITE_API_BASE_URL as string | undefined;
@@ -39,7 +40,7 @@ export type ApiHealthStatus = {
 export async function fetchApiHealth(): Promise<ApiHealthStatus> {
  if (!API_BASE) return { ok: false };
  try {
- const res = await fetch(apiUrl('/health'));
+ const res = await fetch(apiUrl('/health'), { headers: await apiAuthHeaders() });
  if (!res.ok) return { ok: false, apiBase: API_BASE };
  const data = (await res.json()) as ApiHealthStatus;
  return { ...data, ok: true, apiBase: API_BASE };
@@ -59,7 +60,7 @@ export async function coachOutreachDraft(req: OutreachCoachRequest): Promise<Out
 
  const res = await fetch(apiUrl('/ai/outreach/coach'), {
  method: 'POST',
- headers: { 'Content-Type': 'application/json' },
+ headers: await apiAuthHeaders(),
  body: JSON.stringify(req),
  });
 
@@ -94,7 +95,7 @@ export async function askMismoHelp(req: HelpAssistantAskRequest): Promise<HelpAs
 
   const res = await fetch(apiUrl('/ai/help/ask'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await apiAuthHeaders(),
     body: JSON.stringify(req),
   });
 
@@ -110,14 +111,16 @@ export async function fetchHrLaws(stateCode: string, topic?: string): Promise<{ 
  if (!API_BASE) return { laws: [] };
  const params = new URLSearchParams({ state: stateCode });
  if (topic) params.set('topic', topic);
- const res = await fetch(apiUrl(`/hr-laws?${params}`));
+ const res = await fetch(apiUrl(`/hr-laws?${params}`), { headers: await apiAuthHeaders() });
  if (!res.ok) return { laws: [] };
  return res.json() as Promise<{ laws: HrLawRecord[] }>;
 }
 
 export async function fetchHrLawUpdates(orgId: string): Promise<{ updates: HrLawUpdate[] }> {
  if (!API_BASE) return { updates: [] };
- const res = await fetch(apiUrl(`/hr-laws/updates?orgId=${encodeURIComponent(orgId)}`));
+ const res = await fetch(apiUrl(`/hr-laws/updates?orgId=${encodeURIComponent(orgId)}`), {
+  headers: await apiAuthHeaders(),
+ });
  if (!res.ok) return { updates: [] };
  return res.json() as Promise<{ updates: HrLawUpdate[] }>;
 }
@@ -130,7 +133,7 @@ export async function syncHrLawsForState(
  if (!API_BASE) throw new Error(API_NOT_CONFIGURED);
  const res = await fetch(apiUrl('/hr-laws/sync'), {
  method: 'POST',
- headers: { 'Content-Type': 'application/json' },
+ headers: await apiAuthHeaders(),
  body: JSON.stringify({ stateCode, stateName, orgId }),
  });
  if (!res.ok) {
@@ -173,7 +176,7 @@ export async function fetchHrNextTasks(
  if (value != null && value > 0) params.set(key, String(value));
  }
  }
- const res = await fetch(apiUrl(`/hr/next-tasks?${params}`));
+ const res = await fetch(apiUrl(`/hr/next-tasks?${params}`), { headers: await apiAuthHeaders() });
  if (!res.ok) return { tasks: [] };
  return res.json() as Promise<{ tasks: HrNextTask[]; aiEnabled?: boolean; dataSource?: string }>;
 }

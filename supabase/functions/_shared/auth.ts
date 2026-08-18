@@ -1,10 +1,14 @@
 /**
  * Auth helpers for Edge Function routes that require an org-scoped caller.
+ *
+ * Gateway JWT (verify_jwt = true on mismo-api) only proves the token is valid.
+ * This module binds that token to public.users (org, role, app user id) and
+ * enforces RBAC. Privileged routes reject EMPLOYEE/CLIENT.
  */
 
 import { getSupabaseAdmin } from './supabase.ts';
 
-const PRIVILEGED_ROLES = new Set(['ADMIN', 'HR', 'SUPER_ADMIN']);
+const PRIVILEGED_ROLES = new Set(['ADMIN', 'HR', 'SUPER_ADMIN', 'MANAGER']);
 
 export type Caller = {
   authUserId: string;
@@ -15,6 +19,10 @@ export type Caller = {
   lastName: string;
   email: string;
 };
+
+export function isPrivilegedRole(role: string | undefined): boolean {
+  return Boolean(role && PRIVILEGED_ROLES.has(role));
+}
 
 export async function authorizeCaller(
   authHeader: string | null,

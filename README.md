@@ -1,88 +1,63 @@
-# React + TypeScript + Vite
+# Mismo
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Inspectable HR/compliance product surface: daily check-ins, workplace and wage-hour reports, case register, investigations, memos, and org-scoped admin tools.
 
-Currently, two official plugins are available:
+This repository is **sanitized**. It contains application code, Postgres RLS, and Edge Function handlers — not production customer data.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## What the public code demonstrates
 
-## React Compiler
+| Concern | Where to look | How it is tested |
+|---------|---------------|------------------|
+| Tenant isolation | `docs/database/04_rls_policies.sql`, `11_rls_claims_fallback.sql` | `tests/rls-sql.test.ts` |
+| Report RBAC (employee vs HR) | `docs/database/10_reports_rls_split.sql`, `src/lib/authz/policy.ts` | `tests/authz-policy.test.ts` |
+| API auth (JWT + in-function RBAC) | `supabase/config.toml`, `supabase/functions/_shared/auth.ts`, `src/lib/authz/routes.ts` | `tests/edge-route-auth.test.ts` |
+| Fail-closed case writes | `src/hooks/useDataStore.ts`, `src/lib/supabase/writeOrgData.ts` | `tests/persist-fail-closed.test.ts` |
+| Case IDs, register counts, law publish gate | `src/lib/caseReference.ts`, `investigationWorkload.ts`, `lawCorpusFreshness.ts` | `tests/compliance-contracts.test.ts` |
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Architecture write-up: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## Expanding the ESLint configuration
+## Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **App:** Vite, React, TypeScript (`src/`)
+- **Auth / data:** Supabase Auth + Postgres RLS (`docs/database/`)
+- **Server:** Supabase Edge Functions (`supabase/functions/mismo-api`, `mismo-cron`)
+- **Optional AI:** OpenAI called only from Edge Functions (`services/api` is a legacy local stand-in)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+The UI depends on Radix/shadcn. Authorization and isolation live in SQL and Edge Functions, not in those UI packages.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Auth note (reviewers)
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+`mismo-api` sets **`verify_jwt = true`**. Requests without a valid project JWT never reach handler code.
+
+`mismo-cron` sets **`verify_jwt = false`** because scheduled callers cannot send a user JWT. That function only runs prompt reminders and **requires `CRON_SECRET`**. User-facing routes are not registered there.
+
+After the gateway check, mutating `mismo-api` routes call `authorizeCaller()`, which binds the JWT to `public.users` (org + role) and ignores client-supplied `orgId`.
+
+## Scripts
+
+```bash
+npm install
+npm test          # authorization, RLS artifacts, case contracts
+npm run build     # app typecheck + Vite production build
+npm run lint
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Demo bootstrap (local only, not production data):
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run demo:provision-auth
+npm run demo:bootstrap
 ```
 
-## Mismo Internal Notes
+## Layout
 
-- Data storage (production):
-  - When `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set, org data loads from Supabase via `src/lib/supabase/loadOrgData.ts`.
-  - Auth uses Supabase (`signInWithPassword`); session is stored in `localStorage` under `mismo_session`.
-  - Main state source is `src/hooks/useDataStore.ts`.
-- Bootstrap:
-  - Run SQL in `docs/database/` (`06` org, `07` demo user directory, `08` clear old mock data).
-  - Create Auth users: `npm run demo:provision-auth` (password `MismoDemo1!`).
-  - Demo logins: `hr@mismo.com`, `employee@mismo.com` (password optional on sign-in).
-- Portal switching:
-  - Use the top-right `View as` dropdown.
-  - Roles supported: `Employee`, `Manager`, `Admin`, `Client`.
-  - Role switch updates sidebar IA and sends user to the appropriate dashboard context.
+```
+src/                  Product UI + client data store
+src/lib/authz/        RBAC + route catalog used by tests
+supabase/functions/   Edge API (JWT) and cron (secret)
+docs/database/        Schema + RLS (source of tenant isolation)
+docs/ARCHITECTURE.md  Request path and trust boundaries
+marketing/            Public marketing site
+tests/                Automated contracts (`npm test`)
+```

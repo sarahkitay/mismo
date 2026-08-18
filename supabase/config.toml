@@ -4,6 +4,14 @@
 [api]
 enabled = true
 
+# User-facing API. Gateway rejects requests without a valid project JWT
+# (user access token or anon key). Org/RBAC is still enforced in-function
+# via authorizeCaller — see src/lib/authz/routes.ts and docs/ARCHITECTURE.md.
 [functions.mismo-api]
+verify_jwt = true
+
+# Scheduler only (prompt reminders). JWT is off because pg_net/EventBridge
+# cannot present a user session. runPromptReminders requires CRON_SECRET.
+# Do not add user data routes here.
+[functions.mismo-cron]
 verify_jwt = false
-# Set verify_jwt = true in production and pass Authorization: Bearer <user JWT> from the app.

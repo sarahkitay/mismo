@@ -19,6 +19,7 @@ import {
   sendSelfPasswordReset,
 } from '../_shared/product-mail.ts';
 import { runPromptReminders } from '../_shared/prompt-reminders.ts';
+import { authorizeCaller } from '../_shared/auth.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -105,6 +106,7 @@ Deno.serve(async (req) => {
     }
 
     if (path === '/notifications/incident-yes' && req.method === 'POST') {
+      const caller = await authorizeCaller(req.headers.get('Authorization'));
       const body = (await req.json()) as {
         employeeEmail: string;
         orgId: string;
@@ -114,14 +116,15 @@ Deno.serve(async (req) => {
         employeeUserId?: string;
         caseId?: string;
       };
-      if (!body.employeeEmail || !body.orgId) {
-        return jsonResponse(400, { error: 'employeeEmail and orgId are required' });
+      if (!body.employeeEmail) {
+        return jsonResponse(400, { error: 'employeeEmail is required' });
       }
+      const orgId = caller.orgId;
       const admin = getSupabaseAdmin();
       const { data: admins } = await admin
         .from('users')
         .select('id, email')
-        .eq('org_id', body.orgId)
+        .eq('org_id', orgId)
         .in('role', ['HR', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'])
         .eq('status', 'active');
       const adminEmails = (admins ?? [])
@@ -140,14 +143,14 @@ Deno.serve(async (req) => {
         const { data: emp } = await admin
           .from('users')
           .select('id')
-          .eq('org_id', body.orgId)
+          .eq('org_id', orgId)
           .ilike('email', body.employeeEmail)
           .maybeSingle();
         employeeUserId = emp?.id ? String(emp.id) : undefined;
       }
       if (employeeUserId) {
         await createAppNotification({
-          orgId: body.orgId,
+          orgId,
           userId: employeeUserId,
           kind: 'CASE_UPDATE',
           title: 'Incident report received — complete your form',
@@ -165,7 +168,7 @@ Deno.serve(async (req) => {
         if (!a.id || !a.email) continue;
         if (String(a.email).toLowerCase() === body.employeeEmail.toLowerCase()) continue;
         await createAppNotification({
-          orgId: body.orgId,
+          orgId,
           userId: String(a.id),
           kind: 'CASE_UPDATE',
           title: 'Action required: Incident Report response',
@@ -184,6 +187,7 @@ Deno.serve(async (req) => {
     }
 
     if (path === '/notifications/wage-hour-yes' && req.method === 'POST') {
+      const caller = await authorizeCaller(req.headers.get('Authorization'));
       const body = (await req.json()) as {
         employeeEmail: string;
         orgId: string;
@@ -194,14 +198,15 @@ Deno.serve(async (req) => {
         caseId?: string;
         referenceNumber?: string;
       };
-      if (!body.employeeEmail || !body.orgId) {
-        return jsonResponse(400, { error: 'employeeEmail and orgId are required' });
+      if (!body.employeeEmail) {
+        return jsonResponse(400, { error: 'employeeEmail is required' });
       }
+      const orgId = caller.orgId;
       const admin = getSupabaseAdmin();
       const { data: payroll } = await admin
         .from('users')
         .select('id, email')
-        .eq('org_id', body.orgId)
+        .eq('org_id', orgId)
         .in('role', ['HR', 'ADMIN', 'SUPER_ADMIN'])
         .eq('status', 'active');
       const payrollEmails = (payroll ?? [])
@@ -220,7 +225,7 @@ Deno.serve(async (req) => {
         const { data: emp } = await admin
           .from('users')
           .select('id')
-          .eq('org_id', body.orgId)
+          .eq('org_id', orgId)
           .ilike('email', body.employeeEmail)
           .maybeSingle();
         employeeUserId = emp?.id ? String(emp.id) : undefined;
@@ -238,7 +243,7 @@ Deno.serve(async (req) => {
           };
       if (employeeUserId) {
         await createAppNotification({
-          orgId: body.orgId,
+          orgId,
           userId: employeeUserId,
           kind: 'CASE_UPDATE',
           title: 'Wage & hour — complete your form',
@@ -256,7 +261,7 @@ Deno.serve(async (req) => {
         if (!a.id || !a.email) continue;
         if (String(a.email).toLowerCase() === body.employeeEmail.toLowerCase()) continue;
         await createAppNotification({
-          orgId: body.orgId,
+          orgId,
           userId: String(a.id),
           kind: 'CASE_UPDATE',
           title: 'Action required: Wage and Hour response',
@@ -275,6 +280,7 @@ Deno.serve(async (req) => {
     }
 
     if (path === '/cron/prompt-reminders' && (req.method === 'POST' || req.method === 'GET')) {
+      const caller = await authorizeCaller(req.headers.get('Authorization'), { privilegedOnly: true });
       const body =
         req.method === 'POST'
           ? ((await req.json().catch(() => ({}))) as {
@@ -285,23 +291,24 @@ Deno.serve(async (req) => {
           : {};
       const result = await runPromptReminders({
         authHeader: req.headers.get('Authorization'),
-        cronSecret: req.headers.get('x-cron-secret') ?? url.searchParams.get('secret'),
         force: body.force === true || url.searchParams.get('force') === '1',
-        orgId: body.orgId ?? url.searchParams.get('orgId') ?? undefined,
+        orgId: caller.orgId,
         redirectTo: body.redirectTo ?? undefined,
       });
       return jsonResponse(200, result);
     }
 
     if (path === '/ai/outreach/coach' && req.method === 'POST') {
+      const caller = await authorizeCaller(req.headers.get('Authorization'), { privilegedOnly: true });
       const body = (await req.json()) as Parameters<typeof runOutreachCoach>[0];
-      const result = await runOutreachCoach(body);
+      const result = await runOutreachCoach({ ...body, orgId: caller.orgId, createdBy: caller.appUserId });
       return jsonResponse(200, result);
     }
 
     if (path === '/ai/help/ask' && req.method === 'POST') {
+      const caller = await authorizeCaller(req.headers.get('Authorization'));
       const body = (await req.json()) as Parameters<typeof runHelpAssistant>[0];
-      const result = await runHelpAssistant(body);
+      const result = await runHelpAssistant({ ...body, orgId: caller.orgId, role: caller.role });
       return jsonResponse(200, result);
     }
 
@@ -313,22 +320,24 @@ Deno.serve(async (req) => {
     }
 
     if (path === '/hr-laws/updates' && req.method === 'GET') {
-      const orgId = url.searchParams.get('orgId') ?? undefined;
-      const updates = await listHrLawUpdates(orgId);
+      const caller = await authorizeCaller(req.headers.get('Authorization'), { privilegedOnly: true });
+      const updates = await listHrLawUpdates(caller.orgId);
       return jsonResponse(200, { updates });
     }
 
     if (path === '/hr-laws/sync' && req.method === 'POST') {
+      const caller = await authorizeCaller(req.headers.get('Authorization'), { privilegedOnly: true });
       const body = (await req.json()) as { stateCode: string; stateName?: string; orgId?: string };
       const code = body.stateCode?.toUpperCase();
       if (!code) throw new Error('stateCode is required');
       const name = body.stateName ?? code;
-      const result = await syncStateLawsToDb(code, name, body.orgId);
+      const result = await syncStateLawsToDb(code, name, caller.orgId);
       return jsonResponse(200, { ok: true, stateCode: code, ...result });
     }
 
     if (path === '/hr/next-tasks' && req.method === 'GET') {
-      const orgId = url.searchParams.get('orgId') ?? 'org-mismo-1';
+      const caller = await authorizeCaller(req.headers.get('Authorization'), { privilegedOnly: true });
+      const orgId = caller.orgId;
       const snapshot = {
         payrollExpedited: Number(url.searchParams.get('payrollExpedited') ?? 0) || undefined,
         needsInfo: Number(url.searchParams.get('needsInfo') ?? 0) || undefined,
