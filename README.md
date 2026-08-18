@@ -50,6 +50,16 @@ npm run demo:provision-auth
 npm run demo:bootstrap
 ```
 
+Create a local `.env` from the example and use your own development credentials. Never commit secrets or real customer data.
+
+## Security
+
+Access control, tenant isolation, auditability, and human review are product requirements. Report security concerns privately rather than as public issues.
+
+## Ownership
+
+Product architecture and engineering led by Sarah Kitay.
+
 ## Layout
 
 ```
