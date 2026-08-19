@@ -8,7 +8,7 @@ This repository is **sanitized**. It contains application code, Postgres RLS, an
 
 | Concern | Where to look | How it is tested |
 |---------|---------------|------------------|
-| Tenant isolation | `docs/database/04_rls_policies.sql`, `11_rls_claims_fallback.sql` | `tests/rls-sql.test.ts` |
+| Tenant isolation | `docs/database/04_rls_policies.sql`, `11_rls_claims_fallback.sql`, [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) | `tests/rls-sql.test.ts`, `tests/integration/cross-tenant-rls.test.ts` |
 | Report RBAC (employee vs HR) | `docs/database/10_reports_rls_split.sql`, `src/lib/authz/policy.ts` | `tests/authz-policy.test.ts` |
 | API auth (JWT + in-function RBAC) | `supabase/config.toml`, `supabase/functions/_shared/auth.ts`, `src/lib/authz/routes.ts` | `tests/edge-route-auth.test.ts` |
 | Fail-closed case writes | `src/hooks/useDataStore.ts`, `src/lib/supabase/writeOrgData.ts` | `tests/persist-fail-closed.test.ts` |
@@ -37,8 +37,8 @@ After the gateway check, mutating `mismo-api` routes call `authorizeCaller()`, w
 
 ```bash
 npm install
-npm test          # authorization, RLS artifacts, case contracts
-npm run build     # app typecheck + Vite production build
+npm test          # contracts plus two-org Postgres RLS (throwaway DB)
+npm run build
 npm run lint
 npm run dev
 ```
@@ -50,7 +50,7 @@ npm run demo:provision-auth
 npm run demo:bootstrap
 ```
 
-Create a local `.env` from the example and use your own development credentials. Never commit secrets or real customer data.
+CI starts a throwaway Postgres and runs `npm test`, including `tests/integration/cross-tenant-rls.test.ts`. Locally the same tests use `DATABASE_URL` if set, otherwise a disposable `mismo_rls_test` database on the machine Postgres. Never point them at production.
 
 ## Security
 
@@ -68,6 +68,7 @@ src/lib/authz/        RBAC + route catalog used by tests
 supabase/functions/   Edge API (JWT) and cron (secret)
 docs/database/        Schema + RLS (source of tenant isolation)
 docs/ARCHITECTURE.md  Request path and trust boundaries
+docs/THREAT_MODEL.md  Tenant boundary and what RLS does not cover
 marketing/            Public marketing site
 tests/                Automated contracts (`npm test`)
 ```

@@ -34,9 +34,11 @@ Defined in `docs/database/04_rls_policies.sql`, `10_reports_rls_split.sql`, `11_
 - Most tables: `org_id = current_org_id()`.
 - `reports`: employees see/update rows they filed; HR/admin see the org register; anonymous inserts require `created_by_user_id IS NULL`.
 - TypeScript mirror used in tests: `src/lib/authz/policy.ts`.
+- Two-org integration tests load the production RLS files into Postgres and run as `authenticated`: `tests/integration/cross-tenant-rls.test.ts`.
+- Threat model and tenant boundary: [`docs/THREAT_MODEL.md`](THREAT_MODEL.md).
 
 ## What is — and is not — claimed
 
-**In this repo:** org scoping, RBAC helpers, RLS SQL, fail-closed report inserts, case-register counting rules, a law-corpus publish gate, and automated tests for those contracts.
+**In this repo:** org scoping, RBAC helpers, RLS SQL, fail-closed report inserts, case-register counting rules, a law-corpus publish gate, two-tenant Postgres RLS tests, and a written threat model.
 
-**Not in this repo:** a full penetration test, SOC 2 evidence, live multi-tenant load tests, or production secrets. Treat this as an inspectable product codebase, not a completed security audit.
+**Not in this repo:** a full penetration test, SOC 2 evidence, live production load tests, or production secrets. Treat this as an inspectable product codebase, not a completed security audit.

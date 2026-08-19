@@ -23,7 +23,11 @@ supabase secrets set \
   OPENAI_API_KEY=sk-... \
   OPENAI_MODEL=gpt-4.1-mini \
   OPENAI_MAX_TOKENS_OUTREACH=1200 \
-  OPENAI_MAX_TOKENS_LAW_RESEARCH=4000
+  OPENAI_MAX_TOKENS_LAW_RESEARCH=4000 \
+  CRON_SECRET=generate-a-long-random-string \
+  SITE_URL=https://app.mismo.co \
+  RESEND_API_KEY=re_... \
+  RESEND_FROM='Mismo <noreply@mismo.co>'
 ```
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically in Edge Functions.
