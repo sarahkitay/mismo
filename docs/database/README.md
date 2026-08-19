@@ -2,7 +2,7 @@
 
 PostgreSQL schema for production. Maps 1:1 from `src/types/index.ts` and `src/hooks/useDataStore.ts`.
 
-**Important:** The employee and admin apps must never show or reference the database vendor. The browser uses `VITE_API_BASE_URL` (Mismo API) only — no direct database client in the frontend.
+Canonical SQL is also copied into [`supabase/migrations/`](../../supabase/migrations) in apply order. See [`docs/DEPLOY.md`](../DEPLOY.md).
 
 ## SQL files (run in order)
 

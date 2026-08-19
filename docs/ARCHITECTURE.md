@@ -41,4 +41,4 @@ Defined in `docs/database/04_rls_policies.sql`, `10_reports_rls_split.sql`, `11_
 
 **In this repo:** org scoping, RBAC helpers, RLS SQL, fail-closed report inserts, case-register counting rules, a law-corpus publish gate, two-tenant Postgres RLS tests, and a written threat model.
 
-**Not in this repo:** a full penetration test, SOC 2 evidence, live production load tests, or production secrets. Treat this as an inspectable product codebase, not a completed security audit.
+**Not in this repo:** a full penetration test, SOC 2 evidence, live production load tests, or production secrets. Treat this as an inspectable product codebase, not a completed security audit. How the SPA, Edge Functions, and SQL are meant to be deployed is in [`DEPLOY.md`](DEPLOY.md).

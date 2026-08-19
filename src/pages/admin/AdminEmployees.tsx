@@ -19,7 +19,7 @@ import {
  DialogHeader,
  DialogTitle,
 } from '@/components/ui/dialog';
-import { formatRelativeTime, formatPercent, formatDate, getInitials } from '@/lib/utils';
+import { formatRelativeTime, formatPercent, getInitials } from '@/lib/utils';
 import { compareByLastFirstName } from '@/lib/sortUsers';
 import type { User, UserRole, UserStatus } from '@/types';
 import { ASSIGNABLE_ROLES, roleLabel } from '@/lib/roleLabels';
@@ -27,6 +27,20 @@ import { inviteEmployeeToMismo } from '@/lib/api/employees';
 import { sanitizeInfraError } from '@/lib/infraMessaging';
 import { toast } from 'sonner';
 import { PageMoreInfo } from '@/components/PageMoreInfo';
+import {
+  CUSTOM_ROLE_PREFIX,
+  displayEmployeeId,
+  displayRole,
+  formatArchiveWindow,
+  parseRoleSelect,
+  roleSelectValue,
+} from '@/lib/employeeDirectory';
+import {
+  parseEmployeeCsv,
+  planEmployeeCsvImport,
+  suggestEmployeeCsvFieldMap,
+  type EmployeeCsvFieldMap,
+} from '@/lib/employeeCsvImport';
 
 interface AdminEmployeesProps {
  dataStore: DataStore;
@@ -41,37 +55,6 @@ type ConflictMode = 'SKIP' | 'UPDATE' | 'CREATE_NEW';
 type MappingTemplate = { name: string; map: Record<string, string> };
 
 const IMPORT_TEMPLATE_STORAGE = 'mismo_csv_mapping_templates';
-
-function formatArchiveWindow(user: User): string {
- if (user.archiveStartDate || user.archiveEndDate) {
- const a = user.archiveStartDate ? formatDate(user.archiveStartDate) : '-';
- const b = user.archiveEndDate ? formatDate(user.archiveEndDate) : '-';
- return `${a} → ${b}`;
- }
- if (user.status === 'inactive') return 'Inactive (no archive dates)';
- return '-';
-}
-
-function displayEmployeeId(user: User): string {
- return user.employeeId?.trim() || '-';
-}
-
-const CUSTOM_ROLE_PREFIX = 'custom::';
-
-function roleSelectValue(role: UserRole, jobTitle?: string) {
-  return jobTitle?.trim() ? `${CUSTOM_ROLE_PREFIX}${jobTitle.trim()}` : role;
-}
-
-function parseRoleSelect(value: string): { role: UserRole; jobTitle?: string } {
-  if (value.startsWith(CUSTOM_ROLE_PREFIX)) {
-    return { role: 'EMPLOYEE', jobTitle: value.slice(CUSTOM_ROLE_PREFIX.length) };
-  }
-  return { role: value as UserRole };
-}
-
-function displayRole(user: User): string {
-  return user.jobTitle?.trim() || roleLabel(user.role);
-}
 
 export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminEmployeesProps) {
   const {
@@ -259,7 +242,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
 
  const [importHeaders, setImportHeaders] = useState<string[]>([]);
  const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
- const [fieldMap, setFieldMap] = useState<Record<string, string>>({
+ const [fieldMap, setFieldMap] = useState<EmployeeCsvFieldMap>({
  firstName: '',
  lastName: '',
  email: '',
@@ -427,37 +410,13 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  });
  };
 
- const parseCsv = (csvText: string) => {
- const lines = csvText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
- if (lines.length < 2) return { headers: [], rows: [] };
- const headers = lines[0].split(',').map((h) => h.trim());
- const rows = lines.slice(1).map((line) => {
- const values = line.split(',').map((v) => v.trim());
- return headers.reduce((acc, header, idx) => {
- acc[header] = values[idx] ?? '';
- return acc;
- }, {} as Record<string, string>);
- });
- return { headers, rows };
- };
-
  const handleCsvUpload = async (file: File) => {
  const text = await file.text();
- const { headers, rows } = parseCsv(text);
+ const { headers, rows } = parseEmployeeCsv(text);
  setImportHeaders(headers);
  setImportRows(rows);
  setImportSummary(null);
- setFieldMap({
- firstName: headers.find((h) => /first.?name/i.test(h)) ?? '',
- lastName: headers.find((h) => /last.?name/i.test(h)) ?? '',
- email: headers.find((h) => /email/i.test(h)) ?? '',
- phone: headers.find((h) => /phone|mobile/i.test(h)) ?? '',
- department: headers.find((h) => /department|dept/i.test(h)) ?? '',
- employeeId: headers.find((h) => /employee.?id|badge|payroll.?id/i.test(h)) ?? '',
- location: headers.find((h) => /location|site|office/i.test(h)) ?? '',
- archiveStart: headers.find((h) => /archive.?start|retention.?start/i.test(h)) ?? '',
- archiveEnd: headers.find((h) => /archive.?end|retention.?end/i.test(h)) ?? '',
- });
+ setFieldMap(suggestEmployeeCsvFieldMap(headers));
  };
 
  const saveTemplate = () => {
@@ -475,7 +434,17 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  setSelectedTemplate(name);
  const template = templates.find((t) => t.name === name);
  if (!template) return;
- setFieldMap(template.map);
+ setFieldMap({
+   firstName: template.map.firstName ?? '',
+   lastName: template.map.lastName ?? '',
+   email: template.map.email ?? '',
+   phone: template.map.phone ?? '',
+   department: template.map.department ?? '',
+   employeeId: template.map.employeeId ?? '',
+   location: template.map.location ?? '',
+   archiveStart: template.map.archiveStart ?? '',
+   archiveEnd: template.map.archiveEnd ?? '',
+ });
  };
 
  const downloadErrorCsv = (errors: string[]) => {
@@ -494,98 +463,17 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  toast.error('Map first name, last name, and email before importing.');
  return;
  }
- let created = 0;
- let updated = 0;
- const errors: string[] = [];
- const batchToCreate: Array<{
- role: 'EMPLOYEE';
- firstName: string;
- lastName: string;
- email: string;
- phone?: string;
- departmentId?: string;
- status: 'active';
- employeeId?: string;
- location?: string;
- archiveStartDate?: Date;
- archiveEndDate?: Date;
- }> = [];
-
- const parseOptionalDate = (raw: string | undefined): Date | undefined => {
- if (!raw?.trim()) return undefined;
- const d = new Date(raw.trim());
- return Number.isNaN(d.getTime()) ? undefined : d;
- };
-
- importRows.forEach((row, index) => {
- const firstName = row[fieldMap.firstName] || '';
- const lastName = row[fieldMap.lastName] || '';
- const email = row[fieldMap.email] || '';
- const phone = row[fieldMap.phone] || undefined;
- const departmentId = departments.find((d) => d.name.toLowerCase() === (row[fieldMap.department] || '').toLowerCase())?.id;
-
- if (!firstName || !lastName || !email) {
- errors.push(`Row ${index + 1}: missing required field(s).`);
- return;
- }
-
- const employeeIdVal = fieldMap.employeeId ? (row[fieldMap.employeeId] || '').trim() : undefined;
- const locationVal = fieldMap.location ? (row[fieldMap.location] || '').trim() : undefined;
- const archiveStartVal = fieldMap.archiveStart ? parseOptionalDate(row[fieldMap.archiveStart]) : undefined;
- const archiveEndVal = fieldMap.archiveEnd ? parseOptionalDate(row[fieldMap.archiveEnd]) : undefined;
-
- const existing = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
- if (!existing) {
- batchToCreate.push({
- role: 'EMPLOYEE',
- firstName,
- lastName,
- email,
- phone,
- departmentId,
- status: 'active',
- ...(employeeIdVal ? { employeeId: employeeIdVal } : {}),
- ...(locationVal ? { location: locationVal } : {}),
- ...(archiveStartVal ? { archiveStartDate: archiveStartVal } : {}),
- ...(archiveEndVal ? { archiveEndDate: archiveEndVal } : {}),
+ const planned = planEmployeeCsvImport({
+ rows: importRows,
+ fieldMap,
+ conflictMode,
+ departments,
+ users,
  });
- created += 1;
- return;
- }
-
- if (conflictMode === 'SKIP') return;
- if (conflictMode === 'UPDATE') {
- updateUser(existing.id, {
- firstName,
- lastName,
- phone,
- departmentId,
- ...(employeeIdVal ? { employeeId: employeeIdVal } : {}),
- ...(locationVal ? { location: locationVal } : {}),
- ...(archiveStartVal ? { archiveStartDate: archiveStartVal } : {}),
- ...(archiveEndVal ? { archiveEndDate: archiveEndVal } : {}),
- });
- updated += 1;
- return;
- }
-
- batchToCreate.push({
- role: 'EMPLOYEE',
- firstName,
- lastName,
- email: `${email.split('@')[0]}+dup${Date.now()}@${email.split('@')[1] ?? 'example.com'}`,
- phone,
- departmentId,
- status: 'active',
- ...(employeeIdVal ? { employeeId: `${employeeIdVal}-dup` } : {}),
- ...(locationVal ? { location: locationVal } : {}),
- });
- created += 1;
- });
-
- if (batchToCreate.length > 0) createUsers(batchToCreate);
- setImportedCount((prev) => prev + created + updated);
- setImportSummary({ created, updated, errors });
+ planned.updates.forEach((u) => updateUser(u.id, u));
+ if (planned.batchToCreate.length > 0) createUsers(planned.batchToCreate);
+ setImportedCount((prev) => prev + planned.created + planned.updated);
+ setImportSummary({ created: planned.created, updated: planned.updated, errors: planned.errors });
  toast.success('Bulk import completed.');
  };
 

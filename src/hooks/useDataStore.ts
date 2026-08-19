@@ -3,15 +3,11 @@ import type {
  User,
  UserRole,
  Report,
- ReportStatus,
  Prompt,
  PromptDelivery,
  PromptResponse,
  PromptAnswer,
  Investigation,
- InvestigationNote,
- InvestigationEmployeeContactPreference,
- InvestigationAttachment,
  Nudge,
  ActivityEvent,
  ReportStatusEvent,
@@ -19,25 +15,11 @@ import type {
  PolicyAcknowledgement,
  Announcement,
  Department,
- ReportHandlingEntry,
- ReportHandlingEntryType,
- ReportChecklistItem,
  AuditLogEntry,
  NudgeContext,
  CompanyResource,
  EmergencyHotline,
- InvestigationPerson,
- InvestigationStage,
- InvestigationChecklistStage,
- OutcomeClassification,
- InvestigationPriority,
- InvestigationEvidenceRecord,
- InvestigationResponseRequest,
- InvestigationCorrectiveAction,
- InvestigationFollowUp,
- InvestigationNoteType,
  WageHourScreeningAcknowledgement,
- WageHourIntakeData,
  ClientCompany,
  ClientContact,
  ClientDocument,
@@ -47,12 +29,6 @@ import type {
  LawDigestEntry,
  AppNotification,
 } from '@/types';
-import {
- buildDefaultChecklistStages,
- buildStageHistoryEntry,
- inferReportSourceType,
-} from '@/lib/investigationWorkflow';
-import { allocateCaseReferenceNumber } from '@/lib/caseReference';
 import {
   computeOpenInvestigationWorkload,
   computePromptResponsesNavCount,
@@ -70,37 +46,33 @@ import { resolveAppSessionFromAuth } from '@/lib/supabase/resolveAppSession';
 import {
  persistUsers,
  persistUserUpdate,
- persistReport,
  persistPrompt,
  persistPromptUpdate,
  persistPromptResponse,
  persistPromptDelivery,
- persistResponseThenReport,
- persistReportChange,
- persistInvestigation,
  persistPolicy,
  persistPolicyAck,
  persistDepartment,
  deleteDepartmentRecord,
  persistOrgSettings,
 } from '@/lib/supabase/writeOrgData';
-import { notifyIncidentYes, notifyWageHourYes, sendNotificationEmail, runPromptReminders } from '@/lib/api/notifications';
+import { sendNotificationEmail, runPromptReminders } from '@/lib/api/notifications';
 import { employeeNeedsPolicyAck } from '@/lib/lawDigestMemo';
-import {
- loadClientData,
- persistClientCompany,
- persistClientContact,
- deleteClientContactRecord,
- persistClientDocument,
- deleteClientDocumentRecord,
- persistClientNote,
- persistClientPayment,
- persistClientSupportEntry,
-} from '@/lib/supabase/clientCompanies';
+import { loadClientData } from '@/lib/supabase/clientCompanies';
 import { normalizeDemoEmail } from '@/data/demoLogins';
 import { mergeCorePrompts, resolveDailyCheckInPrompt, isLockedCorePrompt } from '@/lib/corePrompts';
-import { INDUSTRY_CHECKLIST_SECTIONS } from '@/data/industryChecklist';
 import { INFRA_NOT_CONFIGURED, sanitizeInfraError } from '@/lib/infraMessaging';
+import {
+  filterReports,
+  filterInvestigations,
+  filterEmployees,
+  computeAtRiskEmployees as computeAtRiskEmployeesQuery,
+  computeEmployeeEngagement as computeEmployeeEngagementQuery,
+} from '@/lib/storeQueries';
+import { useInvestigationActions } from '@/hooks/useInvestigationActions';
+import { useReportCaseActions } from '@/hooks/useReportCaseActions';
+import { useReportLedgerActions } from '@/hooks/useReportLedgerActions';
+import { useClientCrmActions } from '@/hooks/useClientCrmActions';
 
 function formatAuditFieldValue(value: unknown): string {
  if (value === undefined || value === null) return '';
@@ -194,25 +166,6 @@ function readPersistedState() {
  } catch {
  return null;
  }
-}
-
-function createIndustryChecklistForReport(): ReportChecklistItem[] {
- const items: ReportChecklistItem[] = [];
- let globalOrder = 0;
- for (const section of INDUSTRY_CHECKLIST_SECTIONS) {
- for (const label of section.items) {
- items.push({
- id: `check-${section.id}-${globalOrder}`,
- sectionId: section.id,
- sectionLabel: section.label,
- label,
- order: globalOrder,
- completed: false,
- });
- globalOrder += 1;
- }
- }
- return items;
 }
 
 // Data store hook
@@ -754,1326 +707,74 @@ export function useDataStore() {
  return newResponse;
  }, [deliveries, responses, effectiveOrgId]);
 
- const beginIncidentCaseFromPrompt = useCallback(
- async (userId: string, delivery: PromptDelivery, response: PromptResponse) => {
- const existingCase = reports.find(
- (r) =>
- r.sourcePromptResponseId === response.id ||
- (r.sourcePromptId === delivery.promptId &&
- r.createdByUserId === userId &&
- r.reportSourceType === 'EMPLOYEE_PROMPT_RESPONSE' &&
- r.needsExtendedIncidentIntake)
- );
- if (existingCase) return existingCase;
-
- const now = new Date();
- const prompt = prompts.find((p) => p.id === delivery.promptId);
- const refNum = allocateCaseReferenceNumber(reports, effectiveOrgId, 'WORKPLACE_INVESTIGATION');
- const defaultAdmin = users.find((u) => u.role === 'HR' || u.role === 'ADMIN');
- const severity = prompt?.severityOnHasIssue ?? 'HIGH';
- const screeningNote = response.notes?.trim();
- const activityId = `activity-${Date.now()}`;
- const ledger: Report['handlingLedger'] = [
- {
- id: `ledger-${Date.now()}`,
- type: 'NOTE',
- text: 'Case opened from incident prompt Yes response.',
- createdAt: now,
- createdBy: userId,
- },
- ];
- if (screeningNote?.startsWith('Financial follow-up:')) {
- ledger.push({
- id: `ledger-${Date.now()}-fin`,
- type: 'NOTE',
- text: screeningNote,
- createdAt: now,
- createdBy: userId,
+ const {
+ beginIncidentCaseFromPrompt,
+ submitIncidentPromptYes,
+ createReport,
+ recordWageHourScreeningNo,
+ beginWageHourCase,
+ completeWageHourIntake,
+ submitExpeditedPayrollReport,
+ updateReportStatus,
+ assignReport,
+ completeIncidentIntake,
+ } = useReportCaseActions({
+ reports,
+ prompts,
+ users,
+ deliveries,
+ currentUser,
+ effectiveOrgId,
+ setReports,
+ setActivities,
+ setAuditLogs,
+ setReportStatusEvents,
+ setWageHourAcknowledgements,
+ setResponses,
+ submitPromptResponse,
  });
- }
- const newReport: Report = {
- id: `report-${response.id}`,
- orgId: effectiveOrgId,
- createdByUserId: userId,
- isAnonymous: false,
- sourcePromptId: delivery.promptId,
- sourcePromptResponseId: response.id,
- reportSourceType: 'EMPLOYEE_PROMPT_RESPONSE',
- caseType: 'WORKPLACE_INVESTIGATION',
- referenceNumber: refNum,
- category: 'OTHER',
- severity,
- summary: 'Incident query - concern indicated',
- description:
- 'Employee answered Yes on the mandatory incident query. Complete the secure intake form to provide details.',
- status: 'NEW',
- assignedTo: defaultAdmin?.id,
- needsExtendedIncidentIntake: true,
- messages: [],
- responseChecklist: createIndustryChecklistForReport(),
- handlingLedger: ledger,
- createdAt: now,
- updatedAt: now,
- };
- setReports((prev) => [newReport, ...prev]);
- setActivities((prev) => [
- {
- id: activityId,
- orgId: effectiveOrgId,
- type: 'REPORT_CREATED',
- actorUserId: userId,
- metadata: {
- reportId: newReport.id,
- source: 'EMPLOYEE_PROMPT_RESPONSE',
- promptResponseId: response.id,
- referenceNumber: refNum,
- },
- createdAt: now,
- },
- ...prev,
- ]);
- setAuditLogs((prev) => [
- {
- id: `audit-${Date.now()}`,
- orgId: effectiveOrgId,
- recordType: 'REPORT',
- recordId: newReport.id,
- field: 'caseType',
- oldValue: '',
- newValue: 'WORKPLACE_INVESTIGATION',
- actorUserId: userId,
- createdAt: now,
- reason: `Linked prompt response ${response.id}`,
- },
- ...prev,
- ]);
- const completedDelivery: PromptDelivery = {
- ...delivery,
- status: 'COMPLETED',
- completedAt: delivery.completedAt ?? now,
- updatedAt: now,
- };
- const persisted = await persistResponseThenReport(response, completedDelivery, newReport);
- if (!persisted.ok) {
- setReports((prev) => prev.filter((r) => r.id !== newReport.id));
- setActivities((prev) => prev.filter((a) => a.id !== activityId));
- throw new Error(persisted.message || 'Could not open incident case.');
- }
- return newReport;
- },
- [prompts, reports, effectiveOrgId, users]
- );
 
- /** Finalize incident prompt Yes: log response, open case shell, alert HR queue */
- const submitIncidentPromptYes = useCallback(
- async (deliveryId: string, notes?: string) => {
- const delivery = deliveries.find((d) => d.id === deliveryId);
- if (!delivery) return undefined;
- const response = submitPromptResponse(deliveryId, 'HAS_ISSUE', notes, { skipPersist: true });
- if (!response) return undefined;
- const report = await beginIncidentCaseFromPrompt(delivery.userId, delivery, response);
- const employee = users.find((u) => u.id === delivery.userId);
- if (employee?.email) {
- void notifyIncidentYes({
- employeeEmail: employee.email,
- orgId: effectiveOrgId,
- caseId: report.id,
- employeeUserId: delivery.userId,
+ 
+ const investigationActions = useInvestigationActions({
+ reports,
+ prompts,
+ investigations,
+ currentUser,
+ effectiveOrgId,
+ setInvestigations,
+ setReports,
+ setActivities,
+ setAuditLogs,
  });
- }
- return { response, report };
- },
- [deliveries, submitPromptResponse, beginIncidentCaseFromPrompt, users, effectiveOrgId]
- );
- 
- // Create report — only succeeds when the database insert succeeds.
- const createReport = useCallback(async (reportData: Omit<Report, 'id' | 'orgId' | 'createdAt' | 'updatedAt' | 'status'>) => {
- const now = new Date();
- 
- const needsExtended = Boolean(reportData.needsExtendedIncidentIntake);
- const caseType = reportData.caseType ?? (reportData.category === 'WAGE_HOURS' ? 'WAGE_HOUR' : 'WORKPLACE_INVESTIGATION');
- const refNum =
- reportData.referenceNumber ??
- allocateCaseReferenceNumber(reports, effectiveOrgId, caseType);
- const defaultAdmin = users.find((u) => u.role === 'HR' || u.role === 'ADMIN');
- const newReport: Report = {
- ...reportData,
- id: `report-${Date.now()}`,
- orgId: effectiveOrgId,
- caseType,
- referenceNumber: refNum,
- status: 'NEW',
- assignedTo: reportData.assignedTo ?? defaultAdmin?.id,
- needsExtendedIncidentIntake: needsExtended,
- incidentIntakeCompletedAt: needsExtended ? undefined : now,
- messages: reportData.messages ?? [],
- responseChecklist: reportData.responseChecklist ?? createIndustryChecklistForReport(),
- handlingLedger: reportData.handlingLedger ?? [
- {
- id: `ledger-${Date.now()}`,
- type: 'NOTE',
- text: 'Case intake recorded in HR command log.',
- createdAt: now,
- createdBy: reportData.createdByUserId,
- },
- ],
- createdAt: now,
- updatedAt: now,
- };
- 
- setReports(prev => [newReport, ...prev]);
- 
- const newActivity: ActivityEvent = {
- id: `activity-${Date.now()}`,
- orgId: effectiveOrgId,
- type: 'REPORT_CREATED',
- actorUserId: reportData.createdByUserId,
- metadata: { reportId: newReport.id, category: reportData.category, referenceNumber: refNum },
- createdAt: now,
- };
- setActivities(prev => [newActivity, ...prev]);
+ const {
+ createInvestigation,
+ saveInvestigationProgress,
+ pickUpInvestigation,
+ assignInvestigationOwner,
+ advanceInvestigationStage,
+ setInvestigationInitialContactNotes,
+ markInvestigationPageComplete,
+ setInvestigationSubjectUsers,
+ setInvestigationPersons,
+ updateInvestigationChecklist,
+ addInvestigationEvidence,
+ addInvestigationResponseRequest,
+ updateInvestigationResponseRequest,
+ submitEmployeeInvestigationResponse,
+ updateInvestigationAnalysis,
+ addCorrectiveAction,
+ updateCorrectiveAction,
+ addFollowUp,
+ completeFollowUp,
+ sendNonRetaliationReminder,
+ setInvestigationOutcomeClassification,
+ addInvestigationNote,
+ sendInvestigationOutcomeToEmployee,
+ employeeAcknowledgeInvestigationOutcome,
+ closeInvestigation,
+ } = investigationActions;
 
- const persisted = await persistReport(newReport);
- if (!persisted.ok) {
- setReports((prev) => prev.filter((r) => r.id !== newReport.id));
- setActivities((prev) => prev.filter((a) => a.id !== newActivity.id));
- throw new Error(persisted.message || 'Could not save report.');
- }
 
- return newReport;
- }, [effectiveOrgId, reports, users]);
-
- const recordWageHourScreeningNo = useCallback(
- (userId: string) => {
- const now = new Date();
- const ack: WageHourScreeningAcknowledgement = {
- id: `wh-ack-${Date.now()}`,
- orgId: effectiveOrgId,
- userId,
- hasConcern: false,
- acknowledgedAt: now,
- };
- setWageHourAcknowledgements((prev) => [...prev, ack]);
- setActivities((prev) => [
- {
- id: `activity-${Date.now()}`,
- orgId: effectiveOrgId,
- type: 'WAGE_HOUR_SCREENING',
- actorUserId: userId,
- metadata: { hasConcern: false, acknowledgementId: ack.id },
- createdAt: now,
- },
- ...prev,
- ]);
- setAuditLogs((prev) => [
- {
- id: `audit-${Date.now()}`,
- orgId: effectiveOrgId,
- recordType: 'WAGE_HOUR_SCREENING',
- recordId: ack.id,
- field: 'hasConcern',
- oldValue: '',
- newValue: 'false',
- actorUserId: userId,
- createdAt: now,
- },
- ...prev,
- ]);
- return ack;
- },
- [effectiveOrgId]
- );
-
- const beginWageHourCase = useCallback(
- async (userId: string, sourceType: Report['reportSourceType'] = 'SELF_REPORTED') => {
- const now = new Date();
- const refNum = allocateCaseReferenceNumber(reports, effectiveOrgId, 'WAGE_HOUR');
- const defaultAdmin = users.find((u) => u.role === 'HR' || u.role === 'ADMIN');
- const newReport: Report = {
- id: `report-${Date.now()}`,
- orgId: effectiveOrgId,
- createdByUserId: userId,
- isAnonymous: false,
- reportSourceType: sourceType,
- caseType: 'WAGE_HOUR',
- referenceNumber: refNum,
- category: 'WAGE_HOURS',
- severity: 'MEDIUM',
- summary: 'Wage & Hour Concern',
- description: 'Protected wage and hour concern - complete intake to submit details.',
- status: 'PENDING_WAGE_HOUR_REVIEW',
- assignedTo: defaultAdmin?.id,
- needsExtendedWageHourIntake: true,
- messages: [],
- responseChecklist: createIndustryChecklistForReport(),
- handlingLedger: [
- {
- id: `ledger-${Date.now()}`,
- type: 'NOTE',
- text: 'Protected wage & hour case opened from employee portal screening.',
- createdAt: now,
- createdBy: userId,
- },
- ],
- createdAt: now,
- updatedAt: now,
- };
- setReports((prev) => [newReport, ...prev]);
- const activityId = `activity-${Date.now()}`;
- setActivities((prev) => [
- {
- id: activityId,
- orgId: effectiveOrgId,
- type: 'WAGE_HOUR_SCREENING',
- actorUserId: userId,
- metadata: { hasConcern: true, reportId: newReport.id, referenceNumber: refNum, alert: 'CLIENT_ADMIN' },
- createdAt: now,
- },
- ...prev,
- ]);
- setAuditLogs((prev) => [
- {
- id: `audit-${Date.now()}`,
- orgId: effectiveOrgId,
- recordType: 'REPORT',
- recordId: newReport.id,
- field: 'caseType',
- oldValue: '',
- newValue: 'WAGE_HOUR',
- actorUserId: userId,
- createdAt: now,
- },
- ...prev,
- ]);
- const persisted = await persistReport(newReport);
- if (!persisted.ok) {
- setReports((prev) => prev.filter((r) => r.id !== newReport.id));
- setActivities((prev) => prev.filter((a) => a.id !== activityId));
- throw new Error(persisted.message || 'Could not open wage & hour case.');
- }
- const employee = users.find((u) => u.id === userId);
- if (employee?.email) {
- void notifyWageHourYes({
- employeeEmail: employee.email,
- orgId: effectiveOrgId,
- caseId: newReport.id,
- referenceNumber: refNum,
- employeeUserId: userId,
- });
- }
- return newReport;
- },
- [effectiveOrgId, reports, users]
- );
-
- const completeWageHourIntake = useCallback(
- async (reportId: string, intake: WageHourIntakeData) => {
- const now = new Date();
- const existing = reports.find((r) => r.id === reportId);
- if (!existing) throw new Error('Case not found.');
- const submitted: WageHourIntakeData = { ...intake, submittedAt: now };
- const updated: Report = {
- ...existing,
- wageHourIntake: submitted,
- needsExtendedWageHourIntake: false,
- wageHourIntakeCompletedAt: now,
- status: 'PENDING_WAGE_HOUR_REVIEW',
- description: intake.concernDescription,
- summary: `Wage & Hour: ${intake.issueTypes.map((t) => t.replace(/_/g, ' ')).join(', ')}`,
- updatedAt: now,
- handlingLedger: [
- ...(existing.handlingLedger ?? []),
- {
- id: `ledger-${Date.now()}`,
- type: 'NOTE',
- text: 'Employee completed wage & hour intake form.',
- createdAt: now,
- createdBy: existing.createdByUserId,
- },
- ],
- };
- setReports((prev) => prev.map((r) => (r.id === reportId ? updated : r)));
- setActivities((prev) => [
- {
- id: `activity-${Date.now()}`,
- orgId: effectiveOrgId,
- type: 'WAGE_HOUR_SUBMITTED',
- actorUserId: existing.createdByUserId,
- metadata: { reportId, referenceNumber: existing.referenceNumber },
- createdAt: now,
- },
- ...prev,
- ]);
- setAuditLogs((prev) => [
- {
- id: `audit-${Date.now()}`,
- orgId: effectiveOrgId,
- recordType: 'REPORT',
- recordId: reportId,
- field: 'wageHourIntake',
- oldValue: 'draft',
- newValue: 'submitted',
- actorUserId: existing.createdByUserId ?? currentUser.id,
- createdAt: now,
- },
- ...prev,
- ]);
- const persisted = await persistReportChange(updated);
- if (!persisted.ok) {
- setReports((prev) => prev.map((r) => (r.id === reportId ? existing : r)));
- throw new Error(persisted.message || 'Could not save wage & hour intake.');
- }
- return updated;
- },
- [reports, currentUser.id, effectiveOrgId]
- );
-
- /** Payroll memo only: quick flag with no employee details - skips triage, 24h admin SLA. */
- const submitExpeditedPayrollReport = useCallback(
- async (
- userId: string,
- opts?: {
- deliveryId?: string;
- promptId?: string;
- promptNotes?: string;
- sourceType?: Report['reportSourceType'];
- }
- ) => {
- const now = new Date();
- const slaDue = new Date(now.getTime() + 24 * 60 * 60 * 1000);
- const refNum = allocateCaseReferenceNumber(reports, effectiveOrgId, 'WAGE_HOUR');
- const defaultAdmin = users.find((u) => u.role === 'ADMIN' || u.role === 'HR');
-
- let responseId: string | undefined;
- let linkedResponse: PromptResponse | undefined;
- let linkedDelivery: PromptDelivery | undefined;
- if (opts?.deliveryId) {
- const delivery = deliveries.find((d) => d.id === opts.deliveryId);
- if (delivery) {
- const note =
- opts.promptNotes ??
- 'Payroll memo: employee reported a payroll issue with no additional details (expedited 24h path).';
- // Defer persist so report FK waits on the response row.
- const response = submitPromptResponse(delivery.id, 'HAS_ISSUE', note, { skipPersist: true });
- responseId = response?.id;
- linkedResponse = response;
- linkedDelivery = delivery;
- if (responseId) {
- setResponses((prev) =>
- prev.map((r) =>
- r.id === responseId
- ? { ...r, needsReview: false, reviewedAt: now }
- : r
- )
- );
- if (linkedResponse) {
- linkedResponse = { ...linkedResponse, needsReview: false, reviewedAt: now };
- }
- }
- }
- }
-
- const intakeNote =
- 'Employee reported a payroll issue through the expedited payroll memo path. No additional details were provided. Administrator must review and resolve within 24 hours.';
-
- const activityId = `activity-${Date.now()}`;
- const newReport: Report = {
- id: `report-${Date.now()}`,
- orgId: effectiveOrgId,
- createdByUserId: userId,
- isAnonymous: false,
- sourcePromptId: opts?.promptId,
- sourcePromptResponseId: responseId,
- reportSourceType: opts?.sourceType ?? 'WAGE_HOUR_PROMPT',
- caseType: 'WAGE_HOUR',
- referenceNumber: refNum,
- category: 'WAGE_HOURS',
- severity: 'HIGH',
- summary: 'Payroll issue - expedited (no details)',
- description: intakeNote,
- status: 'PAYROLL_EXPEDITED',
- assignedTo: defaultAdmin?.id,
- expeditedPayroll: true,
- payrollSlaDueAt: slaDue,
- needsExtendedWageHourIntake: false,
- wageHourIntakeCompletedAt: now,
- wageHourIntake: {
- issueTypes: ['OTHER'],
- concernDescription: intakeNote,
- submittedAt: now,
- },
- handlingLedger: [
- {
- id: `ledger-${Date.now()}`,
- type: 'NOTE',
- text: 'Expedited payroll memo submitted. Routed directly to administrator - triage skipped. 24-hour resolution SLA.',
- createdAt: now,
- createdBy: userId,
- },
- ],
- createdAt: now,
- updatedAt: now,
- };
-
- setReports((prev) => [newReport, ...prev]);
- setActivities((prev) => [
- {
- id: activityId,
- orgId: effectiveOrgId,
- type: 'PAYROLL_EXPEDITED',
- actorUserId: userId,
- metadata: {
- reportId: newReport.id,
- referenceNumber: refNum,
- payrollSlaDueAt: slaDue.toISOString(),
- alert: 'ADMIN_24H',
- },
- createdAt: now,
- },
- ...prev,
- ]);
- setAuditLogs((prev) => [
- {
- id: `audit-${Date.now()}`,
- orgId: effectiveOrgId,
- recordType: 'REPORT',
- recordId: newReport.id,
- field: 'status',
- oldValue: '',
- newValue: 'PAYROLL_EXPEDITED',
- actorUserId: userId,
- createdAt: now,
- reason: 'Expedited payroll memo - no triage',
- },
- ...prev,
- ]);
-
- let persistedOk = false;
- if (linkedResponse && linkedDelivery) {
- const completedDelivery: PromptDelivery = {
- ...linkedDelivery,
- status: 'COMPLETED',
- completedAt: linkedDelivery.completedAt ?? now,
- updatedAt: now,
- };
- const result = await persistResponseThenReport(linkedResponse, completedDelivery, newReport);
- persistedOk = result.ok;
- } else {
- const persisted = await persistReport(newReport);
- persistedOk = persisted.ok;
- }
-
- if (!persistedOk) {
- setReports((prev) => prev.filter((r) => r.id !== newReport.id));
- setActivities((prev) => prev.filter((a) => a.id !== activityId));
- throw new Error('Could not save expedited payroll report.');
- }
-
- return newReport;
- },
- [effectiveOrgId, reports, users, deliveries, submitPromptResponse]
- );
- 
- // Update report status
- const updateReportStatus = useCallback((
- reportId: string,
- newStatus: ReportStatus,
- _note?: string,
- assignedTo?: string
- ) => {
- const report = reports.find(r => r.id === reportId);
- if (!report) return;
- 
- const now = new Date();
- const oldStatus = report.status;
-
- const updatedReport: Report = {
- ...report,
- status: newStatus,
- assignedTo: assignedTo || report.assignedTo,
- updatedAt: now,
- };
- setReports(prev => prev.map(r => (r.id === reportId ? updatedReport : r)));
-
- // Add activity event
- const newActivity: ActivityEvent = {
- id: `activity-${Date.now()}`,
- orgId: effectiveOrgId,
- type: 'REPORT_STATUS_CHANGED',
- actorUserId: currentUser.id,
- metadata: { reportId, from: oldStatus, to: newStatus },
- createdAt: now,
- };
- 
- setActivities(prev => [newActivity, ...prev]);
- const statusEvent: ReportStatusEvent = {
- id: `status-event-${Date.now()}`,
- orgId: effectiveOrgId,
- reportId,
- fromStatus: oldStatus,
- toStatus: newStatus,
- changedBy: currentUser.id,
- note: _note,
- createdAt: now,
- updatedAt: now,
- };
- setReportStatusEvents((prev) => [statusEvent, ...prev]);
- void persistReportChange(updatedReport, statusEvent);
- }, [reports, currentUser.id, effectiveOrgId]);
- 
- // Assign report
- const assignReport = useCallback((reportId: string, adminId: string) => {
- const report = reports.find(r => r.id === reportId);
- if (!report) return;
- 
- const now = new Date();
-
- const updatedReport: Report = {
- ...report,
- assignedTo: adminId,
- status: 'ASSIGNED',
- updatedAt: now,
- };
- setReports(prev => prev.map(r => (r.id === reportId ? updatedReport : r)));
-
- // Add activity event
- const newActivity: ActivityEvent = {
- id: `activity-${Date.now()}`,
- orgId: effectiveOrgId,
- type: 'REPORT_ASSIGNED',
- actorUserId: currentUser.id,
- metadata: { reportId, assignedTo: adminId },
- createdAt: now,
- };
- 
- setActivities(prev => [newActivity, ...prev]);
- let statusEvent: ReportStatusEvent | undefined;
- if (report.status !== 'ASSIGNED') {
- statusEvent = {
- id: `status-event-${Date.now()}`,
- orgId: effectiveOrgId,
- reportId,
- fromStatus: report.status,
- toStatus: 'ASSIGNED',
- changedBy: currentUser.id,
- note: `Assigned to ${adminId}`,
- createdAt: now,
- updatedAt: now,
- };
- setReportStatusEvents((prev) => [statusEvent!, ...prev]);
- }
- void persistReportChange(updatedReport, statusEvent);
- }, [reports, currentUser.id, effectiveOrgId]);
- 
- // Create investigation
- const createInvestigation = useCallback((reportId: string, ownerId: string) => {
- const report = reports.find(r => r.id === reportId);
- if (!report) return;
- 
- const now = new Date();
- 
- const refNum =
- report.referenceNumber ??
- allocateCaseReferenceNumber(reports, report.orgId, report.caseType ?? 'WORKPLACE_INVESTIGATION');
- const prompt = report.sourcePromptId ? prompts.find((p) => p.id === report.sourcePromptId) : undefined;
- const sourceType = inferReportSourceType(report, prompt);
- const priority: InvestigationPriority =
- report.severity === 'CRITICAL' ? 'CRITICAL' : report.severity === 'HIGH' ? 'HIGH' : report.severity === 'MEDIUM' ? 'MEDIUM' : 'LOW';
- const stageHistory = [
- buildStageHistoryEntry('INTAKE_RECEIVED', currentUser.id, ownerId, 'Investigation shell created from linked report'),
- buildStageHistoryEntry('PENDING_REVIEW', currentUser.id, ownerId),
- ];
- const newInvestigation: Investigation = {
- id: `inv-${Date.now()}`,
- orgId: effectiveOrgId,
- referenceNumber: refNum,
- status: 'OPEN',
- ownerId,
- linkedReportIds: [reportId],
- category: report.category,
- severity: report.severity,
- priority,
- riskLevel: report.severity === 'CRITICAL' || report.severity === 'HIGH' ? 'HIGH' : 'MEDIUM',
- reportSourceType: sourceType,
- linkedPromptId: report.sourcePromptId,
- linkedPromptResponseId: report.sourcePromptResponseId,
- openedAt: now,
- lastUpdateAt: now,
- createdAt: now,
- updatedAt: now,
- workflowPhase: 'QUEUED',
- stage: 'PENDING_REVIEW',
- stageHistory,
- checklistStages: buildDefaultChecklistStages(),
- subjectUserIds:
- report.createdByUserId && !report.isAnonymous ? [report.createdByUserId] : [],
- persons: [],
- notes: [],
- workflowPagesCompleted: { intake: false, gathering: false, outcome: false },
- };
- 
- setInvestigations(prev => [...prev, newInvestigation]);
- 
- const checklist = (report.responseChecklist ?? []).length > 0 ? report.responseChecklist : createIndustryChecklistForReport();
- const updatedReport: Report = {
- ...report,
- investigationId: newInvestigation.id,
- referenceNumber: report.referenceNumber ?? refNum,
- responseChecklist: checklist,
- updatedAt: now,
- };
- setReports(prev => prev.map(r => (r.id === reportId ? updatedReport : r)));
-
- void persistInvestigation(newInvestigation);
- void persistReportChange(updatedReport);
- 
- // Add activity event
- const newActivity: ActivityEvent = {
- id: `activity-${Date.now()}`,
- orgId: effectiveOrgId,
- type: 'INVESTIGATION_CREATED',
- actorUserId: currentUser.id,
- metadata: { investigationId: newInvestigation.id, reportId },
- createdAt: now,
- };
- 
- setActivities(prev => [newActivity, ...prev]);
-
- setAuditLogs((prev) => [
- {
- id: `audit-${Date.now()}-inv`,
- orgId: effectiveOrgId,
- recordType: 'INVESTIGATION',
- recordId: newInvestigation.id,
- field: 'status',
- oldValue: '',
- newValue: 'OPEN',
- actorUserId: currentUser.id,
- createdAt: now,
- reason: `Investigation created from report ${reportId}`,
- },
- {
- id: `audit-${Date.now()}-report`,
- orgId: effectiveOrgId,
- recordType: 'REPORT',
- recordId: reportId,
- field: 'investigationId',
- oldValue: '',
- newValue: newInvestigation.id,
- actorUserId: currentUser.id,
- createdAt: now,
- },
- ...prev,
- ]);
- 
- return newInvestigation;
- }, [reports, investigations, currentUser.id]);
-
- const saveInvestigationProgress = useCallback((investigationId: string) => {
- setInvestigations((prev) => {
- const inv = prev.find((i) => i.id === investigationId);
- if (!inv) return prev;
- const next = { ...inv, updatedAt: new Date(), lastUpdateAt: new Date() };
- void persistInvestigation(next);
- return prev.map((i) => (i.id === investigationId ? next : i));
- });
- }, []);
-
- const appendInvestigationAudit = useCallback(
- (investigationId: string, field: string, oldValue: string, newValue: string, reason?: string) => {
- const entry: AuditLogEntry = {
- id: `audit-${Date.now()}`,
- orgId: effectiveOrgId,
- recordType: 'INVESTIGATION',
- recordId: investigationId,
- field,
- oldValue,
- newValue,
- actorUserId: currentUser.id,
- createdAt: new Date(),
- reason,
- };
- setAuditLogs((prev) => [entry, ...prev]);
- },
- [currentUser.id]
- );
-
- const advanceInvestigationStage = useCallback(
- (investigationId: string, stage: InvestigationStage, note?: string) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) => {
- if (inv.id !== investigationId) return inv;
- const history = [...(inv.stageHistory ?? []), buildStageHistoryEntry(stage, currentUser.id, inv.ownerId, note)];
- return {
- ...inv,
- stage,
- stageHistory: history,
- lastUpdateAt: now,
- updatedAt: now,
- workflowPhase:
- stage === 'IN_PROGRESS' || stage === 'EMPLOYEE_FOLLOW_UP' || stage === 'EVIDENCE_REVIEW'
- ? 'IN_PROGRESS'
- : stage === 'OUTCOME_PENDING'
- ? 'AWAITING_OUTCOME_ACK'
- : inv.workflowPhase,
- };
- })
- );
- appendInvestigationAudit(investigationId, 'stage', '', stage, note);
- },
- [currentUser.id, appendInvestigationAudit]
- );
-
- const assignInvestigationOwner = useCallback(
- (investigationId: string, ownerId: string) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
- ? {
- ...inv,
- ownerId,
- stage: inv.stage === 'PENDING_REVIEW' || !inv.stage ? 'ASSIGNED' : inv.stage,
- stageHistory: [
- ...(inv.stageHistory ?? []),
- buildStageHistoryEntry('ASSIGNED', currentUser.id, ownerId, 'Lead investigator assigned'),
- ],
- lastUpdateAt: now,
- updatedAt: now,
- }
- : inv
- )
- );
- appendInvestigationAudit(investigationId, 'ownerId', '', ownerId);
- },
- [currentUser.id, appendInvestigationAudit]
- );
-
- const setInvestigationPersons = useCallback((investigationId: string, persons: InvestigationPerson[]) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId ? { ...inv, persons, lastUpdateAt: now, updatedAt: now } : inv
- )
- );
- }, []);
-
- const updateInvestigationChecklist = useCallback(
- (investigationId: string, stages: InvestigationChecklistStage[]) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId ? { ...inv, checklistStages: stages, lastUpdateAt: now, updatedAt: now } : inv
- )
- );
- },
- []
- );
-
- const addInvestigationEvidence = useCallback(
- (investigationId: string, record: Omit<InvestigationEvidenceRecord, 'id' | 'uploadedAt' | 'uploadedByUserId' | 'preserved'>) => {
- const now = new Date();
- const entry: InvestigationEvidenceRecord = {
- ...record,
- id: `ev-${Date.now()}`,
- uploadedAt: now,
- uploadedByUserId: currentUser.id,
- preserved: true,
- };
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
- ? { ...inv, evidenceRecords: [...(inv.evidenceRecords ?? []), entry], lastUpdateAt: now, updatedAt: now }
- : inv
- )
- );
- appendInvestigationAudit(investigationId, 'evidence', '', entry.fileName, 'Evidence uploaded');
- return entry;
- },
- [currentUser.id, appendInvestigationAudit]
- );
-
- const addInvestigationResponseRequest = useCallback(
- (investigationId: string, payload: Omit<InvestigationResponseRequest, 'id' | 'createdAt' | 'createdByUserId' | 'status'>) => {
- const now = new Date();
- const req: InvestigationResponseRequest = {
- ...payload,
- id: `req-${Date.now()}`,
- status: payload.sentAt ? 'SENT' : 'DRAFT',
- createdAt: now,
- createdByUserId: currentUser.id,
- };
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
- ? {
- ...inv,
- responseRequests: [...(inv.responseRequests ?? []), req],
- stage: inv.stage === 'IN_PROGRESS' ? 'EMPLOYEE_FOLLOW_UP' : inv.stage,
- lastUpdateAt: now,
- updatedAt: now,
- }
- : inv
- )
- );
- appendInvestigationAudit(investigationId, 'responseRequest', '', req.id, 'Response request created');
- return req;
- },
- [currentUser.id, appendInvestigationAudit]
- );
-
- const updateInvestigationResponseRequest = useCallback(
- (investigationId: string, requestId: string, patch: Partial<InvestigationResponseRequest>) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
- ? {
- ...inv,
- responseRequests: (inv.responseRequests ?? []).map((r) => (r.id === requestId ? { ...r, ...patch } : r)),
- lastUpdateAt: now,
- updatedAt: now,
- }
- : inv
- )
- );
- },
- []
- );
-
- const submitEmployeeInvestigationResponse = useCallback(
- (investigationId: string, requestId: string, responseText: string) => {
- const inv = investigations.find((i) => i.id === investigationId);
- const req = inv?.responseRequests?.find((r) => r.id === requestId);
- if (!inv || !req || req.partyUserId !== currentUser.id) return false;
- const trimmed = responseText.trim();
- if (!trimmed) return false;
- const now = new Date();
- updateInvestigationResponseRequest(investigationId, requestId, {
- status: 'SUBMITTED',
- submittedAt: now,
- viewedAt: req.viewedAt ?? now,
- responseText: trimmed,
- });
- setActivities((prev) => [
- {
- id: `activity-${Date.now()}`,
- orgId: effectiveOrgId,
- type: 'INVESTIGATION_UPDATED',
- actorUserId: currentUser.id,
- metadata: { investigationId, requestId, action: 'EMPLOYEE_RESPONSE_SUBMITTED' },
- createdAt: now,
- },
- ...prev,
- ]);
- setAuditLogs((prev) => [
- {
- id: `audit-${Date.now()}`,
- orgId: effectiveOrgId,
- recordType: 'INVESTIGATION',
- recordId: investigationId,
- field: 'responseRequest',
- oldValue: req.status,
- newValue: 'SUBMITTED',
- actorUserId: currentUser.id,
- createdAt: now,
- reason: `Employee response on request ${requestId}`,
- },
- ...prev,
- ]);
- return true;
- },
- [investigations, currentUser.id, updateInvestigationResponseRequest]
- );
-
- const updateInvestigationAnalysis = useCallback(
- (
- investigationId: string,
- patch: {
- findingsRationale?: string;
- policyAnalysisNotes?: string;
- linkedPolicyIds?: string[];
- finalFindingsReport?: string;
- legalInvolved?: boolean;
- legalInvolvementNotes?: string;
- }
- ) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) => (inv.id === investigationId ? { ...inv, ...patch, lastUpdateAt: now, updatedAt: now } : inv))
- );
- },
- []
- );
-
- const addCorrectiveAction = useCallback(
- (investigationId: string, payload: Omit<InvestigationCorrectiveAction, 'id' | 'createdAt' | 'createdByUserId' | 'status'>) => {
- const now = new Date();
- const action: InvestigationCorrectiveAction = {
- ...payload,
- id: `ca-${Date.now()}`,
- status: 'PENDING',
- createdAt: now,
- createdByUserId: currentUser.id,
- };
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
- ? { ...inv, correctiveActions: [...(inv.correctiveActions ?? []), action], lastUpdateAt: now, updatedAt: now }
- : inv
- )
- );
- return action;
- },
- [currentUser.id]
- );
-
- const updateCorrectiveAction = useCallback(
- (investigationId: string, actionId: string, patch: Partial<InvestigationCorrectiveAction>) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
- ? {
- ...inv,
- correctiveActions: (inv.correctiveActions ?? []).map((a) =>
- a.id === actionId ? { ...a, ...patch, completedAt: patch.status === 'COMPLETE' ? now : a.completedAt } : a
- ),
- lastUpdateAt: now,
- updatedAt: now,
- }
- : inv
- )
- );
- },
- []
- );
-
- const addFollowUp = useCallback(
- (investigationId: string, payload: Omit<InvestigationFollowUp, 'id' | 'createdAt' | 'status'>) => {
- const now = new Date();
- const followUp: InvestigationFollowUp = {
- ...payload,
- id: `fu-${Date.now()}`,
- status: 'SCHEDULED',
- createdAt: now,
- };
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
- ? { ...inv, followUps: [...(inv.followUps ?? []), followUp], lastUpdateAt: now, updatedAt: now }
- : inv
- )
- );
- return followUp;
- },
- []
- );
-
- const completeFollowUp = useCallback(
- (investigationId: string, followUpId: string, notes?: string, concernLogged?: boolean) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
- ? {
- ...inv,
- followUps: (inv.followUps ?? []).map((f) =>
- f.id === followUpId ? { ...f, status: 'COMPLETE', completedAt: now, notes, concernLogged } : f
- ),
- lastUpdateAt: now,
- updatedAt: now,
- }
- : inv
- )
- );
- },
- []
- );
-
- const sendNonRetaliationReminder = useCallback(
- (investigationId: string) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId ? { ...inv, nonRetaliationSentAt: now, lastUpdateAt: now, updatedAt: now } : inv
- )
- );
- appendInvestigationAudit(investigationId, 'nonRetaliation', '', 'sent', 'Non-retaliation reminder auto-sent');
- },
- [appendInvestigationAudit]
- );
-
- const setInvestigationOutcomeClassification = useCallback(
- (investigationId: string, classification: OutcomeClassification) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId ? { ...inv, outcomeClassification: classification, lastUpdateAt: now, updatedAt: now } : inv
- )
- );
- },
- []
- );
-
- const pickUpInvestigation = useCallback(
- (investigationId: string, preferred: InvestigationEmployeeContactPreference) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
- ? {
- ...inv,
- workflowPhase: 'IN_PROGRESS',
- stage: 'IN_PROGRESS',
- pickedUpAt: now,
- employeePreferredContact: preferred,
- ownerId: currentUser.id,
- stageHistory: [
- ...(inv.stageHistory ?? []),
- buildStageHistoryEntry('IN_PROGRESS', currentUser.id, currentUser.id, 'Investigator opened case'),
- ],
- lastUpdateAt: now,
- updatedAt: now,
- }
- : inv
- )
- );
- const newActivity: ActivityEvent = {
- id: `activity-${Date.now()}`,
- orgId: effectiveOrgId,
- type: 'INVESTIGATION_UPDATED',
- actorUserId: currentUser.id,
- metadata: { investigationId, action: 'PICKED_UP' },
- createdAt: now,
- };
- setActivities((prev) => [newActivity, ...prev]);
- },
- [currentUser.id]
- );
-
- const setInvestigationInitialContactNotes = useCallback((investigationId: string, notes: string) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId ? { ...inv, initialContactNotes: notes, lastUpdateAt: now, updatedAt: now } : inv
- )
- );
- }, []);
-
- const markInvestigationPageComplete = useCallback(
- (investigationId: string, page: 'intake' | 'gathering' | 'outcome') => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) => {
- if (inv.id !== investigationId) return inv;
- const completed = { ...(inv.workflowPagesCompleted ?? {}), [page]: true };
- return { ...inv, workflowPagesCompleted: completed, lastUpdateAt: now, updatedAt: now };
- })
- );
- },
- []
- );
-
- const setInvestigationSubjectUsers = useCallback((investigationId: string, subjectUserIds: string[]) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId ? { ...inv, subjectUserIds, lastUpdateAt: now, updatedAt: now } : inv
- )
- );
- }, []);
-
- const addInvestigationNote = useCallback(
- (
- investigationId: string,
- payload: {
- visibility: InvestigationNote['visibility'];
- body: string;
- attachments?: InvestigationAttachment[];
- requiresEmployeeSignature?: boolean;
- noteType?: InvestigationNoteType;
- taggedUserIds?: string[];
- }
- ) => {
- const now = new Date();
- const note: InvestigationNote = {
- id: `inv-note-${Date.now()}`,
- visibility: payload.visibility,
- body: payload.body,
- createdAt: now,
- createdByUserId: currentUser.id,
- attachments: payload.attachments,
- requiresEmployeeSignature: payload.requiresEmployeeSignature,
- noteType: payload.noteType,
- taggedUserIds: payload.taggedUserIds,
- sentAt: payload.visibility === 'EMPLOYEE' ? now : undefined,
- };
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
- ? { ...inv, notes: [...(inv.notes ?? []), note], lastUpdateAt: now, updatedAt: now }
- : inv
- )
- );
- const newActivity: ActivityEvent = {
- id: `activity-${Date.now()}`,
- orgId: effectiveOrgId,
- type: 'INVESTIGATION_UPDATED',
- actorUserId: currentUser.id,
- metadata: { investigationId, noteId: note.id },
- createdAt: now,
- };
- setActivities((prev) => [newActivity, ...prev]);
- },
- [currentUser.id]
- );
-
- const sendInvestigationOutcomeToEmployee = useCallback(
- (
- investigationId: string,
- payload: {
- summary: string;
- requiresSignature: boolean;
- attachment?: InvestigationAttachment;
- }
- ) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
- ? {
- ...inv,
- outcomeSummary: payload.summary,
- outcomeRequiresSignature: payload.requiresSignature,
- outcomeAttachment: payload.attachment,
- outcomeSentAt: now,
- outcomeEmployeeAgreed: null,
- outcomeEmployeeSignedAt: undefined,
- workflowPhase: 'AWAITING_OUTCOME_ACK',
- stage: 'OUTCOME_PENDING',
- stageHistory: [
- ...(inv.stageHistory ?? []),
- buildStageHistoryEntry('OUTCOME_PENDING', currentUser.id, inv.ownerId, 'Outcome sent to employee'),
- ],
- lastUpdateAt: now,
- updatedAt: now,
- }
- : inv
- )
- );
- const newActivity: ActivityEvent = {
- id: `activity-${Date.now()}`,
- orgId: effectiveOrgId,
- type: 'INVESTIGATION_UPDATED',
- actorUserId: currentUser.id,
- metadata: { investigationId, action: 'OUTCOME_SENT' },
- createdAt: now,
- };
- setActivities((prev) => [newActivity, ...prev]);
- },
- [currentUser.id]
- );
-
- const employeeAcknowledgeInvestigationOutcome = useCallback(
- (investigationId: string, agreed: boolean) => {
- const inv = investigations.find((i) => i.id === investigationId);
- if (!inv) return;
- const primaryReport = reports.find((r) => inv.linkedReportIds.includes(r.id));
- if (!primaryReport || primaryReport.createdByUserId !== currentUser.id) return;
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((i) =>
- i.id === investigationId
- ? {
- ...i,
- outcomeEmployeeSignedAt: now,
- outcomeEmployeeAgreed: agreed,
- lastUpdateAt: now,
- updatedAt: now,
- }
- : i
- )
- );
- },
- [investigations, reports, currentUser.id]
- );
-
- const closeInvestigation = useCallback((investigationId: string) => {
- const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
- ? {
- ...inv,
- status: 'CLOSED',
- stage: 'CLOSED',
- closedAt: now,
- stageHistory: [
- ...(inv.stageHistory ?? []),
- buildStageHistoryEntry('CLOSED', currentUser.id, inv.ownerId, 'Investigation closed'),
- ],
- lastUpdateAt: now,
- updatedAt: now,
- }
- : inv
- )
- );
- const newActivity: ActivityEvent = {
- id: `activity-${Date.now()}`,
- orgId: effectiveOrgId,
- type: 'INVESTIGATION_UPDATED',
- actorUserId: currentUser.id,
- metadata: { investigationId, action: 'CLOSED' },
- createdAt: now,
- };
- setActivities((prev) => [newActivity, ...prev]);
- }, [currentUser.id]);
-
- const completeIncidentIntake = useCallback(
- async (
- reportId: string,
- payload: { description: string; peopleInvolved?: string; location?: string }
- ) => {
- const report = reports.find((r) => r.id === reportId);
- if (!report || report.createdByUserId !== currentUser.id) {
- throw new Error('Report not found.');
- }
- const now = new Date();
- const updated: Report = {
- ...report,
- description: payload.description,
- peopleInvolved: payload.peopleInvolved ?? report.peopleInvolved,
- location: payload.location ?? report.location,
- needsExtendedIncidentIntake: false,
- incidentIntakeCompletedAt: now,
- updatedAt: now,
- };
- setReports((prev) => prev.map((r) => (r.id === reportId ? updated : r)));
- const activityId = `activity-${Date.now()}`;
- setActivities((prev) => [
- {
- id: activityId,
- orgId: effectiveOrgId,
- type: 'REPORT_STATUS_CHANGED',
- actorUserId: currentUser.id,
- metadata: { reportId, action: 'INCIDENT_INTAKE_COMPLETED' },
- createdAt: now,
- },
- ...prev,
- ]);
- const persisted = await persistReportChange(updated);
- if (!persisted.ok) {
- setReports((prev) => prev.map((r) => (r.id === reportId ? report : r)));
- setActivities((prev) => prev.filter((a) => a.id !== activityId));
- throw new Error(persisted.message || 'Could not save incident form.');
- }
- return updated;
- },
- [reports, currentUser.id, effectiveOrgId]
- );
- 
  // Send nudge
  const sendNudge = useCallback((
  targetUserId: string,
@@ -2517,221 +1218,22 @@ export function useDataStore() {
  return () => clearInterval(timer);
  }, []);
 
- const addReportMessage = useCallback((reportId: string, body: string) => {
- const now = new Date();
- setReports((prev) =>
- prev.map((report) =>
- report.id === reportId
- ? {
- ...report,
- messages: [...(report.messages ?? []), { id: `msg-${Date.now()}`, authorUserId: currentUser.id, body, createdAt: now }],
- updatedAt: now,
- }
- : report
- )
- );
- const report = reports.find((r) => r.id === reportId);
- if (report && body.trim() && orgSettings.enableEmail !== false) {
-   const reporterId = report.createdByUserId;
-   const assigneeId = report.assignedTo;
-   const preferredRecipient =
-     currentUser.id === reporterId ? assigneeId : reporterId;
-   const toUserId =
-     preferredRecipient && preferredRecipient !== currentUser.id
-       ? preferredRecipient
-       : assigneeId && assigneeId !== currentUser.id
-         ? assigneeId
-         : reporterId && reporterId !== currentUser.id
-           ? reporterId
-           : null;
-   if (toUserId) {
-     void sendNotificationEmail({
-       recipientUserId: toUserId,
-       subject: 'Case update on Mismo',
-       body: body.trim(),
-       kind: 'CASE_UPDATE',
-       actionPage: 'report-detail',
-       actionParams: { id: reportId },
-       templateId: 'new_message',
-     }).then((result) => {
-       if (!result) return;
-       setAppNotifications((prev) => [
-         {
-           id: result.notificationId ?? `notif-case-${Date.now()}`,
-           orgId: effectiveOrgId,
-           userId: toUserId,
-           kind: 'CASE_UPDATE',
-           title: 'Case update on Mismo',
-           body: body.trim().slice(0, 500),
-           actionPage: 'report-detail',
-           actionParams: { id: reportId },
-           emailStatus: result.emailStatus,
-           actorUserId: currentUser.id,
-           createdAt: new Date(),
-         },
-         {
-           id: `notif-case-sent-${Date.now()}`,
-           orgId: effectiveOrgId,
-           userId: currentUser.id,
-           kind: 'SYSTEM',
-           title: 'Case message sent',
-           body: `Update emailed (${result.emailStatus ?? 'unknown'}).`,
-           actionPage: 'report-detail',
-           actionParams: { id: reportId },
-           emailStatus: result.emailStatus,
-           actorUserId: currentUser.id,
-           createdAt: new Date(),
-         },
-         ...prev,
-       ]);
-     });
-   }
- }
- }, [currentUser.id, reports, orgSettings.enableEmail, effectiveOrgId]);
+ const {
+ addReportMessage,
+ addReportHandlingEntry,
+ addReportLedgerFile,
+ updateReportHandling,
+ toggleReportChecklistItem,
+ updateReportChecklistItemEvidence,
+ } = useReportLedgerActions({
+ reports,
+ currentUser,
+ effectiveOrgId,
+ orgSettings,
+ setReports,
+ setAppNotifications,
+ });
 
- const addReportHandlingEntry = useCallback((reportId: string, type: ReportHandlingEntryType, text: string) => {
- if (!text.trim()) return;
- const now = new Date();
- const entry: ReportHandlingEntry = {
- id: `ledger-${Date.now()}`,
- type,
- text: text.trim(),
- createdAt: now,
- createdBy: currentUser.id,
- };
- setReports((prev) =>
- prev.map((report) =>
- report.id === reportId
- ? {
- ...report,
- handlingLedger: [...(report.handlingLedger ?? []), entry],
- updatedAt: now,
- }
- : report
- )
- );
- }, [currentUser.id]);
-
- const addReportLedgerFile = useCallback((reportId: string, file: File) => {
- const now = new Date();
- const reader = new FileReader();
- reader.onload = () => {
- const dataUrl = reader.result as string;
- const entry: ReportHandlingEntry = {
- id: `ledger-${Date.now()}`,
- type: 'FILE',
- text: file.name,
- createdAt: now,
- createdBy: currentUser.id,
- fileFileName: file.name,
- fileSize: file.size,
- fileDataUrl: dataUrl,
- };
- setReports((prev) =>
- prev.map((report) =>
- report.id === reportId
- ? {
- ...report,
- handlingLedger: [...(report.handlingLedger ?? []), entry],
- updatedAt: now,
- }
- : report
- )
- );
- };
- reader.readAsDataURL(file);
- }, [currentUser.id]);
-
- const updateReportHandling = useCallback(
- (
- reportId: string,
- updates: Pick<
- Report,
- 'responsePlan' | 'responseActionTaken' | 'employeeResponseOutcome' | 'ginaBuildNotes' | 'evidenceMetadata'
- >
- ) => {
- const now = new Date();
- setReports((prev) =>
- prev.map((report) =>
- report.id === reportId
- ? {
- ...report,
- ...updates,
- updatedAt: now,
- }
- : report
- )
- );
- },
- []
- );
-
- const toggleReportChecklistItem = useCallback((reportId: string, itemId: string, completed: boolean) => {
- const now = new Date();
- setReports((prev) =>
- prev.map((report) =>
- report.id === reportId
- ? {
- ...report,
- responseChecklist: (report.responseChecklist ?? []).map((item) =>
- item.id === itemId
- ? {
- ...item,
- completed,
- completedAt: completed ? now : undefined,
- completedBy: completed ? currentUser.id : undefined,
- }
- : item
- ),
- updatedAt: now,
- }
- : report
- )
- );
- }, [currentUser.id]);
-
- const updateReportChecklistItemEvidence = useCallback(
- (
- reportId: string,
- itemId: string,
- updates: {
- completed?: boolean;
- evidenceNote?: string;
- evidenceFileFileName?: string;
- evidenceFileDataUrl?: string;
- }
- ) => {
- const now = new Date();
- setReports((prev) =>
- prev.map((report) =>
- report.id === reportId
- ? {
- ...report,
- responseChecklist: (report.responseChecklist ?? []).map((item) =>
- item.id === itemId
- ? {
- ...item,
- ...(updates.completed !== undefined && {
- completed: updates.completed,
- completedAt: updates.completed ? now : undefined,
- completedBy: updates.completed ? currentUser.id : undefined,
- }),
- ...(updates.evidenceNote !== undefined && { evidenceNote: updates.evidenceNote }),
- ...(updates.evidenceFileFileName !== undefined && {
- evidenceFileFileName: updates.evidenceFileFileName,
- evidenceFileDataUrl: updates.evidenceFileDataUrl,
- }),
- }
- : item
- ),
- updatedAt: now,
- }
- : report
- )
- );
- },
- [currentUser.id]
- );
 
  const updateUser = useCallback((userId: string, updates: Partial<User>) => {
  const now = new Date();
@@ -2917,359 +1419,63 @@ export function useDataStore() {
  [orgSettings.customRoles, updateOrgSettings]
  );
 
- const emptyClientCompany = (overrides: Partial<ClientCompany> = {}): ClientCompany => {
- const now = new Date();
- return {
- id: `client-${Date.now()}`,
- managedByOrgId: effectiveOrgId,
- companyName: '',
- address1: '',
- address2: '',
- city: '',
- state: '',
- zip: '',
- country: 'USA',
- telephone: '',
- fax: '',
- tollFree: '',
- website: '',
- jestarAccountRep: '',
- billingIncrement: '',
- paymentMode: '',
- inactiveReason: '',
- status: 'active',
- createdAt: now,
- updatedAt: now,
- ...overrides,
- };
- };
-
- const createClientCompany = useCallback(
- (input: Partial<ClientCompany> = {}): ClientCompany | { error: string } => {
- const companyName = (input.companyName ?? '').trim();
- if (!companyName) return { error: 'Company name is required.' };
- const company = emptyClientCompany({
- ...input,
- companyName,
- country: input.country?.trim() || 'USA',
- state: (input.state ?? '').trim().toUpperCase().slice(0, 2),
- managedByOrgId: effectiveOrgId,
+ const {
+ createClientCompany,
+ updateClientCompany,
+ addClientContact,
+ updateClientContact,
+ deleteClientContact,
+ addClientDocument,
+ deleteClientDocument,
+ addClientNote,
+ addClientPayment,
+ addClientSupportEntry,
+ } = useClientCrmActions({
+ currentUser,
+ effectiveOrgId,
+ setClientCompanies,
+ setClientContacts,
+ setClientDocuments,
+ setClientNotes,
+ setClientPayments,
+ setClientSupportEntries,
  });
- setClientCompanies((prev) => [company, ...prev]);
- void persistClientCompany(company);
- return company;
- },
- [effectiveOrgId]
- );
 
- const updateClientCompany = useCallback(
- (clientId: string, updates: Partial<ClientCompany>): ClientCompany | { error: string } | null => {
- if (updates.companyName !== undefined && !updates.companyName.trim()) {
- return { error: 'Company name is required.' };
- }
- let updated: ClientCompany | null = null;
- setClientCompanies((prev) =>
- prev.map((c) => {
- if (c.id !== clientId) return c;
- updated = {
- ...c,
- ...updates,
- companyName: updates.companyName !== undefined ? updates.companyName.trim() : c.companyName,
- state: updates.state !== undefined ? updates.state.trim().toUpperCase().slice(0, 2) : c.state,
- country: updates.country !== undefined ? updates.country.trim() || 'USA' : c.country,
- updatedAt: new Date(),
- };
- return updated;
- })
- );
- if (updated) void persistClientCompany(updated);
- return updated;
- },
- []
- );
-
- const addClientContact = useCallback(
- (clientId: string, input: Omit<ClientContact, 'id' | 'clientId' | 'createdAt' | 'updatedAt'>) => {
- const now = new Date();
- const office = input.officePhone || input.phone || '';
- const contact: ClientContact = {
- name: input.name,
- title: input.title ?? '',
- department: input.department ?? '',
- email: input.email ?? '',
- phone: office,
- officePhone: office,
- directPhone: input.directPhone ?? '',
- extension: input.extension ?? '',
- cellPhone: input.cellPhone ?? '',
- isPrimary: Boolean(input.isPrimary),
- id: `client-contact-${Date.now()}`,
- clientId,
- createdAt: now,
- updatedAt: now,
- };
- setClientContacts((prev) => [...prev, contact]);
- void persistClientContact(contact);
- return contact;
- },
- []
- );
-
- const updateClientContact = useCallback((contactId: string, updates: Partial<ClientContact>) => {
- let updated: ClientContact | null = null;
- setClientContacts((prev) =>
- prev.map((c) => {
- if (c.id !== contactId) return c;
- updated = { ...c, ...updates, updatedAt: new Date() };
- return updated;
- })
- );
- if (updated) void persistClientContact(updated);
- }, []);
-
- const deleteClientContact = useCallback((contactId: string) => {
- setClientContacts((prev) => prev.filter((c) => c.id !== contactId));
- void deleteClientContactRecord(contactId);
- }, []);
-
- const addClientDocument = useCallback(
- (clientId: string, input: { title: string; fileName: string; notes?: string }) => {
- const doc: ClientDocument = {
- id: `client-doc-${Date.now()}`,
- clientId,
- title: input.title.trim() || input.fileName,
- fileName: input.fileName,
- notes: input.notes ?? '',
- uploadedByUserId: currentUser.id,
- uploadedAt: new Date(),
- };
- setClientDocuments((prev) => [doc, ...prev]);
- void persistClientDocument(doc);
- return doc;
- },
- [currentUser.id]
- );
-
- const deleteClientDocument = useCallback((documentId: string) => {
- setClientDocuments((prev) => prev.filter((d) => d.id !== documentId));
- void deleteClientDocumentRecord(documentId);
- }, []);
-
- const addClientNote = useCallback(
- (clientId: string, body: string) => {
- const trimmed = body.trim();
- if (!trimmed) return null;
- const note: ClientNote = {
- id: `client-note-${Date.now()}`,
- clientId,
- body: trimmed,
- createdByUserId: currentUser.id,
- createdByName: `${currentUser.firstName} ${currentUser.lastName}`.trim(),
- createdAt: new Date(),
- };
- setClientNotes((prev) => [note, ...prev]);
- void persistClientNote(note);
- return note;
- },
- [currentUser.id, currentUser.firstName, currentUser.lastName]
- );
-
- const addClientPayment = useCallback(
- (clientId: string, input: { amount: number; paidAt: Date; method: string; reference?: string; notes?: string }) => {
- const payment: ClientPayment = {
- id: `client-pay-${Date.now()}`,
- clientId,
- amount: input.amount,
- paidAt: input.paidAt,
- method: input.method,
- reference: input.reference ?? '',
- notes: input.notes ?? '',
- createdAt: new Date(),
- };
- setClientPayments((prev) => [payment, ...prev]);
- void persistClientPayment(payment);
- return payment;
- },
- []
- );
-
- const addClientSupportEntry = useCallback(
- (clientId: string, body: string) => {
- const trimmed = body.trim();
- if (!trimmed) return null;
- const entry: ClientSupportEntry = {
- id: `client-support-${Date.now()}`,
- clientId,
- body: trimmed,
- createdByUserId: currentUser.id,
- createdByName: `${currentUser.firstName} ${currentUser.lastName}`.trim(),
- createdAt: new Date(),
- };
- setClientSupportEntries((prev) => [entry, ...prev]);
- void persistClientSupportEntry(entry);
- return entry;
- },
- [currentUser.id, currentUser.firstName, currentUser.lastName]
- );
 
  // Get filtered reports (org-scoped)
- const getFilteredReports = useCallback((filters: {
- status?: ReportStatus[];
- severity?: string[];
- category?: string[];
- assignedTo?: string | null;
- search?: string;
- }) => {
- let filtered = [...effectiveReports];
- 
- if (filters.status) {
- filtered = filtered.filter(r => filters.status!.includes(r.status));
- }
- 
- if (filters.severity) {
- filtered = filtered.filter(r => filters.severity!.includes(r.severity));
- }
- 
- if (filters.category) {
- filtered = filtered.filter(r => filters.category!.includes(r.category));
- }
- 
- if (filters.assignedTo !== undefined) {
- if (filters.assignedTo === null) {
- filtered = filtered.filter(r => !r.assignedTo);
- } else {
- filtered = filtered.filter(r => r.assignedTo === filters.assignedTo);
- }
- }
- 
- if (filters.search) {
- const searchLower = filters.search.toLowerCase();
- filtered = filtered.filter(r => 
- r.summary.toLowerCase().includes(searchLower) ||
- r.description.toLowerCase().includes(searchLower)
+ const getFilteredReports = useCallback(
+ (filters: Parameters<typeof filterReports>[1]) => filterReports(effectiveReports, filters),
+ [effectiveReports]
  );
- }
- 
- return filtered.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
- }, [effectiveReports]);
- 
- // Get filtered investigations (org-scoped)
- const getFilteredInvestigations = useCallback((filters: {
- status?: Investigation['status'];
- ownerId?: string;
- }) => {
- let filtered = [...effectiveInvestigations];
- 
- if (filters.status) {
- filtered = filtered.filter(i => i.status === filters.status);
- }
- 
- if (filters.ownerId) {
- filtered = filtered.filter(i => i.ownerId === filters.ownerId);
- }
- 
- return filtered.sort((a, b) => b.openedAt.getTime() - a.openedAt.getTime());
- }, [effectiveInvestigations]);
- 
- // Get filtered employees (org-scoped)
- const getFilteredEmployees = useCallback((filters: {
- atRiskOnly?: boolean;
- neverResponded?: boolean;
- lowEngagement?: boolean;
- departmentId?: string;
- }) => {
- let filtered = effectiveUsers.filter(u => u.role === 'EMPLOYEE');
- 
- if (filters.departmentId) {
- filtered = filtered.filter(u => u.departmentId === filters.departmentId);
- }
- 
- if (filters.atRiskOnly) {
- const now = new Date();
- const atRiskIds = effectiveUsers
- .filter((u) => u.role === 'EMPLOYEE' && u.status === 'active')
- .filter((emp) => {
- const employeeResponses = effectiveResponses.filter((r) => r.userId === emp.id);
- const lastResponseAt = employeeResponses.length
- ? new Date(Math.max(...employeeResponses.map((r) => r.submittedAt.getTime())))
- : undefined;
- const deliveries30d = effectiveDeliveries.filter(
- (d) => d.userId === emp.id && now.getTime() - d.deliveredAt.getTime() <= 30 * 24 * 60 * 60 * 1000
- );
- const completed30d = deliveries30d.filter((d) => d.status === 'COMPLETED').length;
- const responseRate30d = deliveries30d.length ? completed30d / deliveries30d.length : 0;
- const daysSinceLastResponse = lastResponseAt
- ? Math.floor((now.getTime() - lastResponseAt.getTime()) / (1000 * 60 * 60 * 24))
- : Infinity;
- return (
- !lastResponseAt ||
- daysSinceLastResponse > orgSettings.thresholds.atRiskNoResponseDays ||
- responseRate30d < orgSettings.thresholds.atRiskMinResponseRate
- );
- })
- .map((u) => u.id);
- filtered = filtered.filter((u) => atRiskIds.includes(u.id));
- }
- 
- return filtered;
- }, [effectiveUsers, effectiveResponses, effectiveDeliveries, orgSettings.thresholds.atRiskMinResponseRate, orgSettings.thresholds.atRiskNoResponseDays]);
- 
- // Derived data (computed from org-scoped collections)
- const computeAtRiskEmployees = useCallback(() => {
- const employees = effectiveUsers.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active');
- const now = new Date();
- return employees.map((emp) => {
- const employeeResponses = effectiveResponses.filter((r) => r.userId === emp.id);
- const lastResponseAt = employeeResponses.length
- ? new Date(Math.max(...employeeResponses.map((r) => r.submittedAt.getTime())))
- : undefined;
- const deliveries30d = effectiveDeliveries.filter(
- (d) => d.userId === emp.id && now.getTime() - d.deliveredAt.getTime() <= 30 * 24 * 60 * 60 * 1000
- );
- const completed30d = deliveries30d.filter((d) => d.status === 'COMPLETED').length;
- const responseRate30d = deliveries30d.length ? completed30d / deliveries30d.length : 0;
- const daysSinceLastResponse = lastResponseAt
- ? Math.floor((now.getTime() - lastResponseAt.getTime()) / (1000 * 60 * 60 * 24))
- : Infinity;
- const isAtRisk =
- !lastResponseAt ||
- daysSinceLastResponse > orgSettings.thresholds.atRiskNoResponseDays ||
- responseRate30d < orgSettings.thresholds.atRiskMinResponseRate;
- return {
- userId: emp.id,
- lastResponseAt,
- responseRate30d,
- pendingPrompts: effectiveDeliveries.filter((d) => d.userId === emp.id && d.status === 'PENDING').length,
- isAtRisk,
- };
- }).filter((e) => e.isAtRisk);
- }, [effectiveDeliveries, effectiveResponses, effectiveUsers, orgSettings.thresholds.atRiskMinResponseRate, orgSettings.thresholds.atRiskNoResponseDays]);
 
- const computeEmployeeEngagement = useCallback((userId: string) => {
- const now = new Date();
- const employeeResponses = effectiveResponses.filter((r) => r.userId === userId);
- const lastResponseAt = employeeResponses.length
- ? new Date(Math.max(...employeeResponses.map((r) => r.submittedAt.getTime())))
- : undefined;
- const deliveries30d = effectiveDeliveries.filter(
- (d) => d.userId === userId && now.getTime() - d.deliveredAt.getTime() <= 30 * 24 * 60 * 60 * 1000
+ const getFilteredInvestigations = useCallback(
+ (filters: Parameters<typeof filterInvestigations>[1]) =>
+ filterInvestigations(effectiveInvestigations, filters),
+ [effectiveInvestigations]
  );
- const completed30d = deliveries30d.filter((d) => d.status === 'COMPLETED').length;
- const responseRate30d = deliveries30d.length ? completed30d / deliveries30d.length : 0;
- const daysSinceLastResponse = lastResponseAt
- ? Math.floor((now.getTime() - lastResponseAt.getTime()) / (1000 * 60 * 60 * 24))
- : Infinity;
- return {
- userId,
- lastResponseAt,
- responseRate30d,
- pendingPrompts: effectiveDeliveries.filter((d) => d.userId === userId && d.status === 'PENDING').length,
- isAtRisk:
- !lastResponseAt ||
- daysSinceLastResponse > orgSettings.thresholds.atRiskNoResponseDays ||
- responseRate30d < orgSettings.thresholds.atRiskMinResponseRate,
+
+ const engagementOpts = {
+ responses: effectiveResponses,
+ deliveries: effectiveDeliveries,
+ thresholds: orgSettings.thresholds,
  };
- }, [effectiveDeliveries, effectiveResponses, orgSettings.thresholds.atRiskMinResponseRate, orgSettings.thresholds.atRiskNoResponseDays]);
+
+ const getFilteredEmployees = useCallback(
+ (filters: Parameters<typeof filterEmployees>[1]) =>
+ filterEmployees(effectiveUsers, filters, engagementOpts),
+ [effectiveUsers, effectiveResponses, effectiveDeliveries, orgSettings.thresholds]
+ );
+
+ const computeAtRiskEmployees = useCallback(
+ () => computeAtRiskEmployeesQuery(effectiveUsers, engagementOpts),
+ [effectiveUsers, effectiveResponses, effectiveDeliveries, orgSettings.thresholds]
+ );
+
+ const computeEmployeeEngagement = useCallback(
+ (userId: string) => computeEmployeeEngagementQuery(userId, engagementOpts),
+ [effectiveResponses, effectiveDeliveries, orgSettings.thresholds]
+ );
+
 
  const atRiskEmployees = computeAtRiskEmployees();
  const endOfToday = (() => {

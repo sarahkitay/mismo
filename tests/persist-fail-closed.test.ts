@@ -1,8 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const store = readFileSync(resolve('src/hooks/useDataStore.ts'), 'utf8');
+const hookFiles = readdirSync(resolve('src/hooks'))
+  .filter((f) => f.endsWith('.ts'))
+  .map((f) => readFileSync(resolve('src/hooks', f), 'utf8'));
+const store = hookFiles.join('\n');
 
 function fnBody(name: string): string {
   const start = store.indexOf(`const ${name} = useCallback`);

@@ -14,7 +14,7 @@ This repository is **sanitized**. It contains application code, Postgres RLS, an
 | Fail-closed case writes | `src/hooks/useDataStore.ts`, `src/lib/supabase/writeOrgData.ts` | `tests/persist-fail-closed.test.ts` |
 | Case IDs, register counts, law publish gate | `src/lib/caseReference.ts`, `investigationWorkload.ts`, `lawCorpusFreshness.ts` | `tests/compliance-contracts.test.ts` |
 
-Architecture write-up: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Architecture write-up: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Deploy path (Vercel, Edge Functions, migrations): [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 ## Stack
 
@@ -23,7 +23,7 @@ Architecture write-up: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - **Server:** Supabase Edge Functions (`supabase/functions/mismo-api`, `mismo-cron`)
 - **Optional AI:** OpenAI called only from Edge Functions (`services/api` is a legacy local stand-in)
 
-The UI depends on Radix/shadcn. Authorization and isolation live in SQL and Edge Functions, not in those UI packages.
+The UI uses a small Radix/shadcn set (dialog, select, tabs, and similar primitives actually imported by product pages). Authorization and isolation live in SQL and Edge Functions, not in those UI packages.
 
 ## Auth note (reviewers)
 
@@ -63,12 +63,16 @@ Product architecture and engineering led by Sarah Kitay.
 ## Layout
 
 ```
-src/                  Product UI + client data store
+src/                  Product UI + client data store (domain logic in src/lib + src/hooks)
 src/lib/authz/        RBAC + route catalog used by tests
 supabase/functions/   Edge API (JWT) and cron (secret)
+supabase/migrations/  Ordered copies of docs/database SQL
 docs/database/        Schema + RLS (source of tenant isolation)
 docs/ARCHITECTURE.md  Request path and trust boundaries
+docs/DEPLOY.md        Vercel, functions, and how to apply SQL
 docs/THREAT_MODEL.md  Tenant boundary and what RLS does not cover
+docs/design/          Copy/UI token notes
+docs/archive/         Historical blueprints (not current RLS)
 marketing/            Public marketing site
 tests/                Automated contracts (`npm test`)
 ```

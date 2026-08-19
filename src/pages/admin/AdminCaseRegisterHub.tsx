@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
-import type { Report, ReportSeverity, ReportStatus } from '@/types';
+import type { ReportSeverity, ReportStatus } from '@/types';
+import {
+  deriveBucket,
+  isOpenReport,
+  isOverSla,
+  isUnderOpenInvestigation,
+} from '@/lib/caseRegisterModel';
 import { downloadCsv } from '@/lib/exportCsv';
 import { PageMoreInfo } from '@/components/PageMoreInfo';
 import { Card, CardContent } from '@/components/ui/card';
@@ -30,27 +36,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-
-const OPEN_STATUSES: ReportStatus[] = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_REVIEW', 'NEEDS_INFO', 'PENDING_WAGE_HOUR_REVIEW', 'PAYROLL_EXPEDITED'];
-const SLA_DAYS = 14;
-
-function isOpenReport(r: Report) {
-  return OPEN_STATUSES.includes(r.status);
-}
-
-function isOverSla(r: Report) {
-  if (['RESOLVED', 'CLOSED'].includes(r.status)) return false;
-  const now = Date.now();
-  const updated = (r.updatedAt ?? r.createdAt) instanceof Date ? (r.updatedAt ?? r.createdAt).getTime() : new Date(String(r.updatedAt ?? r.createdAt)).getTime();
-  return now - updated > SLA_DAYS * 24 * 60 * 60 * 1000;
-}
-
-/** Cases under an open investigation are owned on the Investigations page only */
-function isUnderOpenInvestigation(report: Report, investigations: { id: string; status: string }[]) {
-  if (!report.investigationId) return false;
-  const inv = investigations.find((i) => i.id === report.investigationId);
-  return inv?.status === 'OPEN';
-}
+import { BucketBtn, Tile } from '@/components/admin/caseRegisterControls';
 
 import {
   linkedReportForPromptRow,
@@ -63,43 +49,6 @@ import {
   exportEmployeePromptRegisterCsv,
 } from '@/lib/employeePromptRegister';
 import { getInvestigationDisplayId } from '@/lib/investigationWorkflow';
-
-export type CaseRegisterBucket =
-  | 'PROMPT_ALL'
-  | 'PROMPT_YES'
-  | 'PROMPT_NO'
-  | 'PROMPT_UNANSWERED'
-  | 'CASE_REGISTER'
-  | 'NEW_CRITICAL'
-  | 'NEEDS_RESPONSE';
-
-function deriveBucket(filters: Record<string, string>, hubPage: 'prompt-responses' | 'case-register'): CaseRegisterBucket {
-  if (filters.channel === 'register' || filters.channel === 'wage_hour') {
-    if (filters.critical === '1') return 'NEW_CRITICAL';
-    if (filters.needs_info === '1') return 'NEEDS_RESPONSE';
-    return 'CASE_REGISTER';
-  }
-  if (filters.critical === '1') return 'NEW_CRITICAL';
-  if (filters.needs_info === '1') return 'NEEDS_RESPONSE';
-  if (filters.answer === 'HAS_ISSUE') return 'PROMPT_YES';
-  if (filters.answer === 'NO_ISSUE') return 'PROMPT_NO';
-  if (filters.bucket === 'UNANSWERED') return 'PROMPT_UNANSWERED';
-  if (
-    filters.register === '1' ||
-    filters.view === 'register' ||
-    filters.status ||
-    filters.open === '1' ||
-    filters.unassigned === '1' ||
-    filters.new24h === '1' ||
-    filters.new7d === '1' ||
-    filters.over_sla === '1' ||
-    hubPage === 'case-register'
-  ) {
-    return 'CASE_REGISTER';
-  }
-  if (filters.view === 'prompts') return 'PROMPT_ALL';
-  return 'PROMPT_ALL';
-}
 
 type PromptChannel = 'incident' | 'wage_hour' | 'memo' | 'register';
 
@@ -1082,32 +1031,5 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
         </Card>
       )}
     </div>
-  );
-}
-
-function BucketBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`interactive-control px-3 py-2 border text-sm rounded-md ${active ? 'bg-[var(--mismo-blue)] text-white border-[var(--mismo-blue)]' : 'border-[var(--color-border-200)] bg-white'}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Tile({ active, onClick, label, value }: { active: boolean; onClick: () => void; label: string; value: number }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`p-3 border text-left rounded-lg transition-colors ${
-        active ? 'border-[var(--color-primary-700)] bg-[var(--mismo-blue-light)]' : 'border-[var(--color-border-200)] bg-white hover:bg-[var(--color-surface-200)]'
-      }`}
-    >
-      <p className="text-xs text-[var(--color-text-muted)] uppercase">{label}</p>
-      <p className="text-xl font-semibold text-[var(--color-text-primary)]">{value}</p>
-    </button>
   );
 }
