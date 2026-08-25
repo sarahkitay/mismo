@@ -23,9 +23,7 @@ export function Login({ dataStore }: LoginProps) {
     setSubmitting(true);
     const result = await dataStore.login(email.trim(), password);
     setSubmitting(false);
-    if (result.ok) {
-      toast.success('Signed in.');
-    } else {
+    if (!result.ok) {
       toast.error(sanitizeInfraError(result.message ?? 'Sign in failed.'));
     }
   };
