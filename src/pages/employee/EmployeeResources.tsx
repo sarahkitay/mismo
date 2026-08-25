@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { MemoSignatureAcknowledgement } from '@/components/MemoSignatureAcknowledgement';
+import { MemoBody } from '@/components/MemoBody';
 import type { DataStore } from '@/hooks/useDataStore';
 import type { Policy, PolicyAcknowledgement } from '@/types';
 import { Icons } from '@/lib/icons';
@@ -222,14 +223,14 @@ export function EmployeeResources({ dataStore }: EmployeeResourcesProps) {
  {facing.isDelta && (
  <h3 className="text-sm font-semibold text-[var(--mismo-text)]">{facing.heading}</h3>
  )}
- <div className="prose prose-sm max-w-none text-[var(--mismo-text)] whitespace-pre-wrap border border-[var(--color-border-200)] p-4 bg-[var(--color-surface-100)] rounded-md">
- {facing.body}
+ <div className="border border-[var(--color-border-200)] p-4 bg-[var(--color-surface-100)] rounded-md">
+ <MemoBody content={facing.body} />
  </div>
  {facing.isDelta && openMemo.lawDigest && openMemo.lawDigest.entries.length > facing.pendingCount && (
  <details className="text-sm">
  <summary className="cursor-pointer text-[var(--mismo-blue)]">View full current law set</summary>
- <div className="mt-2 prose prose-sm max-w-none whitespace-pre-wrap border border-[var(--color-border-200)] p-4 bg-[var(--color-surface-100)] rounded-md">
- {openMemo.content}
+ <div className="mt-2 border border-[var(--color-border-200)] p-4 bg-[var(--color-surface-100)] rounded-md">
+ <MemoBody content={openMemo.content} />
  </div>
  </details>
  )}

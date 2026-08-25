@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import type { Policy, PolicyBodySource } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import { MEMO_CATEGORY_PRESETS } from '@/lib/memoCategoryPresets';
 import { getMemoUnacknowledgedEmployees } from '@/lib/memoReminder';
 import { MemoNudgeModal, type MemoNudgePayload } from '@/components/admin/MemoNudgeModal';
 import { toast } from 'sonner';
+import { MemoBody } from '@/components/MemoBody';
 
 interface AdminPolicyDetailProps {
   dataStore: DataStore;
@@ -52,6 +53,31 @@ export function AdminPolicyDetail({ dataStore, policyId, onNavigate }: AdminPoli
   const [bodyAttachmentDataUrl, setBodyAttachmentDataUrl] = useState('');
   const [supersedeTargetId, setSupersedeTargetId] = useState<string | null>(null);
   const [nudgeOpen, setNudgeOpen] = useState(false);
+  const memoBodyRef = useRef<HTMLTextAreaElement>(null);
+
+  const applyBodyFormat = (prefix: string, suffix = prefix) => {
+    const textarea = memoBodyRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = content.slice(start, end) || 'text';
+    setContent(`${content.slice(0, start)}${prefix}${selected}${suffix}${content.slice(end)}`);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
+    });
+  };
+
+  const applyBullet = () => {
+    const textarea = memoBodyRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = content.slice(start, end) || 'List item';
+    const formatted = selected.split('\n').map((line) => `- ${line}`).join('\n');
+    setContent(`${content.slice(0, start)}${formatted}${content.slice(end)}`);
+    requestAnimationFrame(() => textarea.focus());
+  };
 
   useEffect(() => {
     if (isNew) {
@@ -370,12 +396,24 @@ export function AdminPolicyDetail({ dataStore, policyId, onNavigate }: AdminPoli
               </div>
             )}
 
+            <div className="flex flex-wrap gap-2" role="toolbar" aria-label="Memo formatting">
+              <Button type="button" size="sm" variant="outline" className="font-bold" onClick={() => applyBodyFormat('**')}>Bold</Button>
+              <Button type="button" size="sm" variant="outline" className="italic" onClick={() => applyBodyFormat('*')}>Italic</Button>
+              <Button type="button" size="sm" variant="outline" onClick={applyBullet}>Bulleted list</Button>
+            </div>
             <Textarea
+              ref={memoBodyRef}
               rows={12}
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="Memo body: type here, paste imported text, or combine with an attachment."
             />
+            {content.trim() && (
+              <div className="rounded-md border border-[var(--color-border-200)] bg-white p-4">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--mismo-text-secondary)]">Preview</p>
+                <MemoBody content={content} />
+              </div>
+            )}
           </div>
 
           <label className="flex items-center gap-2 text-sm">
