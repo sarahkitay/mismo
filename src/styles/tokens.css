@@ -1,8 +1,8 @@
 :root{
   /* Brand */
-  --mismo-navy: #1f3f68;
-  --mismo-emerald: #2c8c82;
-  --mismo-surface: #edf1f6;
+  --mismo-navy: #163a5f;
+  --mismo-emerald: #168276;
+  --mismo-surface: #f3f5f7;
   --mismo-bg: #ffffff;
   --mismo-text: #0f1b2a;
   --mismo-muted: #5f6f86;
@@ -18,9 +18,9 @@
   --shadow-md: 0 8px 24px rgba(15,27,42,.10);
 
   /* Radius */
-  --r-sm: 10px;
-  --r-md: 14px;
-  --r-lg: 18px;
+  --r-sm: 5px;
+  --r-md: 8px;
+  --r-lg: 12px;
 
   /* Spacing */
   --s-1: 4px;

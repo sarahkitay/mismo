@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
-import { Icons } from '@/lib/icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -136,19 +135,23 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
     const isActive = prompt.status === 'ACTIVE' || prompt.status === 'SCHEDULED';
 
     return (
-      <Card key={prompt.id} className="prompt-card mismo-card relative overflow-hidden">
-        {isActive && (
-          <div className="absolute top-3 left-4 z-10 pointer-events-none">
-            <p className="text-[11px] uppercase tracking-[0.12em] font-semibold text-[var(--color-emerald-600)] [text-shadow:0_1px_2px_rgba(15,27,42,0.22)]">
-              Active
+      <Card key={prompt.id} className="prompt-card mismo-card prompt-infra-card overflow-hidden">
+        <CardContent className="p-0">
+          <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-[var(--color-border-200)] bg-[#f8fafc]">
+            <p className="text-[11px] uppercase tracking-[0.14em] font-semibold text-[var(--color-text-muted)]">
+              {locked ? 'Mismo required control' : 'Company control'}
             </p>
+            {locked ? (
+              <span className="system-status"><span aria-hidden="true" />System required</span>
+            ) : (
+              <div className="flex items-center gap-2 rounded-md border border-[var(--color-border-200)] bg-white px-3 py-1.5">
+                <span className="text-xs font-medium text-[var(--color-text-secondary)]">{isActive ? 'Active' : 'Inactive'}</span>
+                <Switch checked={isActive} onCheckedChange={(checked) => setPromptActive(prompt, checked)} aria-label={`${isActive ? 'Deactivate' : 'Activate'} ${prompt.title}`} />
+              </div>
+            )}
           </div>
-        )}
-        <CardContent className="p-5">
+          <div className="p-5">
           <div className="flex flex-col lg:flex-row lg:items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-[var(--mismo-blue-light)] flex items-center justify-center flex-shrink-0">
-              <Icons.message className="h-6 w-6 text-[var(--mismo-blue)]" />
-            </div>
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 {locked ? (
@@ -173,7 +176,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                 <p className="text-sm text-[var(--color-primary-800)] mt-1 font-medium">{options.subtitle}</p>
               ) : null}
               <p className="text-[var(--mismo-text-secondary)] mt-1">{truncateText(prompt.description, 120)}</p>
-              <div className="flex flex-wrap items-center gap-4 mt-3 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 mt-5 py-4 border-y border-[var(--color-border-200)] text-sm">
                 <span className="text-[var(--mismo-text-secondary)]">
                   <span className="font-medium text-[var(--mismo-text)]">{stats.total}</span> recipients
                 </span>
@@ -187,41 +190,25 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                   <span className="font-medium text-[var(--mismo-blue)]">{Math.round(stats.completionRate)}%</span> completion
                 </span>
               </div>
-              <div className="mt-3">
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-[var(--mismo-blue)] rounded-full transition-all" style={{ width: `${stats.completionRate}%` }} />
+              <div className="mt-4">
+                <div className="h-1 bg-[#e9edf2] overflow-hidden">
+                  <div className="h-full bg-[var(--color-emerald-600)] transition-all" style={{ width: `${stats.completionRate}%` }} />
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-[var(--mismo-text-secondary)]">
-                <span className="flex items-center gap-1.5">
-                  <Icons.calendar className="h-4 w-4" />
-                  Daily · started {formatDate(prompt.schedule.startAt)}
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Icons.employees className="h-4 w-4" />
-                  {audienceOptions.find((a) => a.value === prompt.targeting.audience)?.label ?? prompt.targeting.audience}
-                </span>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mt-4 text-xs text-[var(--mismo-text-secondary)]">
+                <span>Cadence: Daily</span>
+                <span>Started: {formatDate(prompt.schedule.startAt)}</span>
+                <span>Audience: {audienceOptions.find((a) => a.value === prompt.targeting.audience)?.label ?? prompt.targeting.audience}</span>
               </div>
             </div>
             <div className="flex flex-col items-end gap-3 flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <Label htmlFor={`active-${prompt.id}`} className="text-sm text-[var(--mismo-text-secondary)]">
-                  {locked ? 'Always on' : isActive ? 'Active' : 'Inactive'}
-                </Label>
-                <Switch
-                  id={`active-${prompt.id}`}
-                  checked={locked ? true : isActive}
-                  disabled={locked}
-                  onCheckedChange={(checked) => setPromptActive(prompt, checked)}
-                />
-              </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => setViewPromptId(prompt.id)}>
-                  <Icons.eye className="h-4 w-4 mr-1.5" />
-                  View
+                  View details
                 </Button>
               </div>
             </div>
+          </div>
           </div>
         </CardContent>
       </Card>
@@ -297,9 +284,8 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-[var(--mismo-blue)] hover:bg-blue-600">
-              <Icons.add className="h-4 w-4 mr-2" />
-              Create Prompt
+            <Button className="bg-[var(--mismo-blue)] hover:bg-[var(--color-primary-700)]">
+              Create prompt
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -497,13 +483,12 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
       <div className="flex flex-col sm:flex-row gap-4">
         {/* Search */}
         <div className="relative flex-1">
-          <Icons.search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
             type="text"
             placeholder="Search prompts..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            className="px-3"
           />
         </div>
         
@@ -513,7 +498,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                 filter === f
                   ? 'bg-[var(--mismo-blue)] text-white'
                   : 'bg-white text-[var(--mismo-text-secondary)] hover:bg-gray-100 border border-gray-200'
@@ -536,19 +521,23 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
 
         {showCoreSection && coreIncidentPrompt && (
           <div className="space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
-              Core daily check-in (always on)
+            <h2 className="text-sm font-semibold tracking-tight text-[var(--color-primary-900)]">
+              Required daily controls
             </h2>
             {renderPromptCard(coreIncidentPrompt, { locked: true })}
-            <Card className="mismo-card border border-[var(--color-primary-700)]/30">
-              <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <Card className="mismo-card prompt-infra-card">
+              <CardContent className="p-0">
+                <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-[var(--color-border-200)] bg-[#f8fafc]">
+                  <p className="text-[11px] uppercase tracking-[0.14em] font-semibold text-[var(--color-text-muted)]">Mismo required control</p>
+                  <span className="system-status"><span aria-hidden="true" />System required</span>
+                </div>
+                <div className="p-5 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                 <div>
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <Badge variant="outline" className="border-[var(--color-primary-700)]">Core</Badge>
                     <Badge variant="outline" className="border-[var(--color-primary-700)] text-[var(--color-primary-800)]">
                       Wage &amp; Hour Query
                     </Badge>
-                    <Badge variant="outline">Money</Badge>
                   </div>
                   <h3 className="font-semibold text-lg">{CORE_FINANCIAL_LABEL}</h3>
                   <p className="text-sm text-[var(--mismo-text-secondary)] mt-2">{CORE_FINANCIAL_DESCRIPTION}</p>
@@ -556,9 +545,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                     Bundled with Incident Query. Runs as question 2 of 2 before the check-in is saved.
                   </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Label className="text-sm text-[var(--mismo-text-secondary)]">Always on</Label>
-                  <Switch checked disabled />
+                <Button variant="outline" size="sm" onClick={() => coreIncidentPrompt && setViewPromptId(coreIncidentPrompt.id)}>View parent control</Button>
                 </div>
               </CardContent>
             </Card>
@@ -575,7 +562,6 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
         {filteredOptionalPrompts.length === 0 && !showCoreSection && filter !== 'ALL' && (
           <Card className="mismo-card">
             <CardContent className="p-12 text-center">
-              <Icons.message className="h-16 w-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-[var(--mismo-text)] mb-2">
                 No prompts found
               </h3>
@@ -586,8 +572,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                 className="bg-[var(--mismo-blue)] hover:bg-blue-600"
                 onClick={() => setIsCreateDialogOpen(true)}
               >
-                <Icons.add className="h-4 w-4 mr-2" />
-                Create Prompt
+                Create prompt
               </Button>
             </CardContent>
           </Card>
