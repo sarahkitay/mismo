@@ -275,6 +275,7 @@ export function InformationGatheringModule(ctx: WorkflowContext) {
  const fileRef = useRef<HTMLInputElement>(null);
  const [activePrompt, setActivePrompt] = useState(EVIDENCE_GATHERING_PROMPTS[0].id);
  const [uploadDesc, setUploadDesc] = useState('');
+ const [legalNote, setLegalNote] = useState(investigation.legalInvolvementNotes ?? '');
  const complaintAt = primaryReport?.createdAt ?? investigation.openedAt;
  const persons = getInvestigationPersons(investigation, ctx.owner).filter((p) => p.userId);
  const policiesInEffect = dataStore.policies.filter(
@@ -375,9 +376,23 @@ export function InformationGatheringModule(ctx: WorkflowContext) {
  rows={2}
  className="mt-2"
  placeholder="Counsel contact, privilege notes, or escalation reason…"
- value={investigation.legalInvolvementNotes ?? ''}
- onChange={(e) => dataStore.updateInvestigationAnalysis(investigation.id, { legalInvolvementNotes: e.target.value })}
+ value={legalNote}
+ onChange={(e) => setLegalNote(e.target.value)}
  />
+ <Button
+ size="sm"
+ variant="outline"
+ className="mt-2"
+ disabled={!legalNote.trim()}
+ onClick={() => {
+ dataStore.updateInvestigationAnalysis(investigation.id, { legalInvolvementNotes: legalNote.trim() });
+ dataStore.addInvestigationNote(investigation.id, { visibility: 'INTERNAL', body: legalNote.trim(), noteType: 'LEGAL' });
+ setLegalNote('');
+ toast.success('Legal note saved to the timestamped Notes timeline.');
+ }}
+ >
+ Save legal note to timeline
+ </Button>
  </InvestigationSubModule>
 
  <div id="inv-section-evidence">
@@ -420,7 +435,11 @@ export function InformationGatheringModule(ctx: WorkflowContext) {
  evidence.map((e) => (
  <li key={e.id} className="flex flex-wrap justify-between gap-2 border border-[var(--color-border-200)] p-3">
  <div>
- <p className="font-medium">{e.fileName}</p>
+ {e.dataUrl ? (
+ <a href={e.dataUrl} target="_blank" rel="noreferrer" className="font-medium text-[var(--mismo-blue)] hover:underline">
+ View {e.fileName}
+ </a>
+ ) : <p className="font-medium">{e.fileName}</p>}
  <p className="text-xs text-[var(--color-text-muted)]">
  {e.type} · {e.promptLabel ?? e.sourceType} · {formatRelativeTime(e.uploadedAt)}
  </p>
@@ -476,6 +495,7 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
  setNoteBody('');
  toast.success(isShared ? 'Shared note sent to employee portal.' : 'Note saved with timestamp.');
  dataStore.saveInvestigationProgress?.(investigation.id);
+ setNotesTab('timeline');
  };
 
  return (
@@ -631,7 +651,7 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
  </InvestigationSubModule>
  )}
 
- {notesTab === 'timeline' && (
+ {(notesTab === 'timeline' || (notesTab === 'compose' && allNotes.length > 0)) && (
  <InvestigationSubModule title="Notes & requests timeline" description="Everything logged for this investigation in one list.">
  <ul className="space-y-2 max-h-96 overflow-y-auto">
  {allNotes.map((n) => {

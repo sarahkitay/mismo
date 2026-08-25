@@ -78,6 +78,8 @@ export function InvestigationWorkspace({
  const [personRoleFilter, setPersonRoleFilter] = useState<InvestigationPersonRole | 'ALL'>('ALL');
  const [reportSearch, setReportSearch] = useState('');
  const [drawerUserId, setDrawerUserId] = useState<string | null>(null);
+ const [personToAdd, setPersonToAdd] = useState('');
+ const [roleToAdd, setRoleToAdd] = useState<InvestigationPersonRole>('WITNESS');
  const linkedReports = useMemo(
  () => reports.filter((r) => investigation?.linkedReportIds.includes(r.id)),
  [reports, investigation?.linkedReportIds]
@@ -116,6 +118,11 @@ export function InvestigationWorkspace({
  { id: `person-${Date.now()}`, role, userId, addedAt: new Date(), addedByUserId: dataStore.currentUser.id },
  ];
  setInvestigationPersons(investigation.id, next);
+ };
+
+ const removePerson = (personId: string) => {
+ setInvestigationPersons(investigation.id, persons.filter((person) => person.id !== personId));
+ toast.success('Person removed from this investigation.');
  };
 
  const filteredPersons = persons.filter((p) => {
@@ -166,7 +173,7 @@ export function InvestigationWorkspace({
  <th className="px-3 py-2 text-left">Name</th>
  <th className="px-3 py-2 text-left">Role</th>
  <th className="px-3 py-2 text-left">Added</th>
- <th className="px-3 py-2 text-right">Profile</th>
+ <th className="px-3 py-2 text-right">Actions</th>
  </tr>
  </thead>
  <tbody>
@@ -180,7 +187,10 @@ export function InvestigationWorkspace({
  <td className="px-3 py-2">{PERSON_ROLE_LABELS[p.role]}</td>
  <td className="px-3 py-2">{formatDate(p.addedAt)}</td>
  <td className="px-3 py-2 text-right">
- {u ? <Button size="sm" variant="outline" onClick={() => setDrawerUserId(u.id)}>Quick view</Button> : '-'}
+ <div className="inline-flex gap-2">
+ {u && <Button size="sm" variant="outline" onClick={() => setDrawerUserId(u.id)}>Quick view</Button>}
+ <Button size="sm" variant="outline" className="text-[var(--color-alert-600)]" onClick={() => removePerson(p.id)}>Remove</Button>
+ </div>
  </td>
  </tr>
  );
@@ -190,17 +200,28 @@ export function InvestigationWorkspace({
  </div>
  <div className="border-t border-[var(--color-border-200)] pt-4">
  <p className="text-sm font-medium mb-2">Add employee to case</p>
- <div className="flex flex-wrap gap-2">
- {users.filter((u) => u.role === 'EMPLOYEE').slice(0, 8).map((emp) => (
- <Select key={emp.id} onValueChange={(role) => addPerson(emp.id, role as InvestigationPersonRole)}>
- <SelectTrigger className="w-auto min-w-[160px]"><SelectValue placeholder={`+ ${emp.firstName} ${emp.lastName}`} /></SelectTrigger>
+ <div className="flex flex-wrap items-end gap-2">
+ <div className="space-y-1">
+ <p className="text-xs text-[var(--color-text-muted)]">Employee</p>
+ <Select value={personToAdd} onValueChange={setPersonToAdd}>
+ <SelectTrigger className="w-[220px]"><SelectValue placeholder="Select one employee" /></SelectTrigger>
  <SelectContent>
- {(Object.keys(PERSON_ROLE_LABELS) as InvestigationPersonRole[]).map((r) => (
- <SelectItem key={r} value={r}>{PERSON_ROLE_LABELS[r]}</SelectItem>
+ {users.filter((u) => u.role === 'EMPLOYEE' && !persons.some((p) => p.userId === u.id)).map((emp) => (
+ <SelectItem key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</SelectItem>
  ))}
  </SelectContent>
  </Select>
- ))}
+ </div>
+ <div className="space-y-1">
+ <p className="text-xs text-[var(--color-text-muted)]">Role in this case</p>
+ <Select value={roleToAdd} onValueChange={(role) => setRoleToAdd(role as InvestigationPersonRole)}>
+ <SelectTrigger className="w-[190px]"><SelectValue /></SelectTrigger>
+ <SelectContent>
+ {(Object.keys(PERSON_ROLE_LABELS) as InvestigationPersonRole[]).map((role) => <SelectItem key={role} value={role}>{PERSON_ROLE_LABELS[role]}</SelectItem>)}
+ </SelectContent>
+ </Select>
+ </div>
+ <Button disabled={!personToAdd} onClick={() => { addPerson(personToAdd, roleToAdd); setPersonToAdd(''); }}>Add person</Button>
  </div>
  </div>
  </CardContent>

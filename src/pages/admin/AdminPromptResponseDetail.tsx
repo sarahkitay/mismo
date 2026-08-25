@@ -109,6 +109,7 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
   const reviewer = response.reviewedByUserId ? dataStore.users.find((u) => u.id === response.reviewedByUserId) : null;
   const linkedCase = findReportForPromptResponse(response.id, dataStore.reports, response.userId);
   const linkedInv = findInvestigationForPromptResponse(response.id, dataStore.reports, dataStore.investigations);
+  const isWageHour = Boolean(prompt?.includeFinancialQuestion || prompt?.routeToPayroll || linkedCase?.caseType === 'WAGE_HOUR');
   const relatedLinks = relatedNavForPromptResponse(dataStore, response);
 
   const openCase = () => {
@@ -241,6 +242,19 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
             {prompt?.routeToPayroll && (
               <Button onClick={() => toast.success('Response sent to payroll team for handling.')}>
                 Send to payroll team
+              </Button>
+            )}
+            {linkedCase && isWageHour && !['RESOLVED', 'CLOSED'].includes(linkedCase.status) && (
+              <Button
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+                onClick={() => {
+                  dataStore.markPromptResponseReviewed(response.id);
+                  dataStore.updateReportStatus(linkedCase.id, 'RESOLVED', 'Resolved directly from wage and hour response review.');
+                  dataStore.addReportHandlingEntry(linkedCase.id, 'NOTE', 'Wage and hour concern reviewed and resolved without a formal investigation.');
+                  toast.success('Wage and hour response reviewed and resolved.');
+                }}
+              >
+                Review &amp; resolve without investigation
               </Button>
             )}
           </div>

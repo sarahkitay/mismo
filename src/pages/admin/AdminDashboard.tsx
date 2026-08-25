@@ -6,7 +6,6 @@ import { formatRelativeTime } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Icons } from '@/lib/icons';
 import { fetchHrNextTasks, isAiFeaturesEnabled, type HrNextTask } from '@/lib/api/aiServices';
-import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
 import { DailyCheckInGate, useDailyCheckInViewState } from '@/components/DailyCheckInGate';
 import { PageMoreInfo } from '@/components/PageMoreInfo';
 import { DashboardNotifications } from '@/components/DashboardNotifications';
@@ -168,19 +167,11 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  return (policyRate * 0.28 + promptRate * 0.26 + invRate * 0.3 + 0.16) * 100;
  }, [users, policies, policyAcknowledgements, deliveries, responses, investigations]);
 
- const totalYesResponses = responses.filter((r) => r.answer === 'HAS_ISSUE').length;
- // Same definition as the case register “open” tile (excludes cases under an open investigation).
- const openReportsCount = dc.openCaseRegisterCount;
  const resolvedReports = reports.filter((r) => ['RESOLVED', 'CLOSED'].includes(r.status));
  const avgResolutionDays = resolvedReports.length
  ? resolvedReports.reduce((sum, r) => sum + (r.updatedAt.getTime() - r.createdAt.getTime()) / (1000 * 60 * 60 * 24), 0) /
  resolvedReports.length
  : 0;
-
- const investigationWorkload = useMemo(
- () => computeOpenInvestigationWorkload(investigations, responses, reports),
- [investigations, responses, reports]
- );
 
  return (
  <div className="space-y-6">
@@ -225,13 +216,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  ) : (
  <div className="mt-3 space-y-0.5">
  <ActionLine
- label="Daily prompts not answered"
- count={dc.unansweredPromptDeliveries}
- urgent
- onClick={() => onNavigate('prompt-responses', { bucket: 'UNANSWERED', view: 'prompts' })}
- />
- <ActionLine
- label="Yes responses needing review"
+ label="Yes responses requiring attention"
  count={dc.yesResponsesNeedingReview}
  urgent
  onClick={() => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', needs_review: '1', view: 'prompts' })}
@@ -242,23 +227,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  onClick={() => onNavigate('investigations', { status: 'OPEN' })}
  />
  <ActionLine
- label="Incident reports awaiting clarification"
- count={dc.reportsNeedingClarification}
- onClick={() => onNavigate('case-register', { view: 'register', register: '1', needs_info: '1' })}
- />
- <ActionLine
- label="Payroll issues - administrator action (24h)"
- count={dc.payrollExpeditedOpen}
- urgent
- onClick={() => onNavigate('case-register', { view: 'register', register: '1', status: 'PAYROLL_EXPEDITED' })}
- />
- <ActionLine
- label="Memo sign-offs pending"
- count={dc.memoAcknowledgementsPending}
- onClick={() => onNavigate('policies', { memoQueue: 'pending_ack' })}
- />
- <ActionLine
- label="Memos needing clarification"
+ label="Memos awaiting clarification"
  count={dc.memosNeedingClarification}
  onClick={() => onNavigate('policies', { memoQueue: 'clarification' })}
  />
@@ -271,18 +240,6 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  Open action register →
  </Button>
  </div>
- {dc.actionRequiredTotal > 0 && (
- <button
- type="button"
- onClick={() => onNavigate('case-register', { view: 'register', register: '1' })}
- className="flex items-center justify-center flex-shrink-0 pl-4 border-l border-[var(--color-border-200)] hover:opacity-80"
- aria-label="View all action required items"
- >
- <span className="font-command text-6xl sm:text-7xl font-medium text-[var(--color-alert-600)] tabular-nums">
- {dc.actionRequiredTotal}
- </span>
- </button>
- )}
  </div>
  </CardContent>
  </Card>
@@ -351,7 +308,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  </Card>
  )}
 
- <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
+ <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
  {[
  {
  label: 'Total reports',
@@ -361,37 +318,11 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  onClick: () => onNavigate('prompt-responses', { view: 'register', register: '1', channel: 'register', rangePreset: 'ALL' }),
  },
  {
- label: 'Open reports',
- count: openReportsCount,
- helper: 'Reports and concerns awaiting HR action in the case register.',
- action: 'View open reports',
- onClick: () => onNavigate('prompt-responses', { view: 'register', register: '1', channel: 'register', open: '1' }),
- accent: 'text-[var(--color-alert-600)]',
- },
- {
  label: 'Resolved reports',
  count: resolvedReports.length,
  helper: 'Reports marked resolved or closed.',
  action: 'View resolved',
  onClick: () => onNavigate('prompt-responses', { view: 'register', register: '1', channel: 'register', status: 'RESOLVED,CLOSED' }),
- },
- {
- label: 'Total yes answers',
- count: totalYesResponses,
- helper: 'All-time check-in answers where staff chose Yes.',
- action: 'Review yes responses',
- onClick: () => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', view: 'prompts', channel: 'incident', rangePreset: 'ALL' }),
- accent: 'text-[var(--color-alert-600)]',
- },
- {
- label: 'Open investigations',
- count: investigationWorkload.totalCount,
- helper:
- investigationWorkload.yesUnderReviewCount > 0
- ? `${investigationWorkload.formalCount} formal investigation${investigationWorkload.formalCount === 1 ? '' : 's'} plus ${investigationWorkload.yesUnderReviewCount} Yes response${investigationWorkload.yesUnderReviewCount === 1 ? '' : 's'} under review.`
- : 'Formal investigation files in progress.',
- action: 'View investigations',
- onClick: () => onNavigate('investigations', { status: 'OPEN' }),
  },
  {
  label: 'Avg resolution (days)',
@@ -406,14 +337,6 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  helper: 'Low engagement or overdue check-ins in the last 30 days.',
  action: 'View employees',
  onClick: () => onNavigate('users', { atRisk: 'true' }),
- },
- {
- label: 'Memo sign-offs pending',
- count: dc.memoAcknowledgementsPending,
- helper: 'Required memo acknowledgements not yet completed by active employees.',
- action: 'View memos needing sign-off',
- onClick: () => onNavigate('policies', { memoQueue: 'pending_ack' }),
- accent: dc.memoAcknowledgementsPending > 0 ? 'text-[var(--color-alert-600)]' : undefined,
  },
  ].map((card) => (
  <Card

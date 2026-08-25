@@ -91,6 +91,15 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  const [departmentFilter, setDepartmentFilter] = useState<string>('ALL');
  const [roleFilter, setRoleFilter] = useState<'ALL' | UserRole>('ALL');
 
+ const clearDirectoryFilters = () => {
+ setSearchQuery('');
+ setRecordStatusFilter('ACTIVE');
+ setFilter('ALL');
+ setDepartmentFilter('ALL');
+ setRoleFilter('ALL');
+ setActiveTab('DIRECTORY');
+ };
+
  const [editingUserId, setEditingUserId] = useState<string | null>(null);
  const editingUser = directoryUsers.find((u) => u.id === editingUserId) ?? null;
  const [editRole, setEditRole] = useState<UserRole>('EMPLOYEE');
@@ -502,13 +511,19 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  </div>
 
  <div className="flex items-center gap-2 border-b border-[var(--color-border-200)] pb-3">
- <Button variant={activeTab === 'DIRECTORY' ? 'default' : 'outline'} onClick={() => setActiveTab('DIRECTORY')}>
+ <Button variant={activeTab === 'DIRECTORY' ? 'default' : 'outline'} onClick={clearDirectoryFilters}>
  Directory
  </Button>
  <Button variant={activeTab === 'BULK_IMPORT' ? 'default' : 'outline'} onClick={() => setActiveTab('BULK_IMPORT')}>
  Bulk Import
  </Button>
  </div>
+ {(searchQuery || recordStatusFilter !== 'ACTIVE' || filter !== 'ALL' || departmentFilter !== 'ALL' || roleFilter !== 'ALL') && (
+ <div className="flex items-center justify-between gap-3 rounded border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-3 py-2">
+ <p className="text-sm text-[var(--color-text-secondary)]">Directory filters are active · {filteredEmployees.length} employee(s) shown</p>
+ <Button type="button" variant="outline" size="sm" onClick={clearDirectoryFilters}>Clear search &amp; filters</Button>
+ </div>
+ )}
 
  {activeTab === 'DIRECTORY' && (
  <>

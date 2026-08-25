@@ -1015,8 +1015,8 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                           )}
                         </td>
                         <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                          <Button size="sm" variant="outline" onClick={openRow}>
-                            View
+                          <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={openRow}>
+                            Review
                           </Button>
                         </td>
                       </tr>
