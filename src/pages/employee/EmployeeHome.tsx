@@ -46,15 +46,14 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
  <p className="text-xs tracking-[0.1em] uppercase text-[var(--color-text-secondary)]">Your dashboard</p>
  <h1 className="mismo-heading text-2xl md:text-3xl mt-1 text-[var(--color-primary-900)]">
  {isFullyCaughtUp ? (
- <>You&apos;re all caught up, {currentUser.firstName}</>
+ <>You&apos;re all caught up!</>
  ) : (
  <>Nice work, {currentUser.firstName}</>
  )}
  </h1>
  {isFullyCaughtUp ? (
  <p className="text-base text-[var(--color-text-secondary)] mt-3 leading-relaxed max-w-2xl mx-auto md:mx-0">
- Your check-ins are done and your memo sign-offs are up to date. That kind of follow-through keeps everyone safer
- and makes compliance feel a little lighter. Take a moment to feel good about being on top of it.
+ Your check-ins and required memo sign-offs are complete.
  </p>
  ) : pendingPromptsForEmployee.length > 0 ? (
  <p className="text-base text-[var(--color-text-secondary)] mt-3 leading-relaxed max-w-2xl mx-auto md:mx-0">

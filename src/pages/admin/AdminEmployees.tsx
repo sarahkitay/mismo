@@ -55,6 +55,7 @@ type ConflictMode = 'SKIP' | 'UPDATE' | 'CREATE_NEW';
 type MappingTemplate = { name: string; map: Record<string, string> };
 
 const IMPORT_TEMPLATE_STORAGE = 'mismo_csv_mapping_templates';
+const STANDARD_DEPARTMENTS = ['Human Resources', 'Operations', 'Finance', 'Sales', 'Marketing', 'Information Technology', 'Legal'];
 
 export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminEmployeesProps) {
   const {
@@ -494,6 +495,17 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <PageMoreInfo>Add employees one at a time or use bulk import for CSV onboarding</PageMoreInfo>
  </div>
  <div className="flex flex-wrap items-center gap-2">
+ {departments.length === 0 && (
+ <Button
+ variant="outline"
+ onClick={() => {
+ STANDARD_DEPARTMENTS.forEach((name) => createDepartment(name));
+ toast.success('Standard departments added. You can edit them or add more in Settings.');
+ }}
+ >
+ Add standard departments
+ </Button>
+ )}
  <Button
  className="bg-[var(--mismo-blue)] hover:bg-blue-600"
  onClick={() => {

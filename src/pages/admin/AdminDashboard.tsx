@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatRelativeTime } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Icons } from '@/lib/icons';
-import { fetchHrNextTasks, isAiFeaturesEnabled, type HrNextTask } from '@/lib/api/aiServices';
 import { DailyCheckInGate, useDailyCheckInViewState } from '@/components/DailyCheckInGate';
 import { PageMoreInfo } from '@/components/PageMoreInfo';
 import { DashboardNotifications } from '@/components/DashboardNotifications';
@@ -53,54 +52,12 @@ function ActionLine({
 export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  const dc = dataStore.dashboardCounts;
  const { showCheckInGate } = useDailyCheckInViewState(dataStore);
- const { policies, policyAcknowledgements, responses, deliveries, investigations, activities, users, reports, prompts, currentUser } = dataStore;
- const [hrNextTasks, setHrNextTasks] = useState<HrNextTask[]>([]);
- const [loadingHrTasks, setLoadingHrTasks] = useState(false);
-
- useEffect(() => {
- if (!isAiFeaturesEnabled()) return;
- setLoadingHrTasks(true);
- void fetchHrNextTasks(currentUser.orgId, {
- payrollExpedited: dc.payrollExpeditedOpen,
- needsInfo: dc.reportsNeedingClarification,
- wageHour: dc.wageHourPendingReview,
- yesReview: dc.yesResponsesNeedingReview,
- atRiskEmployees: dc.atRiskEmployees,
- unansweredPrompts: dc.unansweredPromptDeliveries,
- openInvestigations: dc.activeInvestigations,
- })
- .then(({ tasks }) => setHrNextTasks(tasks))
- .catch(() => setHrNextTasks([]))
- .finally(() => setLoadingHrTasks(false));
- }, [
- currentUser.orgId,
- dc.payrollExpeditedOpen,
- dc.reportsNeedingClarification,
- dc.wageHourPendingReview,
- dc.yesResponsesNeedingReview,
- dc.atRiskEmployees,
- dc.unansweredPromptDeliveries,
- dc.activeInvestigations,
- ]);
-
- const openHrTask = (action: string) => {
- const [page, query = ''] = action.split('?');
- const params: Record<string, string> = {};
- if (query) {
- for (const part of query.split('&')) {
- const [key, value] = part.split('=');
- if (key && value) params[key] = decodeURIComponent(value);
- }
- }
- onNavigate(page, params);
- };
+ const { responses, deliveries, investigations, activities, users, reports, prompts } = dataStore;
+ const visibleActionTotal = dc.yesResponsesNeedingReview + dc.activeInvestigations + dc.memosNeedingClarification;
 
  const recentCheckInQueries = useMemo(() => {
- const startOfToday = new Date();
- startOfToday.setHours(0, 0, 0, 0);
  const rows = [
  ...responses
- .filter((r) => r.submittedAt >= startOfToday)
  .map((r) => ({
  id: r.id,
  kind: 'response' as const,
@@ -110,7 +67,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  promptTitle: prompts.find((p) => p.id === r.promptId)?.title ?? 'Check-in',
  })),
  ...deliveries
- .filter((d) => d.status === 'PENDING' && d.deliveredAt >= startOfToday)
+ .filter((d) => d.status === 'PENDING')
  .map((d) => ({
  id: d.id,
  kind: 'pending' as const,
@@ -158,15 +115,6 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  }, [responses, deliveries, dc.reportsNeedingClarification, dc.payrollExpeditedOpen, dc.wageHourPendingReview, dc.openCaseRegisterCount, users, investigations]);
 
  const recentActivity = activities.slice(0, 6);
- const analyticsScore = useMemo(() => {
- const activeEmployees = users.filter((u) => u.role === 'EMPLOYEE' && u.status === 'active').length;
- const required = policies.filter((p) => p.status === 'PUBLISHED' && p.acknowledgmentRequired).length * activeEmployees;
- const policyRate = required > 0 ? policyAcknowledgements.length / required : 1;
- const promptRate = deliveries.length ? responses.length / deliveries.length : 1;
- const invRate = investigations.length ? investigations.filter((i) => i.status === 'CLOSED').length / investigations.length : 1;
- return (policyRate * 0.28 + promptRate * 0.26 + invRate * 0.3 + 0.16) * 100;
- }, [users, policies, policyAcknowledgements, deliveries, responses, investigations]);
-
  const resolvedReports = reports.filter((r) => ['RESOLVED', 'CLOSED'].includes(r.status));
  const avgResolutionDays = resolvedReports.length
  ? resolvedReports.reduce((sum, r) => sum + (r.updatedAt.getTime() - r.createdAt.getTime()) / (1000 * 60 * 60 * 24), 0) /
@@ -199,19 +147,16 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  <Button variant="outline" size="sm" onClick={() => onNavigate('prompts')}>
  Manage prompts
  </Button>
- <Button variant="outline" size="sm" onClick={() => onNavigate('analytics')}>
- View analytics
- </Button>
  </div>
  </div>
 
- <div className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr] gap-4">
+ <div>
  <Card className="mismo-card">
  <CardContent className="p-6">
  <div className="flex items-start justify-between gap-4">
  <div className="flex-1 min-w-0">
  <p className="text-[12px] uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">Action required</p>
- {dc.actionRequiredTotal === 0 ? (
+ {visibleActionTotal === 0 ? (
  <p className="mt-2 text-sm text-[var(--color-text-secondary)]">All systems operating within compliance thresholds.</p>
  ) : (
  <div className="mt-3 space-y-0.5">
@@ -222,8 +167,9 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  onClick={() => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', needs_review: '1', view: 'prompts' })}
  />
  <ActionLine
- label="Open investigations"
+ label="Unfinished investigations"
  count={dc.activeInvestigations}
+ urgent
  onClick={() => onNavigate('investigations', { status: 'OPEN' })}
  />
  <ActionLine
@@ -244,85 +190,18 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  </CardContent>
  </Card>
 
- <Card className="mismo-card cursor-pointer hover:border-[var(--color-primary-700)] transition-colors" onClick={() => onNavigate('analytics')}>
- <CardContent className="p-6 space-y-3">
- <p className="text-[12px] uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">Analytics index</p>
- <p className="font-command text-4xl font-medium text-[var(--color-primary-900)] tabular-nums">{analyticsScore.toFixed(1)}</p>
- <p className="text-sm text-[var(--color-text-secondary)]">
- Weighted compliance snapshot. Open Analytics for full reporting, exports, and trend views.
- </p>
- <Button variant="outline" className="border-[var(--color-primary-900)] text-[var(--color-primary-900)]" onClick={() => onNavigate('analytics')}>
- View analytics →
- </Button>
- </CardContent>
- </Card>
  </div>
 
  <DashboardNotifications dataStore={dataStore} onNavigate={onNavigate} />
 
- {isAiFeaturesEnabled() && (
- <Card className="mismo-card">
- <CardContent className="p-6">
- <div className="flex items-start justify-between gap-4">
- <div>
- <p className="text-[12px] uppercase tracking-[0.08em] text-[var(--color-text-secondary)]">HR next tasks</p>
- <p className="text-sm text-[var(--color-text-secondary)] mt-1">
- Prioritized recommendations from your database and live dashboard counts, with AI suggestions when configured.
- </p>
- </div>
- {loadingHrTasks && <span className="text-xs text-[var(--color-text-secondary)]">Updating…</span>}
- </div>
- {hrNextTasks.length === 0 && !loadingHrTasks ? (
- <p className="mt-4 text-sm text-[var(--color-text-secondary)]">No open HR tasks right now - queue is clear.</p>
- ) : (
- <div className="mt-4 space-y-2">
- {hrNextTasks.map((task) => (
- <button
- key={task.id}
- type="button"
- onClick={() => openHrTask(task.action)}
- className="w-full text-left rounded border border-[var(--color-border-200)] px-4 py-3 hover:bg-[var(--color-surface-200)] transition-colors"
- >
- <div className="flex items-start justify-between gap-3">
- <div>
- <p className={`text-sm font-medium ${task.priority === 'URGENT' ? 'text-[var(--color-alert-600)]' : 'text-[var(--mismo-text)]'}`}>
- {task.title}
- </p>
- <p className="text-xs text-[var(--color-text-secondary)] mt-1">{task.detail}</p>
- </div>
- <div className="text-right shrink-0">
- {task.count != null && task.count > 0 && (
- <span className="text-sm font-semibold tabular-nums">{task.count}</span>
- )}
- <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] mt-1">
- {task.priority}
- {task.source === 'ai' ? ' · AI' : ''}
- </p>
- </div>
- </div>
- </button>
- ))}
- </div>
- )}
- </CardContent>
- </Card>
- )}
-
  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
  {[
  {
- label: 'Total reports',
+ label: 'Report history',
  count: reports.length,
  helper: 'All incident reports and escalations on record.',
  action: 'View all reports',
  onClick: () => onNavigate('prompt-responses', { view: 'register', register: '1', channel: 'register', rangePreset: 'ALL' }),
- },
- {
- label: 'Resolved reports',
- count: resolvedReports.length,
- helper: 'Reports marked resolved or closed.',
- action: 'View resolved',
- onClick: () => onNavigate('prompt-responses', { view: 'register', register: '1', channel: 'register', status: 'RESOLVED,CLOSED' }),
  },
  {
  label: 'Avg resolution (days)',
@@ -337,6 +216,13 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  helper: 'Low engagement or overdue check-ins in the last 30 days.',
  action: 'View employees',
  onClick: () => onNavigate('users', { atRisk: 'true' }),
+ },
+ {
+ label: 'Resolved reports',
+ count: resolvedReports.length,
+ helper: 'Reports marked resolved or closed.',
+ action: 'View resolved',
+ onClick: () => onNavigate('prompt-responses', { view: 'register', register: '1', channel: 'register', status: 'RESOLVED,CLOSED' }),
  },
  ].map((card) => (
  <Card
@@ -396,9 +282,9 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  <CardContent className="p-0">
  <div className="px-5 py-4 border-b border-[var(--color-border-200)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
  <div>
- <h2 className="font-command text-xl font-bold text-[var(--color-primary-900)]">Today&apos;s employee check-in queries</h2>
+ <h2 className="font-command text-xl font-bold text-[var(--color-primary-900)]">Response history</h2>
  <p className="text-sm text-[var(--color-text-secondary)]">
- Incident and compliance prompts submitted today - same register HR and admin use for triage.
+ Recent incident and wage-and-hour responses, with unresolved check-ins included for follow-up.
  </p>
  </div>
  <Button variant="outline" size="sm" onClick={() => onNavigate('prompt-responses', { view: 'prompts', channel: 'incident' })}>

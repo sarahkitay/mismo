@@ -14,7 +14,7 @@ interface NavItem {
 }
 
 const employeeNavItems: NavItem[] = [
-  { id: 'home', label: 'Home', icon: 'home' },
+  { id: 'home', label: 'My Dashboard', icon: 'home' },
   { id: 'reports', label: 'My Reports', icon: 'reports' },
   { id: 'resources', label: 'Resources', icon: 'resources' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
@@ -114,36 +114,6 @@ function SidebarContent({
       </div>
 
       <div className="flex-1 px-2 space-y-0.5">
-        {currentRole === 'EMPLOYEE' && (
-          <div className="mb-2 space-y-1">
-            <button
-              type="button"
-              onClick={() => onNavigate('report-new')}
-              className={cn(
-                'w-full flex items-center gap-2.5 px-3 py-3 min-h-[44px] text-sm font-semibold transition-colors border rounded-sm',
-                activePage === 'report-new'
-                  ? 'bg-[var(--color-alert-600)] text-white border-white/20'
-                  : 'bg-[var(--color-primary-700)] text-white border-white/10 hover:bg-[var(--color-alert-600)]'
-              )}
-            >
-              <Icons.shield className="h-4 w-4 flex-shrink-0" />
-              <span className="flex-1 text-left">Report workplace concern</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigate('wage-hour-report')}
-              className={cn(
-                'w-full flex items-center gap-2.5 px-3 py-3 min-h-[44px] text-sm font-semibold transition-colors border rounded-sm',
-                activePage === 'wage-hour-report' || activePage.startsWith('wage-hour-intake/')
-                  ? 'bg-emerald-600 text-white border-white/20'
-                  : 'bg-emerald-800 text-white border-white/10 hover:bg-emerald-600'
-              )}
-            >
-              <Icons.reports className="h-4 w-4 flex-shrink-0" />
-              <span className="flex-1 text-left">Report wage &amp; hour concern</span>
-            </button>
-          </div>
-        )}
         {navItems.map((item) => {
           const Icon = Icons[item.icon];
           const badgeCount = getBadgeCount(item);
@@ -181,6 +151,16 @@ function SidebarContent({
       </div>
 
       <div className="px-4 pt-4 border-t border-[var(--color-primary-700)]">
+        {currentRole === 'EMPLOYEE' && (
+          <div className="mb-3 space-y-1">
+            <button type="button" onClick={() => onNavigate('report-new')} className="w-full flex items-center gap-2.5 px-3 py-2 min-h-[40px] text-sm font-medium text-white/90 hover:bg-[var(--color-primary-700)] border border-white/10 rounded-sm">
+              <Icons.shield className="h-4 w-4" /><span className="flex-1 text-left">Report workplace concern</span>
+            </button>
+            <button type="button" onClick={() => onNavigate('wage-hour-report')} className="w-full flex items-center gap-2.5 px-3 py-2 min-h-[40px] text-sm font-medium text-white/90 hover:bg-emerald-700 border border-white/10 rounded-sm">
+              <Icons.reports className="h-4 w-4" /><span className="flex-1 text-left">Report wage &amp; hour concern</span>
+            </button>
+          </div>
+        )}
         <button
           type="button"
           onClick={() => onNavigate('help')}

@@ -14,7 +14,7 @@ export function isCoreIncidentPromptId(id: string): boolean {
   return id === CORE_INCIDENT_PROMPT_ID || id.startsWith(`${CORE_INCIDENT_PROMPT_ID}:`);
 }
 
-export const CORE_FINANCIAL_LABEL = 'Financial follow-up';
+export const CORE_FINANCIAL_LABEL = 'Wage & Hour Query';
 
 export const CORE_INCIDENT_DEFAULTS: Omit<Prompt, 'id' | 'orgId' | 'createdBy' | 'createdAt' | 'updatedAt'> = {
   type: 'INCIDENT',
@@ -35,7 +35,7 @@ export const CORE_INCIDENT_DEFAULTS: Omit<Prompt, 'id' | 'orgId' | 'createdBy' |
 };
 
 export const CORE_FINANCIAL_DESCRIPTION =
-  'Pay and compensation screening: employees answer this after their main check-in response, before the check-in is saved.';
+  'Wage and hour screening: employees answer this after their main check-in response, before the check-in is saved.';
 
 export function isCoreIncidentPrompt(prompt: Pick<Prompt, 'id' | 'type'>): boolean {
   return isCoreIncidentPromptId(prompt.id) || prompt.type === 'INCIDENT';

@@ -14,8 +14,6 @@ export const ASSIGNABLE_ROLES: UserRole[] = [
  'EMPLOYEE',
  'MANAGER',
  'HR',
- 'SUPER_ADMIN',
- 'CLIENT',
 ];
 
 export function roleLabel(role: UserRole | string): string {

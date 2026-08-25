@@ -164,7 +164,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                 ) : null}
                 {prompt.includeFinancialQuestion ? (
                   <Badge variant="outline" className="border-[var(--color-primary-700)] text-[var(--color-primary-800)]">
-                    Financial follow-up
+                    Wage &amp; Hour Query
                   </Badge>
                 ) : null}
               </div>
@@ -546,7 +546,7 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <Badge variant="outline" className="border-[var(--color-primary-700)]">Core</Badge>
                     <Badge variant="outline" className="border-[var(--color-primary-700)] text-[var(--color-primary-800)]">
-                      Financial follow-up
+                      Wage &amp; Hour Query
                     </Badge>
                     <Badge variant="outline">Money</Badge>
                   </div>
@@ -626,13 +626,13 @@ export function AdminPrompts({ dataStore, onNavigate, initialFilters }: AdminPro
                     </Badge>
                     {prompt.includeFinancialQuestion ? (
                       <Badge variant="outline" className="border-[var(--color-primary-700)] text-[var(--color-primary-800)]">
-                        Financial follow-up
+                        Wage &amp; Hour Query
                       </Badge>
                     ) : null}
                   </div>
                   <p className="text-sm text-[var(--mismo-text-secondary)]">{prompt.description}</p>
                   <p className="text-sm text-[var(--mismo-text-secondary)]">
-                    <span className="font-medium text-[var(--mismo-text)]">Pay and compensation screening: </span>
+                    <span className="font-medium text-[var(--mismo-text)]">Wage and hour screening: </span>
                     {prompt.includeFinancialQuestion
                       ? 'Employees answer this after their main check-in response, before the check-in is saved.'
                       : 'Not enabled for this prompt.'}

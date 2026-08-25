@@ -310,7 +310,7 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  {financialFollowUp ? (
  financialPayrollChoice ? (
  <>
- <p className="text-xs tracking-[0.08em] uppercase text-[var(--color-text-secondary)]">Pay and compensation screening</p>
+ <p className="text-xs tracking-[0.08em] uppercase text-[var(--color-text-secondary)]">Wage and Hour</p>
  <h2 className="mismo-heading text-2xl md:text-3xl mt-3 text-[var(--color-primary-900)]">{PAYROLL_MEMO_CHOICE_HEADING}</h2>
  <div className="mt-6 space-y-4">
  <Card className="border border-[var(--color-border-200)]">
@@ -341,7 +341,7 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  <p className="text-xs tracking-[0.08em] uppercase text-[var(--color-text-secondary)]">
  {isIncidentGate ? 'Check-in required before you continue' : 'Compliance Check-In Required'}
  </p>
- <h2 className="mismo-heading text-2xl md:text-3xl mt-3">Pay and compensation screening</h2>
+ <h2 className="mismo-heading text-2xl md:text-3xl mt-3">Wage and Hour</h2>
  <p className="text-base mt-5">{FINANCIAL_SCREENING_QUESTION}</p>
  <p className="text-sm text-[var(--color-text-secondary)] mt-4 border-l-2 border-[var(--color-primary-500)] pl-4">{FINANCIAL_SCREENING_NOTE}</p>
  <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
