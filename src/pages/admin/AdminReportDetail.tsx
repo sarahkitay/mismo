@@ -21,7 +21,8 @@ import { RelatedRecordsNav } from '@/components/admin/RelatedRecordsNav';
 import { OutreachToneCoach } from '@/components/admin/OutreachToneCoach';
 import { relatedNavForReport } from '@/lib/recordLinks';
 import { toast } from 'sonner';
-import { buildHrSignOff, getSlaLabel, openEmployeeMailto } from '@/lib/reportDetailHelpers';
+import { sendNotificationEmail } from '@/lib/api/notifications';
+import { buildHrSignOff, getSlaLabel } from '@/lib/reportDetailHelpers';
 
 interface AdminReportDetailProps {
  dataStore: DataStore;
@@ -66,6 +67,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  const responseContextFileRef = useRef<HTMLInputElement>(null);
  const evidenceFileInputRef = useRef<HTMLInputElement>(null);
  const [evidenceFileForItem, setEvidenceFileForItem] = useState<string | null>(null);
+ const [sendingEmployeeEmail, setSendingEmployeeEmail] = useState(false);
 
  const orderedLedger = useMemo(
  () => [...(report?.handlingLedger ?? [])].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
@@ -147,7 +149,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  }
  };
 
- const sendPlannedMessageToEmployee = (rawBody: string, subjectLine?: string) => {
+ const sendPlannedMessageToEmployee = async (rawBody: string, subjectLine?: string) => {
  const bodyText = rawBody.trim();
  if (!bodyText) {
  toast.error('Add message text before sending.');
@@ -155,13 +157,19 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  }
  const fullBody = includeSignOff ? `${bodyText}${messageSignOff}` : bodyText;
  const subject = (subjectLine ?? plannedSendSubject).trim() || 'Update from Human Resources';
- const to = reporter?.email?.trim();
+ const recipientUserId = report.createdByUserId;
+ if (!recipientUserId || report.isAnonymous) {
+ toast.error('No named employee is linked to this case.');
+ return;
+ }
 
- dataStore.addReportMessage(report.id, fullBody);
+ setSendingEmployeeEmail(true);
+ try {
+ dataStore.addReportMessage(report.id, fullBody, { sendEmail: false });
  dataStore.addReportHandlingEntry(
  report.id,
  'ACTION_TAKEN',
- `Sent planned message to employee${to ? ` (${to})` : ''}:\n\n${fullBody}`
+ `Sent planned message to employee${reporter?.email ? ` (${reporter.email})` : ''}:\n\n${fullBody}`
  );
  dataStore.updateReportHandling(report.id, {
  responseActionTaken: fullBody,
@@ -169,13 +177,38 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  setResponseActionDraft(fullBody);
  setActionSaved(true);
 
- if (to) {
- openEmployeeMailto(to, subject, fullBody);
- toast.success('Logged and opened email draft with your sign-off. Review before sending.');
- } else {
- toast.message('Message logged on the case.', {
- description: 'No employee email on file. Copy from the ledger if you need to send another way.',
+ const employeeRecipient = reporter?.role === 'EMPLOYEE';
+ const result = await sendNotificationEmail({
+ recipientUserId,
+ subject,
+ body: fullBody,
+ kind: 'CASE_UPDATE',
+ actionPage: employeeRecipient ? `report-detail/${report.id}` : 'report-detail',
+ actionParams: employeeRecipient ? undefined : { id: report.id },
+ templateId: 'new_message',
  });
+
+ if (!result) {
+ toast.error('Email could not be sent. Check that the API and Resend are configured.');
+ return;
+ }
+
+ if (result.ok && result.emailStatus === 'sent') {
+ toast.success(`Email sent to ${reporter?.email ?? 'employee'} via Resend.`);
+ void dataStore.refreshAppNotifications?.();
+ return;
+ }
+
+ if (result.ok && result.emailStatus?.startsWith('skipped')) {
+ toast.message('Message logged on the case.', {
+ description: result.message || 'Resend is not configured for this environment.',
+ });
+ return;
+ }
+
+ toast.error(result.message || 'Email could not be sent.');
+ } finally {
+ setSendingEmployeeEmail(false);
  }
  };
 
@@ -895,7 +928,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  <div>
  <h2 className="text-sm uppercase tracking-wide text-[var(--color-text-secondary)]">Handling ledger</h2>
  <p className="text-xs text-[var(--color-text-muted)] mt-1">
- Log internal notes, or send a planned message to the employee with your HR sign-off.
+ Log internal notes, or email the employee through Resend with your HR sign-off included.
  </p>
  </div>
 
@@ -956,11 +989,11 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  type="button"
  size="sm"
  className="flex-1 min-w-[140px] justify-center"
- onClick={() => sendPlannedMessageToEmployee(plannedSendBody, plannedSendSubject)}
- disabled={!plannedSendBody.trim()}
+ onClick={() => void sendPlannedMessageToEmployee(plannedSendBody, plannedSendSubject)}
+ disabled={!plannedSendBody.trim() || sendingEmployeeEmail || !report.createdByUserId || report.isAnonymous}
  >
  <Icons.mail className="h-3.5 w-3.5 mr-1.5" />
- Send to employee
+ {sendingEmployeeEmail ? 'Sending…' : 'Send to employee'}
  </Button>
  <Button
  type="button"
@@ -977,9 +1010,9 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  Log as plan only
  </Button>
  </div>
- {!reporter?.email && (
+ {!reporter?.email && report.createdByUserId && !report.isAnonymous && (
  <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
- No employee email on this case. Sending will still log the message; use Copy from a ledger entry if needed.
+ No employee email on file. Sending will still log the message on the case.
  </p>
  )}
  </div>
@@ -1069,10 +1102,11 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  variant="outline"
  size="sm"
  className="h-7 text-xs"
- onClick={() => sendPlannedMessageToEmployee(entry.text, plannedSendSubject)}
+ onClick={() => void sendPlannedMessageToEmployee(entry.text, plannedSendSubject)}
+ disabled={sendingEmployeeEmail || !report.createdByUserId || report.isAnonymous}
  >
  <Icons.mail className="h-3 w-3 mr-1" />
- Send with sign-off
+ {sendingEmployeeEmail ? 'Sending…' : 'Send with sign-off'}
  </Button>
  <Button
  type="button"

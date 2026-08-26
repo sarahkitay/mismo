@@ -20,7 +20,7 @@ export type ReportLedgerDeps = {
 export function useReportLedgerActions(deps: ReportLedgerDeps) {
   const { reports, currentUser, effectiveOrgId, orgSettings, setReports, setAppNotifications } = deps;
 
- const addReportMessage = useCallback((reportId: string, body: string) => {
+ const addReportMessage = useCallback((reportId: string, body: string, options?: { sendEmail?: boolean }) => {
  const now = new Date();
  setReports((prev) =>
  prev.map((report) =>
@@ -33,6 +33,7 @@ export function useReportLedgerActions(deps: ReportLedgerDeps) {
  : report
  )
  );
+ if (options?.sendEmail === false) return;
  const report = reports.find((r) => r.id === reportId);
  if (report && body.trim() && orgSettings.enableEmail !== false) {
    const reporterId = report.createdByUserId;
