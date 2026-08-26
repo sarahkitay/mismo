@@ -102,12 +102,12 @@ export const OUTREACH_TONE_SCALE: {
  label: string;
  description: string;
 }[] = [
- { score: 1, level: 'EMPATHETIC', label: 'Empathetic', description: 'Supportive, care-focused - best for sensitive cases' },
- { score: 2, level: 'PROFESSIONAL', label: 'Professional', description: 'Standard HR tone - recommended default' },
+ { score: 1, level: 'EMPATHETIC', label: 'Empathetic', description: 'Supportive, care-focused. Best for sensitive cases' },
+ { score: 2, level: 'PROFESSIONAL', label: 'Professional', description: 'Standard HR tone. Recommended default' },
  { score: 3, level: 'NEUTRAL', label: 'Neutral', description: 'Factual requests with minimal emotional framing' },
  { score: 4, level: 'DIRECT', label: 'Direct', description: 'Clear deadlines and expectations' },
- { score: 5, level: 'FIRM', label: 'Firm', description: 'Strong policy language - use with caution' },
- { score: 6, level: 'HARSH', label: 'Harsh', description: 'Punitive tone - high legal and reputation risk' },
+ { score: 5, level: 'FIRM', label: 'Firm', description: 'Strong policy language. Use with caution' },
+ { score: 6, level: 'HARSH', label: 'Harsh', description: 'Punitive tone. High legal and reputation risk' },
 ];
 
 export function toneLabelForScore(score: number): string {

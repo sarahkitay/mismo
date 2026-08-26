@@ -283,7 +283,7 @@ export function OutreachToneCoach({
             className={`inline-flex items-center gap-2 px-3 py-1.5 rounded border text-sm font-medium ${toneColorClass(result.tone_score)}`}
           >
             Tone: {toneLabelForScore(result.tone_score)} ({result.tone_score}/6)
-            {result.tone_score >= 5 && <span className="text-xs font-normal"> - review carefully</span>}
+            {result.tone_score >= 5 && <span className="text-xs font-normal">. Review carefully.</span>}
           </div>
 
           <p className="text-sm text-[var(--color-text-secondary)]">{result.rationale}</p>
@@ -301,7 +301,7 @@ export function OutreachToneCoach({
               <p className="font-medium text-[var(--color-text-primary)]">Relevant law context</p>
               {result.applicable_laws.map((law) => (
                 <p key={law.citation} className="text-[var(--color-text-secondary)]">
-                  <span className="font-medium">{law.citation}</span> - {law.relevance}
+                  <span className="font-medium">{law.citation}</span>: {law.relevance}
                 </p>
               ))}
             </div>
@@ -323,7 +323,7 @@ export function OutreachToneCoach({
                   toast.success(
                     bodyOnly || isOutcomeGenerate || isScreenshotDraft
                       ? 'Suggested wording applied. Review before saving.'
-                      : 'Suggested wording applied - review before sending.'
+                      : 'Suggested wording applied. Review before sending.'
                   );
                 }}
               >

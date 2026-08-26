@@ -188,7 +188,7 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
       return;
     }
     onNavigate('report-detail', { id: caseId });
-    toast.message('Opened case — use Convert to investigation there if needed.');
+    toast.message('Opened case. Use Convert to investigation there if needed.');
   };
 
   return (

@@ -97,7 +97,7 @@ export function DashboardNotifications({
               )}
             </p>
             <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-              Invites, password resets, messages, and case updates — including emails sent via Resend.
+              Invites, password resets, messages, and case updates, including emails sent via Resend.
             </p>
           </div>
           {unread.length > 0 && (

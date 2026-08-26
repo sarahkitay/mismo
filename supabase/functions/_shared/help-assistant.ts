@@ -192,7 +192,7 @@ function fallbackAnswer(question: string, role: string): HelpAssistantResponse {
   if (!best || bestScore === 0) {
     return {
       answer:
-        'I can help with using Mismo — reports, memos, check-ins, employees, investigations, and state laws. Try asking something like “How do I sign a memo?” or “Where do I review Yes answers?”',
+        'I can help with using Mismo for reports, memos, check-ins, employees, investigations, and state laws. Try asking something like “How do I sign a memo?” or “Where do I review Yes answers?”',
       steps: [
         'Describe what you want to do in plain language.',
         'I will explain the steps and offer a button to open the right page.',

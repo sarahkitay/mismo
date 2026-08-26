@@ -158,7 +158,7 @@ export function AdminCompliance({ dataStore, onNavigate, initialFilters }: Admin
  const freshnessIssues = validateLawCorpusForPublish(laws);
  if (freshnessIssues.length > 0) {
  toast.error(
- `Cannot publish: ${freshnessIssues[0].title} — ${freshnessIssues[0].reason} Re-sync or correct the corpus first.`
+ `Cannot publish: ${freshnessIssues[0].title}. ${freshnessIssues[0].reason} Re-sync or correct the corpus first.`
  );
  return;
  }

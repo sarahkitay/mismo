@@ -9,12 +9,12 @@ Never invent facts not supported by the provided source material or screenshots.
 When screenshots of texts or emails are provided, read visible conversation text carefully and base the draft only on what is visible.`;
 
 const TONE_HINT: Record<number, string> = {
-  1: 'Empathetic — supportive, care-focused wording',
-  2: 'Professional — clear standard HR tone',
-  3: 'Neutral — factual, minimal emotion',
-  4: 'Direct — clear expectations and next steps',
-  5: 'Firm — strong policy language (use carefully)',
-  6: 'Harsh — avoid; high legal risk',
+  1: 'Empathetic: supportive, care-focused wording',
+  2: 'Professional: clear standard HR tone',
+  3: 'Neutral: factual, minimal emotion',
+  4: 'Direct: clear expectations and next steps',
+  5: 'Firm: strong policy language (use carefully)',
+  6: 'Harsh: avoid; high legal risk',
 };
 
 export type OutreachCoachRequest = {

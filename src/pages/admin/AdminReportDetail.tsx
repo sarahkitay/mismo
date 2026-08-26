@@ -143,7 +143,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  `Converted to investigation ${inv.referenceNumber ?? inv.id}. Opening gather information (Page 2).`
  );
  onNavigate('investigation-detail', { id: inv.id, tab: 'page-2' });
- toast.success('Investigation opened — continue on Page 2.');
+ toast.success('Investigation opened. Continue on Page 2.');
  }
  };
 
@@ -174,7 +174,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  toast.success('Logged and opened email draft with your sign-off. Review before sending.');
  } else {
  toast.message('Message logged on the case.', {
- description: 'No employee email on file — copy from the ledger if you need to send another way.',
+ description: 'No employee email on file. Copy from the ledger if you need to send another way.',
  });
  }
  };
@@ -215,7 +215,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  <div>
  <h2 className="text-sm font-semibold text-[var(--color-primary-900)]">Related records</h2>
  <p className="text-xs text-[var(--color-text-secondary)]">
- Case links, employee profile, check-in response, and registers — open as their own page.
+ Case links, employee profile, check-in response, and registers. Each opens as its own page.
  </p>
  </div>
  <div className="flex flex-wrap gap-2">

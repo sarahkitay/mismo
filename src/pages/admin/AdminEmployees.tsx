@@ -194,7 +194,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  setInviteLinkName(`${employee.firstName} ${employee.lastName}`);
  setInviteEmail(employee.email);
  setInviteLink(result.actionLink);
- toast.success('Sign-in link ready — email it or copy it below.');
+ toast.success('Sign-in link ready. Email it or copy it below.');
  } else {
  toast.info(result.message || 'No shareable link was returned.');
  }
