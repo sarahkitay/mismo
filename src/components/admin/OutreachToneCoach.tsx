@@ -214,21 +214,28 @@ export function OutreachToneCoach({
           : 'Analyze tone';
 
   return (
-    <div className="rounded-lg border border-[var(--color-border-200)] bg-[var(--color-surface-200)]/50 p-3 space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+    <div className="rounded-lg border border-[var(--color-border-200)] bg-[var(--color-surface-200)]/50 p-3 space-y-3 min-w-0">
+      <div className="space-y-2">
+        <div>
           <p className="text-sm font-semibold text-[var(--color-primary-900)] flex items-center gap-2">
             <Icons.zap className="h-4 w-4 shrink-0" />
-            {heading}
+            <span>{heading}</span>
           </p>
-          <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">{blurb}</p>
+          <p className="text-xs text-[var(--color-text-secondary)] mt-0.5 leading-relaxed">{blurb}</p>
           {hasImages && (
             <p className="text-xs text-[var(--mismo-blue)] mt-1">
               Using {imageAttachmentCount} screenshot{imageAttachmentCount === 1 ? '' : 's'} as context
             </p>
           )}
         </div>
-        <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={loading || !canRun} onClick={() => void runCoach()}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full sm:w-auto"
+          disabled={loading || !canRun}
+          onClick={() => void runCoach()}
+        >
           {actionLabel}
         </Button>
       </div>

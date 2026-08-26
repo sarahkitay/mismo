@@ -576,7 +576,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  </div>
 
  <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
- <div className="space-y-2">
+ <div className="space-y-2 min-w-0">
  <p className="text-sm font-medium">Planned Response</p>
  <textarea
  value={responsePlanDraft}
@@ -621,7 +621,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  {planSaved ? 'Saved' : 'Save plan'}
  </Button>
  </div>
- <div className="space-y-2">
+ <div className="space-y-2 min-w-0">
  <p className="text-sm font-medium">Actual Response</p>
  <textarea
  value={responseActionDraft}
@@ -665,7 +665,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  {actionSaved ? 'Saved' : 'Save action'}
  </Button>
  </div>
- <div className="space-y-2">
+ <div className="space-y-2 min-w-0">
  <p className="text-sm font-medium">Employee Response Outcome</p>
  <textarea
  value={employeeOutcomeDraft}
