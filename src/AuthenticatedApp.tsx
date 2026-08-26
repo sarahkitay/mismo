@@ -263,16 +263,13 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  'dashboard',
  'users',
  'employees',
- 'employee-detail',
  'investigations',
- 'investigation-detail',
  'policies',
  'policy-detail',
  'announcements',
  'announcement-detail',
  'prompts',
  'prompt-responses',
- 'prompt-response-detail',
  'case-register',
  'scheduled-memos',
  'compliance',
@@ -280,9 +277,15 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  'settings',
  'activity',
  'manager-dashboard',
- 'report-detail',
  ]);
- if (isMismoInternal && hrOnlyPages.has(activePage)) {
+ const hrDetailPages = new Set([
+ 'employee-detail',
+ 'report-detail',
+ 'investigation-detail',
+ 'prompt-response-detail',
+ ]);
+ const onHrDetailPage = hrDetailPages.has(activePage) && Boolean(pageParams.id);
+ if (isMismoInternal && hrOnlyPages.has(activePage) && !onHrDetailPage) {
  return <AdminClients dataStore={dataStore} onNavigate={handleNavigate} />;
  }
 

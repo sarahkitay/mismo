@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { PageMoreInfo } from '@/components/PageMoreInfo';
+import { BuiltByCredit } from '@/components/BuiltByCredit';
 import { sendSelfPasswordResetEmail } from '@/lib/api/notifications';
 import { sanitizeInfraError } from '@/lib/infraMessaging';
 
@@ -300,6 +301,8 @@ export function EmployeeSettings({ dataStore }: EmployeeSettingsProps) {
           </div>
         </CardContent>
       </Card>
+
+      <BuiltByCredit className="pt-8 pb-1 text-center" tone="subtle" />
     </div>
   );
 }

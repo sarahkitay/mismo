@@ -6,6 +6,7 @@ import { formatRelativeTime } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Icons } from '@/lib/icons';
 import { DailyCheckInGate, useDailyCheckInViewState } from '@/components/DailyCheckInGate';
+import { DashboardCheckInShortcuts } from '@/components/DashboardCheckInShortcuts';
 import { PageMoreInfo } from '@/components/PageMoreInfo';
 import { DashboardNotifications } from '@/components/DashboardNotifications';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -484,6 +485,8 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  <Icons.mail className="h-4 w-4" /> Email service: Ready
  </span>
  </div>
+
+ <DashboardCheckInShortcuts dataStore={dataStore} onNavigate={onNavigate} portal="staff" />
  </>
  )}
  </div>

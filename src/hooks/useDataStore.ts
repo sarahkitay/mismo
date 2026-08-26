@@ -60,7 +60,7 @@ import { sendNotificationEmail, runPromptReminders } from '@/lib/api/notificatio
 import { employeeNeedsPolicyAck } from '@/lib/lawDigestMemo';
 import { loadClientData } from '@/lib/supabase/clientCompanies';
 import { normalizeDemoEmail } from '@/data/demoLogins';
-import { mergeCorePrompts, resolveDailyCheckInPrompt, isLockedCorePrompt } from '@/lib/corePrompts';
+import { mergeCorePrompts, resolveDailyCheckInPrompt, isLockedCorePrompt, promptIsActiveForDelivery } from '@/lib/corePrompts';
 import { INFRA_NOT_CONFIGURED, sanitizeInfraError } from '@/lib/infraMessaging';
 import {
   filterReports,
@@ -706,6 +706,35 @@ export function useDataStore() {
 
  return newResponse;
  }, [deliveries, responses, effectiveOrgId]);
+
+ const ensureVoluntaryCheckInDelivery = useCallback((promptId?: string): PromptDelivery | null => {
+ if (!session) return null;
+ const orgId = session.orgId;
+ const userId = session.userId;
+ const targetPromptId = promptId ?? resolveDailyCheckInPrompt(prompts, orgId)?.id;
+ if (!targetPromptId) return null;
+ const prompt = prompts.find((p) => p.id === targetPromptId && p.orgId === orgId);
+ if (!prompt || !promptIsActiveForDelivery(prompt)) return null;
+
+ const endOfToday = new Date();
+ endOfToday.setHours(23, 59, 59, 999);
+ const now = new Date();
+ const deliveryId = `delivery-voluntary-${userId}-${targetPromptId}-${now.getTime()}`;
+ const newDelivery: PromptDelivery = {
+ id: deliveryId,
+ orgId,
+ promptId: targetPromptId,
+ userId,
+ status: 'PENDING',
+ deliveredAt: now,
+ dueAt: endOfToday,
+ createdAt: now,
+ updatedAt: now,
+ };
+ setDeliveries((prev) => [...prev, newDelivery]);
+ void persistPromptDelivery(newDelivery, prompt);
+ return newDelivery;
+ }, [session, prompts]);
 
  const {
  beginIncidentCaseFromPrompt,
@@ -1630,6 +1659,7 @@ export function useDataStore() {
  // Actions
  switchRole,
  submitPromptResponse,
+ ensureVoluntaryCheckInDelivery,
  submitIncidentPromptYes,
  beginIncidentCaseFromPrompt,
  createReport,

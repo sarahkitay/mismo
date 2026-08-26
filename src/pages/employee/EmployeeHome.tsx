@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { employeeIncidentReportHeadline, formatRelativeTime, getStatusColor, isEmployeeReportIntakeComplete } from '@/lib/utils';
 import { DailyCheckInGate, useDailyCheckInViewState } from '@/components/DailyCheckInGate';
+import { DashboardCheckInShortcuts } from '@/components/DashboardCheckInShortcuts';
 import { ReportConcernSection } from '@/components/employee/ReportConcernSection';
 import { employeeNeedsPolicyAck, pendingLawDigestEntries } from '@/lib/lawDigestMemo';
 import { DashboardNotifications } from '@/components/DashboardNotifications';
@@ -301,6 +302,8 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
  </CardContent>
  </Card>
  )}
+
+ {!showCheckInGate && <DashboardCheckInShortcuts dataStore={dataStore} onNavigate={onNavigate} portal="employee" />}
 
  <ReportConcernSection onNavigate={onNavigate} />
  </div>

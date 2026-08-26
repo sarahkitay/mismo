@@ -270,6 +270,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
             userId: r.userId,
             promptTitle: prompt?.title ?? 'Prompt',
             promptType: prompt?.type ?? 'GENERAL',
+            promptId: r.promptId,
             userName: u ? `${u.firstName} ${u.lastName}` : 'Employee',
             answer: r.answer,
             date: r.submittedAt,

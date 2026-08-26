@@ -17,12 +17,22 @@ export function answerLabel(answer: string): string {
   return 'Unanswered';
 }
 
+export type PromptResponseLinkOptions = {
+  userId?: string;
+  promptDeliveryId?: string;
+  promptId?: string;
+};
+
 export function linkedReportForPromptRow(
-  row: { id: string; answer: string; userId?: string },
+  row: { id: string; answer: string; userId?: string; deliveryId?: string; promptId?: string },
   reports: Report[]
 ): Report | undefined {
   if (row.answer === 'UNANSWERED') return undefined;
-  return findReportForPromptResponse(row.id, reports, row.userId);
+  return findReportForPromptResponse(row.id, reports, {
+    userId: row.userId,
+    promptDeliveryId: row.deliveryId,
+    promptId: row.promptId,
+  });
 }
 
 export function promptResponseForReport(report: Report, responses: PromptResponse[]): PromptResponse | undefined {
@@ -30,16 +40,37 @@ export function promptResponseForReport(report: Report, responses: PromptRespons
   return responses.find((r) => r.id === report.sourcePromptResponseId);
 }
 
-export function findReportForPromptResponse(responseId: string, reports: Report[], userId?: string): Report | undefined {
-  const bySource = reports.find((r) => r.sourcePromptResponseId === responseId);
-  if (bySource) return bySource;
-  // Deterministic case id from Yes flow: report-${responseId}
-  const byId = reports.find((r) => r.id === `report-${responseId}`);
-  if (byId) return byId;
-  if (userId) {
+export function findReportForPromptResponse(
+  responseId: string,
+  reports: Report[],
+  userIdOrOptions?: string | PromptResponseLinkOptions
+): Report | undefined {
+  const options: PromptResponseLinkOptions =
+    typeof userIdOrOptions === 'string' ? { userId: userIdOrOptions } : userIdOrOptions ?? {};
+  const candidateIds = [responseId, options.promptDeliveryId].filter(Boolean) as string[];
+
+  for (const id of candidateIds) {
+    const bySource = reports.find((r) => r.sourcePromptResponseId === id);
+    if (bySource) return bySource;
+    const byReportId = reports.find((r) => r.id === `report-${id}`);
+    if (byReportId) return byReportId;
+  }
+
+  if (options.userId && options.promptId) {
+    const byPrompt = reports.find(
+      (r) =>
+        r.createdByUserId === options.userId &&
+        r.sourcePromptId === options.promptId &&
+        r.reportSourceType === 'EMPLOYEE_PROMPT_RESPONSE' &&
+        !['RESOLVED', 'CLOSED'].includes(r.status)
+    );
+    if (byPrompt) return byPrompt;
+  }
+
+  if (options.userId) {
     return reports.find(
       (r) =>
-        r.createdByUserId === userId &&
+        r.createdByUserId === options.userId &&
         r.reportSourceType === 'EMPLOYEE_PROMPT_RESPONSE' &&
         !['RESOLVED', 'CLOSED'].includes(r.status)
     );
@@ -165,7 +196,11 @@ export function relatedNavForPromptResponse(
   const { users, reports, investigations, prompts } = dataStore;
   const prompt = prompts.find((p) => p.id === response.promptId);
   const employee = users.find((u) => u.id === response.userId);
-  const linkedCase = findReportForPromptResponse(response.id, reports, response.userId);
+  const linkedCase = findReportForPromptResponse(response.id, reports, {
+    userId: response.userId,
+    promptDeliveryId: response.promptDeliveryId,
+    promptId: response.promptId,
+  });
   const linkedInv = findInvestigationForPromptResponse(response.id, reports, investigations);
 
   const links: RecordNavTarget[] = [];

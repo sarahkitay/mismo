@@ -7,7 +7,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { sanitizeInfraError } from '@/lib/infraMessaging';
-import { BuiltByCredit } from '@/components/BuiltByCredit';
 
 interface SetPasswordProps {
   onDone: () => void;
@@ -245,7 +244,6 @@ export function SetPassword({ onDone }: SetPasswordProps) {
             )}
           </CardContent>
         </Card>
-        <BuiltByCredit className="mt-4 text-center" tone="muted" />
       </div>
     </div>
   );

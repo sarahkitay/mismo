@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { PageMoreInfo } from '@/components/PageMoreInfo';
+import { BuiltByCredit } from '@/components/BuiltByCredit';
 
 interface AdminSettingsProps {
   dataStore: DataStore;
@@ -498,6 +499,8 @@ export function AdminSettings({ dataStore, initialSection }: AdminSettingsProps)
           )}
         </Button>
       </div>
+
+      <BuiltByCredit className="pt-8 pb-1 text-center" tone="subtle" />
     </div>
   );
 }
