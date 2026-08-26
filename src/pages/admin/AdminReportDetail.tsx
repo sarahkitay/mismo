@@ -20,7 +20,6 @@ import { EmployeeIntakeReadOnly } from '@/components/admin/EmployeeIntakeReadOnl
 import { RelatedRecordsNav } from '@/components/admin/RelatedRecordsNav';
 import { OutreachToneCoach } from '@/components/admin/OutreachToneCoach';
 import { relatedNavForReport } from '@/lib/recordLinks';
-import { isAiFeaturesEnabled } from '@/lib/api/aiServices';
 import { toast } from 'sonner';
 import { buildHrSignOff, getSlaLabel, openEmployeeMailto } from '@/lib/reportDetailHelpers';
 
@@ -135,6 +134,19 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  caseReference: caseId,
  });
 
+ const convertToInvestigation = () => {
+ const inv = dataStore.createInvestigation(report.id, dataStore.currentUser.id);
+ if (inv) {
+ dataStore.addReportHandlingEntry(
+ report.id,
+ 'NOTE',
+ `Converted to investigation ${inv.referenceNumber ?? inv.id}. Opening gather information (Page 2).`
+ );
+ onNavigate('investigation-detail', { id: inv.id, tab: 'page-2' });
+ toast.success('Investigation opened — continue on Page 2.');
+ }
+ };
+
  const sendPlannedMessageToEmployee = (rawBody: string, subjectLine?: string) => {
  const bodyText = rawBody.trim();
  if (!bodyText) {
@@ -248,7 +260,8 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  {/* Above-the-fold: Case Command Center header */}
  <Card className="mismo-card border border-[var(--color-border-200)]">
  <CardContent className="p-5 space-y-4">
- <div className="flex flex-col gap-1">
+ <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+ <div className="flex flex-col gap-1 min-w-0 flex-1">
  <div className="flex items-baseline gap-2 flex-wrap">
  <span className="text-sm font-mono font-semibold text-[var(--color-primary-900)]">{caseId}</span>
  <span className="text-[10px] text-[var(--color-text-muted)]">·</span>
@@ -261,7 +274,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  </span>
  {sourcePrompt && (
  <>
-                  {' · '}
+ {' · '}
  <button
  type="button"
  className="text-[var(--mismo-blue)] hover:underline"
@@ -276,12 +289,12 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  </>
  )}
  </p>
- <p className="text-sm mt-1 flex flex-wrap items-center gap-2">
- <span>
+ <p className="text-sm mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+ <span className="text-[var(--color-text-secondary)]">
  Employee form:{' '}
- <Badge className={intakeComplete ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'}>
+ <span className={intakeComplete ? 'text-emerald-800 font-medium' : 'text-amber-800 font-medium'}>
  {intakeComplete ? 'Complete' : 'Pending'}
- </Badge>
+ </span>
  </span>
  {(intakeComplete || report.description) && (
  <Button type="button" variant="outline" size="sm" onClick={() => setShowIntakeSubmission((v) => !v)}>
@@ -290,6 +303,27 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  )}
  </p>
  <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">{report.summary}</h1>
+ </div>
+
+ <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+ {linkedInvestigation ? (
+ <Button
+ size="lg"
+ className="min-h-12 px-6 text-base font-semibold"
+ onClick={() => onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'page-2' })}
+ >
+ Open investigation
+ </Button>
+ ) : (
+ <Button
+ size="lg"
+ className="min-h-12 px-6 text-base font-semibold bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)] text-white"
+ onClick={convertToInvestigation}
+ >
+ Convert to investigation
+ </Button>
+ )}
+ </div>
  </div>
 
  <div className="flex flex-wrap items-center gap-2">
@@ -349,7 +383,9 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  </div>
  </div>
 
+ {intakeComplete && report.description && (
  <p className="text-[var(--mismo-text-secondary)] text-sm">{report.description}</p>
+ )}
 
  <div className="flex flex-wrap gap-2 border-t border-[var(--color-border-200)] pt-4">
  <Button variant="outline" onClick={() => dataStore.assignReport(report.id, dataStore.currentUser.id)}>{ASSIGN_CASE_TO_ME_ACTION}</Button>
@@ -367,35 +403,6 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  }}
  >
  {MARK_INITIAL_REVIEW_ACTION}
- </Button>
- )}
- {!linkedInvestigation && (
- <Button
- size="lg"
- className="w-full sm:w-auto min-h-12 px-6 text-base font-semibold bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)] text-white"
- onClick={() => {
- const inv = dataStore.createInvestigation(report.id, dataStore.currentUser.id);
- if (inv) {
- dataStore.addReportHandlingEntry(
- report.id,
- 'NOTE',
- `Converted to investigation ${inv.referenceNumber ?? inv.id}. Opening gather information (Page 2).`
- );
- onNavigate('investigation-detail', { id: inv.id, tab: 'page-2' });
- toast.success('Investigation opened — continue on Page 2.');
- }
- }}
- >
- Convert to investigation
- </Button>
- )}
- {linkedInvestigation && (
- <Button
- size="lg"
- className="w-full sm:w-auto min-h-12 px-6 text-base font-semibold"
- onClick={() => onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'page-2' })}
- >
- Open investigation (Page 2)
  </Button>
  )}
  <Button
@@ -533,13 +540,13 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  ) : null}
  <p className="font-medium truncate">{entry.fileFileName ?? entry.text}</p>
  <p className="text-xs text-[var(--color-text-secondary)]">{entry.createdAt.toLocaleString()}</p>
+ <div className="flex flex-wrap items-center gap-3">
  {entry.fileDataUrl ? (
  <button
  type="button"
  className="text-xs text-[var(--mismo-blue)] underline"
  onClick={() => {
  const url = entry.fileDataUrl!;
- // Open without putting a huge data: URL on an <a href> (avoids long main-thread stalls).
  window.setTimeout(() => {
  window.open(url, '_blank', 'noopener,noreferrer');
  }, 0);
@@ -548,6 +555,17 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  Open / download
  </button>
  ) : null}
+ <button
+ type="button"
+ className="text-xs text-[var(--color-alert-600)] hover:underline"
+ onClick={() => {
+ dataStore.removeReportLedgerEntry(report.id, entry.id);
+ toast.success('Attachment removed.');
+ }}
+ >
+ Remove
+ </button>
+ </div>
  </li>
  );
  })}
@@ -867,21 +885,6 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  e.target.value = '';
  }}
  />
- )}
- </CardContent>
- </Card>
-
- <Card className="mismo-card">
- <CardContent className="p-5 space-y-2">
- <h2 className="text-sm uppercase tracking-wide text-[var(--color-text-secondary)]">Response assessment</h2>
- {isAiFeaturesEnabled() ? (
- <p className="text-sm text-[var(--color-text-secondary)]">
- Use Soften with AI / Draft from screenshots on Response workflow fields to check tone and draft follow-ups from uploaded message screenshots before saving.
- </p>
- ) : (
- <p className="text-sm text-[var(--color-text-secondary)]">
- AI language assist is unavailable until the API and AI features are configured.
- </p>
  )}
  </CardContent>
  </Card>

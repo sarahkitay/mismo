@@ -16,7 +16,6 @@ import { DateRangeFilter } from '@/components/DateRangeFilter';
 import { defaultDateRange, inDateRange, type DateRangeState } from '@/lib/dateFilters';
 import {
   getCategoryLabel,
-  truncateText,
   formatRelativeTime,
   formatDate,
   isIncidentIntakeComplete,
@@ -27,7 +26,7 @@ import {
 } from '@/lib/utils';
 import { compareByLastFirstName } from '@/lib/sortUsers';
 import { Badge } from '@/components/ui/badge';
-import { CASE_TYPE_LABELS, MARK_INITIAL_REVIEW_ACTION, MARK_INITIAL_REVIEW_TOAST, formatCaseReference, getReportStatusLabel, inferCaseType } from '@/lib/caseTypes';
+import { CASE_TYPE_LABELS, MARK_INITIAL_REVIEW_ACTION, MARK_INITIAL_REVIEW_TOAST, formatCaseReference, getCaseTypeShortLabel, getReportStatusLabel, getReportStatusShortLabel, inferCaseType } from '@/lib/caseTypes';
 import { Icons } from '@/lib/icons';
 import { toast } from 'sonner';
 import {
@@ -113,11 +112,36 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
     [reports, investigations]
   );
 
+  const promptIdsForChannel = useMemo(() => {
+    if (promptChannel === 'incident') {
+      return new Set(prompts.filter((p) => p.type === 'INCIDENT').map((p) => p.id));
+    }
+    if (promptChannel === 'wage_hour') {
+      return new Set(
+        prompts.filter((p) => p.includeFinancialQuestion || p.title.toLowerCase().includes('wage')).map((p) => p.id)
+      );
+    }
+    return new Set(prompts.map((p) => p.id));
+  }, [prompts, promptChannel]);
+
+  const incidentPromptIds = useMemo(
+    () => new Set(prompts.filter((p) => p.type === 'INCIDENT').map((p) => p.id)),
+    [prompts]
+  );
+
+  const employeeIdFilter = filters.employeeId;
+  const filterEmployee = employeeIdFilter ? users.find((u) => u.id === employeeIdFilter) : undefined;
+
+  const employeeScopedReports = useMemo(() => {
+    if (!employeeIdFilter) return registerReports;
+    return registerReports.filter((report) => report.createdByUserId === employeeIdFilter);
+  }, [registerReports, employeeIdFilter]);
+
   const riskSummary = useMemo(() => {
     const now = Date.now();
     const ms24h = 24 * 60 * 60 * 1000;
     const ms7d = 7 * 24 * 60 * 60 * 1000;
-    const base = registerReports;
+    const base = employeeScopedReports;
     return {
       criticalOpen: base.filter((r) => (r.severity === 'CRITICAL' || r.severity === 'HIGH') && isOpenReport(r)).length,
       unassigned: base.filter((r) => !r.assignedTo && isOpenReport(r)).length,
@@ -132,40 +156,79 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
       }).length,
       overSla: base.filter((r) => isOpenReport(r) && isOverSla(r)).length,
     };
-  }, [registerReports]);
+  }, [employeeScopedReports]);
 
-  const promptIdsForChannel = useMemo(() => {
-    if (promptChannel === 'incident') {
-      return new Set(prompts.filter((p) => p.type === 'INCIDENT').map((p) => p.id));
-    }
-    if (promptChannel === 'wage_hour') {
-      return new Set(
-        prompts.filter((p) => p.includeFinancialQuestion || p.title.toLowerCase().includes('wage')).map((p) => p.id)
-      );
-    }
-    return new Set(prompts.map((p) => p.id));
-  }, [prompts, promptChannel]);
-
-  const unansweredCount = useMemo(
+  const orgUnansweredCount = useMemo(
     () =>
       deliveries.filter((d) => {
         if (d.status !== 'PENDING') return false;
+        if (!incidentPromptIds.has(d.promptId)) return false;
         const user = users.find((u) => u.id === d.userId);
         if (!user || user.role !== 'EMPLOYEE' || user.status !== 'active') return false;
         const prompt = prompts.find((p) => p.id === d.promptId);
         if (!prompt || prompt.status !== 'ACTIVE') return false;
-        if (!promptIdsForChannel.has(d.promptId)) return false;
         return true;
       }).length,
-    [deliveries, users, prompts, promptIdsForChannel]
+    [deliveries, users, prompts, incidentPromptIds]
   );
-  const yesNeedingReviewCount = useMemo(
+
+  const orgYesNeedingReviewCount = useMemo(
     () => responses.filter((r) => r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false).length,
     [responses]
   );
 
-  const employeeIdFilter = filters.employeeId;
-  const filterEmployee = employeeIdFilter ? users.find((u) => u.id === employeeIdFilter) : undefined;
+  const incidentBucketCounts = useMemo(() => {
+    if (!employeeIdFilter) {
+      return {
+        yes: responses.filter(
+          (r) => r.answer === 'HAS_ISSUE' && incidentPromptIds.has(r.promptId)
+        ).length,
+        yesNeedsReview: responses.filter(
+          (r) =>
+            r.answer === 'HAS_ISSUE' &&
+            !r.reviewedAt &&
+            r.needsReview !== false &&
+            incidentPromptIds.has(r.promptId)
+        ).length,
+        no: responses.filter(
+          (r) => r.answer === 'NO_ISSUE' && incidentPromptIds.has(r.promptId)
+        ).length,
+        unanswered: orgUnansweredCount,
+      };
+    }
+    const rows = buildEmployeePromptRegisterRows(employeeIdFilter, users, deliveries, responses, prompts, {
+      range,
+      channelPromptIds: incidentPromptIds,
+    });
+    return {
+      yes: rows.filter((r) => r.answer === 'HAS_ISSUE').length,
+      yesNeedsReview: rows.filter((r) => r.answer === 'HAS_ISSUE' && r.needsReview).length,
+      no: rows.filter((r) => r.answer === 'NO_ISSUE').length,
+      unanswered: rows.filter((r) => r.answer === 'UNANSWERED').length,
+    };
+  }, [
+    employeeIdFilter,
+    users,
+    deliveries,
+    responses,
+    prompts,
+    range,
+    incidentPromptIds,
+    orgUnansweredCount,
+  ]);
+
+  const registerBucketCounts = useMemo(() => {
+    const scoped = employeeScopedReports.filter((report) =>
+      employeeIdFilter ? inDateRange(report.updatedAt ?? report.createdAt, range) : true
+    );
+    return {
+      openCases: scoped.filter((r) => isOpenReport(r)).length,
+      wageHourCases: scoped.filter((r) => inferCaseType(r.category, r.caseType) === 'WAGE_HOUR').length,
+    };
+  }, [employeeScopedReports, employeeIdFilter, range]);
+
+  const unansweredCount = employeeIdFilter ? incidentBucketCounts.unanswered : orgUnansweredCount;
+  const yesNeedingReviewCount = employeeIdFilter ? incidentBucketCounts.yesNeedsReview : orgYesNeedingReviewCount;
 
   const reportSummary = useMemo(() => {
     const scoped = registerReports.filter((report) => {
@@ -397,7 +460,9 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
     onNavigate('prompt-responses', {
       view: 'prompts',
       employeeId: userId,
-      rangePreset: 'ALL',
+      rangePreset: range.preset,
+      ...(range.startDate ? { startDate: range.startDate } : {}),
+      ...(range.endDate ? { endDate: range.endDate } : {}),
       channel: 'incident',
     });
 
@@ -482,17 +547,21 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
 
       <div className="space-y-4">
         <div>
-          <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)] mb-2">Issue responses (incident query)</p>
+          <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)] mb-2">
+            {filterEmployee
+              ? `Issue responses for ${filterEmployee.firstName} ${filterEmployee.lastName}`
+              : 'Issue responses (incident query)'}
+          </p>
           <div className="flex flex-wrap gap-2">
             <BucketBtn
               active={promptChannel === 'incident' && bucket === 'PROMPT_YES' && !needsReviewOnly}
               onClick={() => goPrompt({ channel: 'incident', answer: 'HAS_ISSUE', rangePreset: filters.rangePreset ?? 'ALL' })}
             >
-              Yes ({responses.filter((r) => r.answer === 'HAS_ISSUE' && prompts.find((p) => p.id === r.promptId)?.type === 'INCIDENT').length})
+              Yes ({incidentBucketCounts.yes})
             </BucketBtn>
             <BucketBtn
               active={promptChannel === 'incident' && bucket === 'PROMPT_YES' && needsReviewOnly}
-              onClick={() => goPrompt({ channel: 'incident', answer: 'HAS_ISSUE', needs_review: '1', rangePreset: 'ALL' })}
+              onClick={() => goPrompt({ channel: 'incident', answer: 'HAS_ISSUE', needs_review: '1', rangePreset: filters.rangePreset ?? 'ALL' })}
             >
               Yes · needs review ({yesNeedingReviewCount})
             </BucketBtn>
@@ -500,7 +569,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
               active={promptChannel === 'incident' && bucket === 'PROMPT_NO'}
               onClick={() => goPrompt({ channel: 'incident', answer: 'NO_ISSUE', rangePreset: filters.rangePreset ?? 'ALL' })}
             >
-              No ({responses.filter((r) => r.answer === 'NO_ISSUE' && prompts.find((p) => p.id === r.promptId)?.type === 'INCIDENT').length})
+              No ({incidentBucketCounts.no})
             </BucketBtn>
             <BucketBtn
               active={promptChannel === 'incident' && bucket === 'PROMPT_UNANSWERED'}
@@ -521,11 +590,12 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                   register: '1',
                   channel: 'wage_hour',
                   caseType: 'WAGE_HOUR',
-                  rangePreset: 'ALL',
+                  rangePreset: filters.rangePreset ?? 'ALL',
+                  ...(employeeIdFilter ? { employeeId: employeeIdFilter } : {}),
                 })
               }
             >
-              Wage &amp; hour cases ({registerReports.filter((r) => inferCaseType(r.category, r.caseType) === 'WAGE_HOUR').length})
+              Wage &amp; hour cases ({registerBucketCounts.wageHourCases})
             </BucketBtn>
           </div>
         </div>
@@ -533,7 +603,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
           <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)] mb-2">Case register</p>
           <div className="flex flex-wrap gap-2">
             <BucketBtn active={promptChannel === 'register' && bucket === 'CASE_REGISTER'} onClick={() => goRegister({})}>
-              All open cases ({registerReports.filter((r) => isOpenReport(r)).length})
+              All open cases ({registerBucketCounts.openCases})
             </BucketBtn>
             <BucketBtn active={bucket === 'NEW_CRITICAL'} onClick={() => goRegister({ critical: '1' })}>
               New critical
@@ -741,30 +811,44 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
               </div>
             )}
 
-            <div className="overflow-x-auto border border-[var(--color-border-200)]">
-              <table className="w-full text-sm">
+            <div className="border border-[var(--color-border-200)]">
+              <table className="case-register-table w-full table-fixed text-xs">
+                <colgroup>
+                  <col className="w-8" />
+                  <col className="w-[11%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[11%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[7%]" />
+                  <col className="w-[6%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[9%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[7%]" />
+                </colgroup>
                 <thead className="bg-[var(--color-surface-200)] text-[var(--color-text-secondary)]">
                   <tr>
-                    <th className="px-3 py-2 text-left">
+                    <th className="px-2 py-1.5 text-left">
                       <input
                         type="checkbox"
                         checked={filteredRegisterReports.length > 0 && selectedRows.length === filteredRegisterReports.length}
                         onChange={toggleAll}
                       />
                     </th>
-                    <th className="px-3 py-2 text-left">Case</th>
-                    <th className="px-3 py-2 text-left">Case type</th>
-                    <th className="px-3 py-2 text-left">Reported</th>
-                    <th className="px-3 py-2 text-left">Employee</th>
-                    <th className="px-3 py-2 text-left">Check-in query</th>
-                    <th className="px-3 py-2 text-left">Incident form</th>
-                    <th className="px-3 py-2 text-left">Investigation</th>
-                    <th className="px-3 py-2 text-left">Category</th>
-                    <th className="px-3 py-2 text-left">Severity</th>
-                    <th className="px-3 py-2 text-left">Status</th>
-                    <th className="px-3 py-2 text-left">Assigned</th>
-                    <th className="px-3 py-2 text-left">Last updated</th>
-                    <th className="px-3 py-2 text-right">Actions</th>
+                    <th className="px-2 py-1.5 text-left font-medium">Case</th>
+                    <th className="px-2 py-1.5 text-left font-medium">Type</th>
+                    <th className="px-2 py-1.5 text-left font-medium">Reported</th>
+                    <th className="px-2 py-1.5 text-left font-medium">Employee</th>
+                    <th className="px-2 py-1.5 text-left font-medium">Check-in</th>
+                    <th className="px-2 py-1.5 text-left font-medium">Inv.</th>
+                    <th className="px-2 py-1.5 text-left font-medium">Category</th>
+                    <th className="px-2 py-1.5 text-left font-medium">Sev.</th>
+                    <th className="px-2 py-1.5 text-left font-medium">Status</th>
+                    <th className="px-2 py-1.5 text-left font-medium">Assigned</th>
+                    <th className="px-2 py-1.5 text-left font-medium">Updated</th>
+                    <th className="px-2 py-1.5 text-right font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -779,22 +863,26 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                         className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer"
                         onClick={() => onNavigate('report-detail', { id: report.id })}
                       >
-                        <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" checked={selectedRows.includes(report.id)} onChange={() => toggleRow(report.id)} />
                         </td>
-                        <td className="px-3 py-2">
-                          <p className="font-medium text-[var(--color-text-primary)]">{formatCaseReference(report)}</p>
-                          <p className="text-[var(--color-text-secondary)]">{truncateText(report.summary, 52)}</p>
+                        <td className="px-2 py-1.5 min-w-0">
+                          <p className="font-medium text-[var(--color-text-primary)] truncate" title={report.summary}>
+                            {formatCaseReference(report)}
+                          </p>
                         </td>
-                        <td className="px-3 py-2 text-xs">{CASE_TYPE_LABELS[inferCaseType(report.category, report.caseType)]}</td>
-                        <td className="px-3 py-2 text-[var(--color-text-secondary)] whitespace-nowrap">{formatDate(report.createdAt)}</td>
-                        <td className="px-3 py-2 text-[var(--color-text-secondary)]">
+                        <td className="px-2 py-1.5 text-[var(--color-text-secondary)] truncate" title={CASE_TYPE_LABELS[inferCaseType(report.category, report.caseType)]}>
+                          {getCaseTypeShortLabel(inferCaseType(report.category, report.caseType))}
+                        </td>
+                        <td className="px-2 py-1.5 text-[var(--color-text-secondary)] whitespace-nowrap">{formatDate(report.createdAt)}</td>
+                        <td className="px-2 py-1.5 text-[var(--color-text-secondary)] min-w-0">
                           {report.isAnonymous ? (
                             'Anonymous'
                           ) : reporter ? (
                             <button
                               type="button"
-                              className="text-[var(--mismo-blue)] hover:underline"
+                              className="text-[var(--mismo-blue)] hover:underline truncate block max-w-full text-left"
+                              title={`${reporter.firstName} ${reporter.lastName}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onNavigate('employee-detail', { id: reporter.id });
@@ -806,32 +894,38 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                             '-'
                           )}
                         </td>
-                        <td className="px-3 py-2 text-[var(--color-text-secondary)]">
-                          {linkedPromptResponse ? (
-                            <button
-                              type="button"
-                              className="text-left text-[var(--mismo-blue)] hover:underline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onNavigate('prompt-response-detail', { id: linkedPromptResponse.id, type: linkedPromptResponse.answer });
-                              }}
-                            >
-                              {answerLabel(linkedPromptResponse.answer)} · {formatDate(linkedPromptResponse.submittedAt)}
-                            </button>
-                          ) : (
-                            '-'
-                          )}
+                        <td className="px-2 py-1.5 text-[var(--color-text-secondary)] min-w-0">
+                          <p className="truncate" title={linkedPromptResponse ? `${answerLabel(linkedPromptResponse.answer)} · ${formatDate(linkedPromptResponse.submittedAt)} · Form ${isIncidentIntakeComplete(report) ? 'complete' : 'pending'}` : `Form ${isIncidentIntakeComplete(report) ? 'complete' : 'pending'}`}>
+                            {linkedPromptResponse ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="text-[var(--mismo-blue)] hover:underline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onNavigate('prompt-response-detail', { id: linkedPromptResponse.id, type: linkedPromptResponse.answer });
+                                  }}
+                                >
+                                  {answerLabel(linkedPromptResponse.answer)}
+                                </button>
+                                {' · '}
+                                {formatDate(linkedPromptResponse.submittedAt)}
+                              </>
+                            ) : (
+                              '-'
+                            )}
+                            {' · '}
+                            <span className={isIncidentIntakeComplete(report) ? 'text-emerald-700' : 'text-amber-700'}>
+                              {isIncidentIntakeComplete(report) ? 'Complete' : 'Pending'}
+                            </span>
+                          </p>
                         </td>
-                        <td className="px-3 py-2">
-                          <span className={isIncidentIntakeComplete(report) ? 'text-emerald-700' : 'text-amber-700'}>
-                            {isIncidentIntakeComplete(report) ? 'Complete' : 'Pending'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-[var(--color-text-secondary)]">
+                        <td className="px-2 py-1.5 text-[var(--color-text-secondary)] min-w-0">
                           {inv ? (
                             <button
                               type="button"
-                              className="text-left text-[var(--mismo-blue)] hover:underline"
+                              className="text-left text-[var(--mismo-blue)] hover:underline truncate block max-w-full"
+                              title={investigationWorkflowLabel(getEffectiveInvestigationPhase(inv))}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onNavigate('investigation-detail', { id: inv.id });
@@ -843,27 +937,32 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                             '-'
                           )}
                         </td>
-                        <td className="px-3 py-2">{getCategoryLabel(report.category)}</td>
-                        <td className="px-3 py-2">
-                          <Badge className={getSeverityColor(report.severity)}>{report.severity}</Badge>
+                        <td className="px-2 py-1.5 truncate" title={getCategoryLabel(report.category)}>
+                          {getCategoryLabel(report.category)}
                         </td>
-                        <td className="px-3 py-2">
-                          <Badge className={getStatusColor(report.status)}>{getReportStatusLabel(report.status)}</Badge>
+                        <td className="px-2 py-1.5">
+                          <span className={`case-register-chip ${getSeverityColor(report.severity)}`}>{report.severity}</span>
                         </td>
-                        <td className="px-3 py-2">{assignee ? `${assignee.firstName} ${assignee.lastName}` : 'Unassigned'}</td>
-                        <td className="px-3 py-2 text-[var(--color-text-secondary)]">{formatRelativeTime(report.updatedAt)}</td>
-                        <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="inline-flex items-center gap-1">
-                            <Button variant="default" size="sm" className="bg-[var(--mismo-blue)] hover:bg-[var(--color-primary-700)]" onClick={() => onNavigate('report-detail', { id: report.id })}>
-                              Open
-                            </Button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="icon" className="h-8 w-8" aria-label="More actions">
-                                  <Icons.more className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
+                        <td className="px-2 py-1.5 min-w-0">
+                          <span className={`case-register-chip truncate block max-w-full ${getStatusColor(report.status)}`} title={getReportStatusLabel(report.status)}>
+                            {getReportStatusShortLabel(report.status)}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5 min-w-0 truncate" title={assignee ? `${assignee.firstName} ${assignee.lastName}` : 'Unassigned'}>
+                          {assignee ? `${assignee.firstName} ${assignee.lastName}` : 'Unassigned'}
+                        </td>
+                        <td className="px-2 py-1.5 text-[var(--color-text-secondary)] whitespace-nowrap">{formatRelativeTime(report.updatedAt)}</td>
+                        <td className="px-2 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="outline" size="icon" className="h-7 w-7" aria-label="Case actions">
+                                <Icons.more className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => onNavigate('report-detail', { id: report.id })}>
+                                Open case
+                              </DropdownMenuItem>
                                 {!report.assignedTo && (
                                   <DropdownMenuItem onClick={() => { assignReport(report.id, dataStore.currentUser.id); toast.success('Assigned to you.'); }}>
                                     Assign
@@ -893,7 +992,6 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                                 <DropdownMenuItem onClick={() => onNavigate('report-detail', { id: report.id })}>Export evidence</DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
-                          </div>
                         </td>
                       </tr>
                     );

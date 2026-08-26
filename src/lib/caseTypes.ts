@@ -106,6 +106,33 @@ export function getReportStatusLabel(status: string): string {
  return labels[status] ?? status.replace(/_/g, ' ');
 }
 
+/** Compact labels for dense register tables. */
+export function getReportStatusShortLabel(status: string): string {
+ const labels: Record<string, string> = {
+ NEW: 'New',
+ TRIAGED: 'Reviewed',
+ ASSIGNED: 'Assigned',
+ IN_REVIEW: 'In review',
+ NEEDS_INFO: 'Needs info',
+ PENDING_WAGE_HOUR_REVIEW: 'WH review',
+ PAYROLL_EXPEDITED: 'Payroll SLA',
+ RESOLVED: 'Resolved',
+ CLOSED: 'Closed',
+ };
+ return labels[status] ?? getReportStatusLabel(status);
+}
+
+export function getCaseTypeShortLabel(caseType: CaseType): string {
+ const labels: Record<CaseType, string> = {
+ WORKPLACE_INVESTIGATION: 'Workplace',
+ WAGE_HOUR: 'Wage & hour',
+ ETHICS_COMPLAINT: 'Ethics',
+ SAFETY_CONCERN: 'Safety',
+ ACCOMMODATION_REQUEST: 'Accommodation',
+ };
+ return labels[caseType];
+}
+
 /** Admin action: HR has read the report and decided what happens next (not the same as closing it). */
 export const MARK_INITIAL_REVIEW_ACTION = 'Mark initial review complete';
 

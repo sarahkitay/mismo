@@ -145,6 +145,21 @@ export function useReportLedgerActions(deps: ReportLedgerDeps) {
  reader.readAsDataURL(file);
  }, [currentUser.id]);
 
+ const removeReportLedgerEntry = useCallback((reportId: string, entryId: string) => {
+ const now = new Date();
+ setReports((prev) =>
+ prev.map((report) =>
+ report.id === reportId
+ ? {
+ ...report,
+ handlingLedger: (report.handlingLedger ?? []).filter((entry) => entry.id !== entryId),
+ updatedAt: now,
+ }
+ : report
+ )
+ );
+ }, []);
+
  const updateReportHandling = useCallback(
  (
  reportId: string,
@@ -241,6 +256,7 @@ export function useReportLedgerActions(deps: ReportLedgerDeps) {
     addReportMessage,
     addReportHandlingEntry,
     addReportLedgerFile,
+    removeReportLedgerEntry,
     updateReportHandling,
     toggleReportChecklistItem,
     updateReportChecklistItemEvidence,

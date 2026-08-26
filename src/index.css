@@ -263,6 +263,27 @@
     border-color: rgba(200, 91, 102, 0.5);
     color: var(--color-alert-600);
   }
+
+  .case-register-table {
+    border-collapse: collapse;
+  }
+
+  .case-register-table th,
+  .case-register-table td {
+    overflow: hidden;
+    vertical-align: middle;
+  }
+
+  .case-register-table .case-register-chip {
+    display: inline-block;
+    max-width: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
   
   .tile-border-blue {
     @apply border-t-[3px] border-[var(--mismo-blue)];
