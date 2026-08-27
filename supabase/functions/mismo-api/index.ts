@@ -5,7 +5,7 @@ import { computeHrNextTasks } from '../_shared/hr-next-tasks.ts';
 import { listHrLawUpdates, listHrLawsForState, syncStateLawsToDb } from '../_shared/hr-laws.ts';
 import { runOutreachCoach } from '../_shared/outreach-coach.ts';
 import { runHelpAssistant } from '../_shared/help-assistant.ts';
-import { inviteEmployee } from '../_shared/employees.ts';
+import { inviteEmployee, updateEmployeeEmail } from '../_shared/employees.ts';
 import {
   sendIncidentYesNotices,
   sendWageHourYesNotices,
@@ -74,6 +74,22 @@ Deno.serve(async (req) => {
             email: body.email,
             redirectTo: body.redirectTo,
           });
+      return jsonResponse(200, result);
+    }
+
+    if (path === '/employees/update-email' && req.method === 'POST') {
+      const body = (await req.json()) as {
+        targetUserId?: string;
+        email?: string;
+      };
+      if (!body.targetUserId || !body.email?.trim()) {
+        return jsonResponse(400, { error: 'targetUserId and email are required' });
+      }
+      const result = await updateEmployeeEmail({
+        targetUserId: body.targetUserId,
+        email: body.email,
+        authHeader: req.headers.get('Authorization'),
+      });
       return jsonResponse(200, result);
     }
 

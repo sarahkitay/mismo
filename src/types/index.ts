@@ -105,6 +105,31 @@ export interface WageHourScreeningAcknowledgement {
  acknowledgedAt: Date;
 }
 
+export type CaseNoteAcknowledgementStatus = 'PENDING' | 'CONFIRMED' | 'REVISION_REQUESTED';
+
+/** HR-sent case note or initial contact summary awaiting employee confirmation. */
+export type CaseNoteAcknowledgementKind = 'CASE_NOTE' | 'INITIAL_CONTACT';
+
+export interface CaseNoteAcknowledgement {
+ id: string;
+ orgId: string;
+ reportId: string;
+ userId: string;
+ subject: string;
+ body: string;
+ kind?: CaseNoteAcknowledgementKind;
+ investigationId?: string;
+ attachments?: InvestigationAttachment[];
+ status: CaseNoteAcknowledgementStatus;
+ sentByUserId: string;
+ sentAt: Date;
+ respondedAt?: Date;
+ signatureDataUrl?: string;
+ revisionNote?: string;
+ createdAt: Date;
+ updatedAt: Date;
+}
+
 // Investigation Status
 export type InvestigationStatus = 'OPEN' | 'CLOSED';
 
@@ -632,6 +657,8 @@ export interface Investigation {
  outcomeEmployeeSignedAt?: Date;
  /** Employee agrees with resolution, or does not */
  outcomeEmployeeAgreed?: boolean | null;
+ outcomeEmployeeSignatureDataUrl?: string;
+ outcomeEmployeeRevisionNote?: string;
  /** Guided workflow stage */
  stage?: InvestigationStage;
  stageHistory?: InvestigationStageEvent[];
@@ -670,6 +697,9 @@ export interface Investigation {
  };
  /** Page 1 - initial contact / triage notes */
  initialContactNotes?: string;
+ initialContactAttachments?: InvestigationAttachment[];
+ /** When set, HR has saved the draft and can share it with the employee for sign-off. */
+ initialContactSavedAt?: Date;
 }
 
 // Report Status Event

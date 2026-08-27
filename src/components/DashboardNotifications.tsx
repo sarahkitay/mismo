@@ -13,7 +13,8 @@ interface DashboardNotificationsProps {
   limit?: number;
 }
 
-function kindLabel(kind: AppNotification['kind']): string {
+function kindLabel(kind: AppNotification['kind'], title?: string): string {
+  if (title?.toLowerCase().includes('note received')) return 'Note received';
   switch (kind) {
     case 'INVITE':
       return 'Invite';
@@ -62,6 +63,27 @@ export function DashboardNotifications({
     }
     if (n.actionParams?.id && n.actionPage === 'wage-hour-intake') {
       onNavigate(`wage-hour-intake/${n.actionParams.id}`);
+      return;
+    }
+    if (n.actionPage?.startsWith('employee/case-note-review/')) {
+      onNavigate(n.actionPage.slice('employee/'.length));
+      return;
+    }
+    if (n.actionPage?.startsWith('employee/investigation-response/')) {
+      onNavigate(n.actionPage.slice('employee/'.length));
+      return;
+    }
+    if (n.actionPage?.startsWith('investigation-response/')) {
+      onNavigate(n.actionPage);
+      return;
+    }
+    if (n.actionPage?.startsWith('case-note-review/')) {
+      onNavigate(n.actionPage);
+      return;
+    }
+    if (n.actionPage?.startsWith('employee/my-reports/')) {
+      const reportId = n.actionPage.slice('employee/my-reports/'.length).split('/')[0];
+      if (reportId) onNavigate(`report-detail/${reportId}`);
       return;
     }
     if (n.actionParams?.id && (n.actionPage === 'report-detail' || n.kind === 'CASE_UPDATE')) {
@@ -125,7 +147,7 @@ export function DashboardNotifications({
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)]">
-                        {kindLabel(n.kind)}
+                        {kindLabel(n.kind, n.title)}
                         {n.emailStatus?.startsWith('sent') ? ' · emailed' : ''}
                       </p>
                       <p className={`text-sm mt-0.5 ${n.readAt ? 'font-normal' : 'font-medium'} text-[var(--mismo-text)]`}>

@@ -27,7 +27,10 @@ import {
 } from '@/lib/investigationWorkflow';
 import { allocateCaseReferenceNumber } from '@/lib/caseReference';
 import { persistInvestigation, persistReportChange } from '@/lib/supabase/writeOrgData';
+import { saveInvestigationWorkspace } from '@/lib/investigationWorkspacePersistence';
+import { flushInvestigationDrafts } from '@/lib/investigationDraftRegistry';
 import { createIndustryChecklistForReport } from '@/lib/industryChecklistItems';
+import { canCloseInvestigation } from '@/lib/investigationOutcome';
 
 export type InvestigationActionDeps = {
  reports: Report[];
@@ -159,10 +162,12 @@ export function useInvestigationActions(deps: InvestigationActionDeps) {
  }, [reports, investigations, currentUser.id]);
 
  const saveInvestigationProgress = useCallback((investigationId: string) => {
+ flushInvestigationDrafts(investigationId);
  setInvestigations((prev) => {
  const inv = prev.find((i) => i.id === investigationId);
  if (!inv) return prev;
  const next = { ...inv, updatedAt: new Date(), lastUpdateAt: new Date() };
+ saveInvestigationWorkspace(next);
  void persistInvestigation(next);
  return prev.map((i) => (i.id === investigationId ? next : i));
  });
@@ -551,6 +556,63 @@ export function useInvestigationActions(deps: InvestigationActionDeps) {
  );
  }, []);
 
+ const saveInvestigationInitialContact = useCallback((investigationId: string) => {
+ const now = new Date();
+ setInvestigations((prev) =>
+ prev.map((inv) =>
+ inv.id === investigationId
+ ? { ...inv, initialContactSavedAt: now, lastUpdateAt: now, updatedAt: now }
+ : inv
+ )
+ );
+ }, []);
+
+ const unlockInvestigationInitialContact = useCallback((investigationId: string) => {
+ const now = new Date();
+ setInvestigations((prev) =>
+ prev.map((inv) =>
+ inv.id === investigationId
+ ? { ...inv, initialContactSavedAt: undefined, lastUpdateAt: now, updatedAt: now }
+ : inv
+ )
+ );
+ }, []);
+
+ const addInitialContactAttachment = useCallback(
+ (investigationId: string, attachment: InvestigationAttachment) => {
+ const now = new Date();
+ setInvestigations((prev) =>
+ prev.map((inv) =>
+ inv.id === investigationId
+ ? {
+ ...inv,
+ initialContactAttachments: [...(inv.initialContactAttachments ?? []), attachment],
+ lastUpdateAt: now,
+ updatedAt: now,
+ }
+ : inv
+ )
+ );
+ },
+ []
+ );
+
+ const removeInitialContactAttachment = useCallback((investigationId: string, attachmentId: string) => {
+ const now = new Date();
+ setInvestigations((prev) =>
+ prev.map((inv) =>
+ inv.id === investigationId
+ ? {
+ ...inv,
+ initialContactAttachments: (inv.initialContactAttachments ?? []).filter((a) => a.id !== attachmentId),
+ lastUpdateAt: now,
+ updatedAt: now,
+ }
+ : inv
+ )
+ );
+ }, []);
+
  const markInvestigationPageComplete = useCallback(
  (investigationId: string, page: 'intake' | 'gathering' | 'outcome') => {
  const now = new Date();
@@ -640,6 +702,8 @@ export function useInvestigationActions(deps: InvestigationActionDeps) {
  outcomeSentAt: now,
  outcomeEmployeeAgreed: null,
  outcomeEmployeeSignedAt: undefined,
+ outcomeEmployeeSignatureDataUrl: undefined,
+ outcomeEmployeeRevisionNote: undefined,
  workflowPhase: 'AWAITING_OUTCOME_ACK',
  stage: 'OUTCOME_PENDING',
  stageHistory: [
@@ -666,11 +730,23 @@ export function useInvestigationActions(deps: InvestigationActionDeps) {
  );
 
  const employeeAcknowledgeInvestigationOutcome = useCallback(
- (investigationId: string, agreed: boolean) => {
+ (
+ investigationId: string,
+ response: {
+ agreed: boolean;
+ signatureDataUrl?: string;
+ revisionNote?: string;
+ }
+ ): { ok: boolean; message?: string } => {
  const inv = investigations.find((i) => i.id === investigationId);
- if (!inv) return;
+ if (!inv) return { ok: false, message: 'Investigation not found.' };
  const primaryReport = reports.find((r) => inv.linkedReportIds.includes(r.id));
- if (!primaryReport || primaryReport.createdByUserId !== currentUser.id) return;
+ if (!primaryReport || primaryReport.createdByUserId !== currentUser.id) {
+ return { ok: false, message: 'You do not have access to this investigation outcome.' };
+ }
+ if (inv.outcomeRequiresSignature !== false && response.agreed && !response.signatureDataUrl) {
+ return { ok: false, message: 'A signature is required to agree with this outcome.' };
+ }
  const now = new Date();
  setInvestigations((prev) =>
  prev.map((i) =>
@@ -678,35 +754,70 @@ export function useInvestigationActions(deps: InvestigationActionDeps) {
  ? {
  ...i,
  outcomeEmployeeSignedAt: now,
- outcomeEmployeeAgreed: agreed,
+ outcomeEmployeeAgreed: response.agreed,
+ outcomeEmployeeSignatureDataUrl: response.signatureDataUrl ?? i.outcomeEmployeeSignatureDataUrl,
+ outcomeEmployeeRevisionNote: response.revisionNote?.trim() || i.outcomeEmployeeRevisionNote,
  lastUpdateAt: now,
  updatedAt: now,
  }
  : i
  )
  );
+ setReports((prev) =>
+ prev.map((report) =>
+ report.id === primaryReport.id
+ ? {
+ ...report,
+ employeeResponseOutcome: response.agreed
+ ? `Employee signed off on investigation outcome on ${now.toLocaleDateString()}.`
+ : `Employee did not agree with investigation outcome on ${now.toLocaleDateString()}: ${response.revisionNote?.trim() ?? ''}`,
+ updatedAt: now,
+ }
+ : report
+ )
+ );
+ const newActivity: ActivityEvent = {
+ id: `activity-${Date.now()}`,
+ orgId: effectiveOrgId,
+ type: 'INVESTIGATION_UPDATED',
+ actorUserId: currentUser.id,
+ metadata: {
+ investigationId,
+ action: response.agreed ? 'OUTCOME_AGREED' : 'OUTCOME_DISAGREED',
  },
- [investigations, reports, currentUser.id]
+ createdAt: now,
+ };
+ setActivities((prev) => [newActivity, ...prev]);
+ return { ok: true };
+ },
+ [investigations, reports, currentUser.id, effectiveOrgId, setActivities, setInvestigations, setReports]
  );
 
- const closeInvestigation = useCallback((investigationId: string) => {
+ const closeInvestigation = useCallback(
+ (investigationId: string): { ok: boolean; message?: string } => {
+ const inv = investigations.find((item) => item.id === investigationId);
+ if (!inv) return { ok: false, message: 'Investigation not found.' };
+ const gate = canCloseInvestigation(inv);
+ if (!gate.ok) return gate;
+
  const now = new Date();
  setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
+ prev.map((item) =>
+ item.id === investigationId
  ? {
- ...inv,
+ ...item,
  status: 'CLOSED',
  stage: 'CLOSED',
+ workflowPhase: undefined,
  closedAt: now,
  stageHistory: [
- ...(inv.stageHistory ?? []),
- buildStageHistoryEntry('CLOSED', currentUser.id, inv.ownerId, 'Investigation closed'),
+ ...(item.stageHistory ?? []),
+ buildStageHistoryEntry('CLOSED', currentUser.id, item.ownerId, 'Investigation closed'),
  ],
  lastUpdateAt: now,
  updatedAt: now,
  }
- : inv
+ : item
  )
  );
  const newActivity: ActivityEvent = {
@@ -718,7 +829,10 @@ export function useInvestigationActions(deps: InvestigationActionDeps) {
  createdAt: now,
  };
  setActivities((prev) => [newActivity, ...prev]);
- }, [currentUser.id]);
+ return { ok: true };
+ },
+ [currentUser.id, effectiveOrgId, investigations, setActivities, setInvestigations]
+ );
 
  return {
  createInvestigation,
@@ -740,6 +854,10 @@ export function useInvestigationActions(deps: InvestigationActionDeps) {
  setInvestigationOutcomeClassification,
  pickUpInvestigation,
  setInvestigationInitialContactNotes,
+ saveInvestigationInitialContact,
+ unlockInvestigationInitialContact,
+ addInitialContactAttachment,
+ removeInitialContactAttachment,
  markInvestigationPageComplete,
  setInvestigationSubjectUsers,
  addInvestigationNote,

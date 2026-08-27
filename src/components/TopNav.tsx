@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { getInitials } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { TopNavNotifications } from '@/components/TopNavNotifications';
 
 interface TopNavProps {
   dataStore: DataStore;
@@ -138,6 +139,8 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+
+          <TopNavNotifications dataStore={dataStore} onNavigate={onNavigate} />
 
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden md:block text-right">

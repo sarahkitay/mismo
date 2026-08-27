@@ -30,11 +30,14 @@ import {
   buildEmployeePromptRegisterRows,
   exportEmployeePromptRegisterCsv,
 } from '@/lib/employeePromptRegister';
-import { inviteEmployeeToMismo } from '@/lib/api/employees';
+import { inviteEmployeeToMismo, updateEmployeeEmail } from '@/lib/api/employees';
+import { getApiBaseUrl } from '@/lib/api/aiServices';
 import { sendEmployeePasswordReset } from '@/lib/api/notifications';
 import { sanitizeInfraError } from '@/lib/infraMessaging';
 import { toDateInputValue } from '@/lib/employeeDirectory';
 import { EmployeeInvestigationTable } from '@/components/admin/EmployeeInvestigationTable';
+import { caseNoteAcksForEmployee, caseNoteAckStatusLabel } from '@/lib/caseNoteAcknowledgement';
+import { investigationOutcomeStatusLabel } from '@/lib/investigationOutcome';
 
 interface AdminEmployeeDetailProps {
   dataStore: DataStore;
@@ -59,6 +62,8 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  const [editArchiveStart, setEditArchiveStart] = useState(toDateInputValue(employee.archiveStartDate));
  const [editArchiveEnd, setEditArchiveEnd] = useState(toDateInputValue(employee.archiveEndDate));
  const [editStatus, setEditStatus] = useState<UserStatus>(employee.status);
+ const [editEmail, setEditEmail] = useState(employee.email);
+ const [savingOrgInfo, setSavingOrgInfo] = useState(false);
 
  const manager = employee.managerId ? dataStore.users.find((u) => u.id === employee.managerId) : null;
  const potentialManagers = dataStore.users.filter(
@@ -77,8 +82,9 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
     setEditArchiveStart(toDateInputValue(employee.archiveStartDate));
     setEditArchiveEnd(toDateInputValue(employee.archiveEndDate));
     setEditStatus(employee.status);
+    setEditEmail(employee.email);
     setEditingOrgInfo(false);
-  }, [employeeId, employee.managerId, employee.hiredDate, employee.employeeId, employee.location, employee.archiveStartDate, employee.archiveEndDate, employee.status]);
+  }, [employeeId, employee.managerId, employee.hiredDate, employee.employeeId, employee.location, employee.archiveStartDate, employee.archiveEndDate, employee.status, employee.email]);
 
   const employeePromptRows = useMemo(
     () =>
@@ -94,6 +100,22 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
 
  const engagement = dataStore.getEmployeeEngagement(employee.id);
  const employeeReports = dataStore.reports.filter((r) => r.createdByUserId === employee.id);
+ const employeeCaseNoteAcks = useMemo(
+   () => caseNoteAcksForEmployee(dataStore.caseNoteAcknowledgements, employee.id),
+   [dataStore.caseNoteAcknowledgements, employee.id]
+ );
+ const employeeInvestigationOutcomes = useMemo(
+   () =>
+     dataStore.investigations
+       .filter((inv) => {
+         const linked = dataStore.reports.find(
+           (r) => inv.linkedReportIds.includes(r.id) && r.createdByUserId === employee.id
+         );
+         return linked && inv.outcomeSentAt;
+       })
+       .sort((a, b) => (b.outcomeSentAt?.getTime() ?? 0) - (a.outcomeSentAt?.getTime() ?? 0)),
+   [dataStore.investigations, dataStore.reports, employee.id]
+ );
  const employeeResponses = dataStore.responses.filter((r) => r.userId === employee.id);
  const employeeActivities = dataStore.activities
  .filter((a) => a.actorUserId === employee.id || (a.metadata as { userId?: string })?.userId === employee.id)
@@ -107,6 +129,25 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  };
 
  const handleSaveOrgInfo = () => {
+ const normalizedEmail = editEmail.trim().toLowerCase();
+ if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+ toast.error('Enter a valid email address.');
+ return;
+ }
+ const duplicateEmail = dataStore.users.find(
+ (u) => u.id !== employee.id && u.email.trim().toLowerCase() === normalizedEmail
+ );
+ if (duplicateEmail) {
+ toast.error('Another employee in your organization already uses that email.');
+ return;
+ }
+ void (async () => {
+ setSavingOrgInfo(true);
+ try {
+ const emailChanged = normalizedEmail !== employee.email.trim().toLowerCase();
+ if (emailChanged && getApiBaseUrl()) {
+ await updateEmployeeEmail({ targetUserId: employee.id, email: normalizedEmail });
+ }
  dataStore.updateUser(employee.id, {
  status: editStatus,
  managerId: editManagerId || undefined,
@@ -115,9 +156,16 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  location: editLocation.trim() || undefined,
  archiveStartDate: editArchiveStart ? new Date(editArchiveStart) : undefined,
  archiveEndDate: editArchiveEnd ? new Date(editArchiveEnd) : undefined,
+ email: normalizedEmail,
  });
  setEditingOrgInfo(false);
- toast.success('Employee details updated.');
+ toast.success(emailChanged ? 'Employee details and login email updated.' : 'Employee details updated.');
+ } catch (err) {
+ toast.error(sanitizeInfraError(err instanceof Error ? err.message : 'Could not save changes.'));
+ } finally {
+ setSavingOrgInfo(false);
+ }
+ })();
  };
 
  const handleCancelEdit = () => {
@@ -128,6 +176,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  setEditArchiveStart(toDateInputValue(employee.archiveStartDate));
  setEditArchiveEnd(toDateInputValue(employee.archiveEndDate));
  setEditStatus(employee.status);
+ setEditEmail(employee.email);
  setEditingOrgInfo(false);
  };
 
@@ -282,7 +331,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  <h1 className="text-2xl font-semibold text-[var(--color-text-primary)]">
  {employee.firstName} {employee.lastName}
  </h1>
- <p className="text-[var(--color-text-secondary)]">{employee.email}</p>
+ <p className="text-[var(--color-text-secondary)]">{editingOrgInfo ? null : employee.email}</p>
  {employee.phone && <p className="text-sm text-[var(--color-text-muted)]">{employee.phone}</p>}
  <p className="text-sm mt-1">
  Role: {employee.role} · Status:{' '}
@@ -333,6 +382,22 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  </div>
  )}
  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+ {editingOrgInfo && (
+ <div className="sm:col-span-2 flex flex-col gap-1">
+ <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Email (login username)</p>
+ <input
+ type="email"
+ value={editEmail}
+ onChange={(e) => setEditEmail(e.target.value)}
+ className="mt-0.5 h-9 w-full max-w-md rounded-md border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-3 text-sm"
+ placeholder="name@company.com"
+ autoComplete="off"
+ />
+ <p className="text-xs text-[var(--color-text-muted)]">
+ Saving updates the employee record and their Mismo sign-in email when a login exists.
+ </p>
+ </div>
+ )}
  <div className="sm:col-span-2 flex flex-col gap-1">
  <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">Employee ID</p>
  {editingOrgInfo ? (
@@ -438,8 +503,10 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  </div>
  {editingOrgInfo && (
  <div className="flex items-end gap-2 sm:col-span-2">
- <Button size="sm" onClick={handleSaveOrgInfo}>Save</Button>
- <Button size="sm" variant="outline" onClick={handleCancelEdit}>Cancel</Button>
+ <Button size="sm" onClick={handleSaveOrgInfo} disabled={savingOrgInfo}>
+ {savingOrgInfo ? 'Saving…' : 'Save'}
+ </Button>
+ <Button size="sm" variant="outline" onClick={handleCancelEdit} disabled={savingOrgInfo}>Cancel</Button>
  </div>
  )}
  </div>
@@ -520,6 +587,87 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  </ul>
  )}
  </div>
+ {employeeCaseNoteAcks.length > 0 && (
+ <div>
+ <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider mb-2">Case note sign-offs</p>
+ <ul className="space-y-2">
+ {employeeCaseNoteAcks.slice(0, 8).map((ack) => {
+ const linkedReport = dataStore.reports.find((r) => r.id === ack.reportId);
+ return (
+ <li key={ack.id} className="text-sm border border-[var(--color-border-200)] rounded-md px-3 py-2">
+ <div className="flex flex-wrap items-center justify-between gap-2">
+ <span className="font-medium">{ack.subject}</span>
+ <Badge variant="outline" className="text-xs">{caseNoteAckStatusLabel(ack.status)}</Badge>
+ </div>
+ <p className="text-xs text-[var(--color-text-muted)] mt-1">
+ {linkedReport ? formatCaseReference(linkedReport) : 'Case'} · Sent {formatRelativeTime(ack.sentAt)}
+ </p>
+ {ack.status === 'REVISION_REQUESTED' && ack.revisionNote && (
+ <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1 whitespace-pre-wrap">
+ {ack.revisionNote}
+ </p>
+ )}
+ {linkedReport && (
+ <Button
+ type="button"
+ variant="link"
+ className="h-auto p-0 text-xs text-[var(--mismo-blue)]"
+ onClick={() => onNavigate('report-detail', { id: linkedReport.id })}
+ >
+ Open case
+ </Button>
+ )}
+ </li>
+ );
+ })}
+ </ul>
+ </div>
+ )}
+ {employeeInvestigationOutcomes.length > 0 && (
+ <div>
+ <p className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider mb-2">Investigation outcome sign-offs</p>
+ <ul className="space-y-2">
+ {employeeInvestigationOutcomes.slice(0, 8).map((inv) => {
+ const linkedReport = dataStore.reports.find(
+ (r) => inv.linkedReportIds.includes(r.id) && r.createdByUserId === employee.id
+ );
+ return (
+ <li key={inv.id} className="text-sm border border-[var(--color-border-200)] rounded-md px-3 py-2">
+ <div className="flex flex-wrap items-center justify-between gap-2">
+ <span className="font-medium">{getInvestigationDisplayId(inv)}</span>
+ <Badge variant="outline" className="text-xs">{investigationOutcomeStatusLabel(inv)}</Badge>
+ </div>
+ {inv.outcomeEmployeeRevisionNote && (
+ <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1 whitespace-pre-wrap">
+ {inv.outcomeEmployeeRevisionNote}
+ </p>
+ )}
+ <div className="mt-1 flex flex-wrap gap-2">
+ {linkedReport && (
+ <Button
+ type="button"
+ variant="link"
+ className="h-auto p-0 text-xs text-[var(--mismo-blue)]"
+ onClick={() => onNavigate('report-detail', { id: linkedReport.id })}
+ >
+ Open case
+ </Button>
+ )}
+ <Button
+ type="button"
+ variant="link"
+ className="h-auto p-0 text-xs text-[var(--mismo-blue)]"
+ onClick={() => onNavigate('investigation-detail', { id: inv.id, tab: 'page-3' })}
+ >
+ Open investigation
+ </Button>
+ </div>
+ </li>
+ );
+ })}
+ </ul>
+ </div>
+ )}
  </TabsContent>
 
  <TabsContent value="prompts" className="mt-4 space-y-4">

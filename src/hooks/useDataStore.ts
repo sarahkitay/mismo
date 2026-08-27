@@ -20,6 +20,7 @@ import type {
  CompanyResource,
  EmergencyHotline,
  WageHourScreeningAcknowledgement,
+ CaseNoteAcknowledgement,
  ClientCompany,
  ClientContact,
  ClientDocument,
@@ -42,6 +43,7 @@ import {
 } from '@/data/orgDefaults';
 import { getSupabaseClient } from '@/lib/supabaseClient';
 import { loadOrgDataFromSupabase } from '@/lib/supabase/loadOrgData';
+import { mergeInvestigationsWithWorkspace } from '@/lib/investigationWorkspacePersistence';
 import { resolveAppSessionFromAuth } from '@/lib/supabase/resolveAppSession';
 import {
  persistUsers,
@@ -72,6 +74,7 @@ import {
 import { useInvestigationActions } from '@/hooks/useInvestigationActions';
 import { useReportCaseActions } from '@/hooks/useReportCaseActions';
 import { useReportLedgerActions } from '@/hooks/useReportLedgerActions';
+import { useCaseNoteAckActions } from '@/hooks/useCaseNoteAckActions';
 import { useClientCrmActions } from '@/hooks/useClientCrmActions';
 
 function formatAuditFieldValue(value: unknown): string {
@@ -184,7 +187,9 @@ export function useDataStore() {
  const [prompts, setPrompts] = useState<Prompt[]>(persisted?.prompts ?? []);
  const [deliveries, setDeliveries] = useState<PromptDelivery[]>(persisted?.deliveries ?? []);
  const [responses, setResponses] = useState<PromptResponse[]>(persisted?.responses ?? []);
- const [investigations, setInvestigations] = useState<Investigation[]>(persisted?.investigations ?? []);
+ const [investigations, setInvestigations] = useState<Investigation[]>(
+   mergeInvestigationsWithWorkspace(persisted?.investigations ?? [])
+ );
  const [nudges, setNudges] = useState<Nudge[]>(persisted?.nudges ?? []);
  const [appNotifications, setAppNotifications] = useState<AppNotification[]>(
    (persisted as { appNotifications?: AppNotification[] } | null)?.appNotifications ?? []
@@ -209,6 +214,9 @@ export function useDataStore() {
  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(persisted?.auditLogs ?? []);
  const [wageHourAcknowledgements, setWageHourAcknowledgements] = useState<WageHourScreeningAcknowledgement[]>(
  persisted?.wageHourAcknowledgements ?? []
+ );
+ const [caseNoteAcknowledgements, setCaseNoteAcknowledgements] = useState<CaseNoteAcknowledgement[]>(
+ (persisted as { caseNoteAcknowledgements?: CaseNoteAcknowledgement[] } | null)?.caseNoteAcknowledgements ?? []
  );
  const [currentRole, setCurrentRole] = useState<UserRole>(persisted?.currentRole ?? 'EMPLOYEE');
  const [session, setSessionState] = useState<Session | null>(readSession);
@@ -359,7 +367,7 @@ export function useDataStore() {
  setPrompts(snapshot.prompts.length ? mergeCorePrompts(snapshot.prompts, orgId, session?.userId ?? 'system') : mergeCorePrompts([], orgId, session?.userId ?? 'system'));
  setDeliveries(snapshot.deliveries);
  setResponses(snapshot.responses);
- setInvestigations(snapshot.investigations);
+ setInvestigations(mergeInvestigationsWithWorkspace(snapshot.investigations));
  setPolicies(snapshot.policies);
  setPolicyAcknowledgements(snapshot.policyAcknowledgements);
  setAnnouncements(snapshot.announcements);
@@ -436,6 +444,7 @@ export function useDataStore() {
  announcements,
  auditLogs,
  wageHourAcknowledgements,
+ caseNoteAcknowledgements,
  currentRole,
  })
  );
@@ -443,6 +452,7 @@ export function useDataStore() {
  activities,
  announcements,
  auditLogs,
+ caseNoteAcknowledgements,
  currentRole,
  deliveries,
  investigations,
@@ -456,6 +466,7 @@ export function useDataStore() {
  responses,
  users,
  wageHourAcknowledgements,
+ caseNoteAcknowledgements,
  ]);
 
  useEffect(() => {
@@ -782,6 +793,10 @@ export function useDataStore() {
  assignInvestigationOwner,
  advanceInvestigationStage,
  setInvestigationInitialContactNotes,
+ saveInvestigationInitialContact,
+ unlockInvestigationInitialContact,
+ addInitialContactAttachment,
+ removeInitialContactAttachment,
  markInvestigationPageComplete,
  setInvestigationSubjectUsers,
  setInvestigationPersons,
@@ -919,6 +934,10 @@ export function useDataStore() {
        .eq('id', notificationId)
        .then(() => undefined);
    }
+ }, []);
+
+ const pushAppNotification = useCallback((notification: AppNotification) => {
+   setAppNotifications((prev) => [notification, ...prev.filter((n) => n.id !== notification.id)]);
  }, []);
 
  const markAllNotificationsRead = useCallback(() => {
@@ -1262,6 +1281,16 @@ export function useDataStore() {
  orgSettings,
  setReports,
  setAppNotifications,
+ });
+
+ const { createCaseNoteAcknowledgement, respondToCaseNoteAcknowledgement } = useCaseNoteAckActions({
+ effectiveOrgId,
+ currentUser,
+ caseNoteAcknowledgements,
+ setCaseNoteAcknowledgements,
+ setReports,
+ setActivities,
+ addReportHandlingEntry,
  });
 
 
@@ -1669,6 +1698,7 @@ export function useDataStore() {
  completeWageHourIntake,
  submitExpeditedPayrollReport,
  wageHourAcknowledgements,
+ caseNoteAcknowledgements,
  updateReportStatus,
  assignReport,
  createInvestigation,
@@ -1677,6 +1707,10 @@ export function useDataStore() {
  assignInvestigationOwner,
  advanceInvestigationStage,
  setInvestigationInitialContactNotes,
+ saveInvestigationInitialContact,
+ unlockInvestigationInitialContact,
+ addInitialContactAttachment,
+ removeInitialContactAttachment,
  markInvestigationPageComplete,
  setInvestigationSubjectUsers,
  setInvestigationPersons,
@@ -1699,6 +1733,7 @@ export function useDataStore() {
  completeIncidentIntake,
  sendNudge,
  markNotificationRead,
+ pushAppNotification,
  markAllNotificationsRead,
  refreshAppNotifications,
  markPromptResponseReviewed,
@@ -1734,6 +1769,8 @@ export function useDataStore() {
  updateReportHandling,
  toggleReportChecklistItem,
  updateReportChecklistItemEvidence,
+ createCaseNoteAcknowledgement,
+ respondToCaseNoteAcknowledgement,
  getFilteredReports,
  getFilteredInvestigations,
  getFilteredEmployees,

@@ -1,10 +1,15 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import type { InvestigationPerson, InvestigationPersonRole, User } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
+import {
+ investigationHasUnsavedDrafts,
+ unsavedInvestigationDraftLabels,
+} from '@/lib/investigationDraftRegistry';
 import {
  Select,
  SelectContent,
@@ -80,9 +85,57 @@ export function InvestigationWorkspace({
  const [drawerUserId, setDrawerUserId] = useState<string | null>(null);
  const [personToAdd, setPersonToAdd] = useState('');
  const [roleToAdd, setRoleToAdd] = useState<InvestigationPersonRole>('WITNESS');
+ const [unsavedDialogOpen, setUnsavedDialogOpen] = useState(false);
+ const pendingActionRef = useRef<(() => void) | null>(null);
  const linkedReports = useMemo(
  () => reports.filter((r) => investigation?.linkedReportIds.includes(r.id)),
  [reports, investigation?.linkedReportIds]
+ );
+
+ const guardLeave = useCallback(
+ (action: () => void) => {
+ if (!investigationHasUnsavedDrafts(investigationId)) {
+ action();
+ return;
+ }
+ pendingActionRef.current = action;
+ setUnsavedDialogOpen(true);
+ },
+ [investigationId]
+ );
+
+ const handleSaveProgress = useCallback(() => {
+ dataStore.saveInvestigationProgress?.(investigationId);
+ toast.success('Progress saved.');
+ }, [dataStore, investigationId]);
+
+ useEffect(() => {
+ const onBeforeUnload = (event: BeforeUnloadEvent) => {
+ if (!investigationHasUnsavedDrafts(investigationId)) return;
+ event.preventDefault();
+ event.returnValue = '';
+ };
+ window.addEventListener('beforeunload', onBeforeUnload);
+ return () => window.removeEventListener('beforeunload', onBeforeUnload);
+ }, [investigationId]);
+
+ const guardedTabChange = useCallback(
+ (tab: InvestigationTab) => {
+ if (tab === activeTab) return;
+ guardLeave(() => onTabChange(tab));
+ },
+ [activeTab, guardLeave, onTabChange]
+ );
+
+ const guardedNavigate = useCallback(
+ (page: string, params?: Record<string, string>) => {
+ if (page === 'investigation-detail' && params?.id === investigationId) {
+ onTabChange((params.tab as InvestigationTab) || activeTab);
+ return;
+ }
+ guardLeave(() => onNavigate(page, params));
+ },
+ [activeTab, guardLeave, investigationId, onNavigate, onTabChange]
  );
 
  if (!investigation) {
@@ -106,8 +159,8 @@ export function InvestigationWorkspace({
  primaryReport,
  reporter,
  owner,
- onNavigate,
- onTabChange: (tab) => onTabChange(tab as InvestigationTab),
+ onNavigate: guardedNavigate,
+ onTabChange: (tab) => guardedTabChange(tab as InvestigationTab),
  openProfile: setDrawerUserId,
  EmployeeLink,
  };
@@ -257,7 +310,7 @@ export function InvestigationWorkspace({
  <tr
  key={r.id}
  className="border-t border-[var(--color-border-200)] hover:bg-[var(--color-surface-100)] cursor-pointer"
- onClick={() => onNavigate('report-detail', { id: r.id, fromInvestigation: investigation.id })}
+ onClick={() => guardedNavigate('report-detail', { id: r.id, fromInvestigation: investigation.id })}
  >
  <td className="px-3 py-2 font-medium font-mono">{formatCaseReference(r)}</td>
  <td className="px-3 py-2">{getCategoryLabel(r.category)}</td>
@@ -267,7 +320,7 @@ export function InvestigationWorkspace({
  <button
  type="button"
  className="text-[var(--mismo-blue)] hover:underline text-xs"
- onClick={() => onNavigate('prompt-response-detail', { id: sourceResponse.id, type: sourceResponse.answer })}
+ onClick={() => guardedNavigate('prompt-response-detail', { id: sourceResponse.id, type: sourceResponse.answer })}
  >
  {sourceResponse.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}
  </button>
@@ -278,7 +331,7 @@ export function InvestigationWorkspace({
  <td className="px-3 py-2"><Badge className={getStatusColor(r.status)}>{r.status}</Badge></td>
  <td className="px-3 py-2">{formatDate(r.createdAt)}</td>
  <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
- <Button size="sm" variant="outline" onClick={() => onNavigate('report-detail', { id: r.id, fromInvestigation: investigation.id })}>Open</Button>
+ <Button size="sm" variant="outline" onClick={() => guardedNavigate('report-detail', { id: r.id, fromInvestigation: investigation.id })}>Open</Button>
  </td>
  </tr>
  );
@@ -327,7 +380,7 @@ export function InvestigationWorkspace({
  <RelatedRecordsNav
  title="Jump to linked records"
  links={relatedNavForInvestigation(dataStore, investigation)}
- onNavigate={onNavigate}
+ onNavigate={guardedNavigate}
  />
  </CardContent>
  </Card>
@@ -343,7 +396,7 @@ export function InvestigationWorkspace({
  return (
  <div className="space-y-0">
  <nav className="mb-4 text-sm text-[var(--color-text-secondary)] flex flex-wrap items-center gap-1">
- <button type="button" className="hover:text-[var(--mismo-blue)]" onClick={() => onNavigate('investigations')}>Investigations</button>
+ <button type="button" className="hover:text-[var(--mismo-blue)]" onClick={() => guardedNavigate('investigations')}>Investigations</button>
  <Icons.chevronRight className="h-3.5 w-3.5" />
  <span className="font-medium text-[var(--color-text-primary)]">{getInvestigationDisplayId(investigation)}</span>
  {reporter && (
@@ -352,7 +405,7 @@ export function InvestigationWorkspace({
  <button
  type="button"
  className="font-medium text-[var(--mismo-blue)] hover:underline"
- onClick={() => onNavigate('employee-detail', { id: reporter.id })}
+ onClick={() => guardedNavigate('employee-detail', { id: reporter.id })}
  >
  {reporter.firstName} {reporter.lastName}
  </button>
@@ -376,14 +429,11 @@ export function InvestigationWorkspace({
  type="button"
  variant="outline"
  size="sm"
- onClick={() => {
- dataStore.saveInvestigationProgress?.(investigation.id);
- toast.success('Progress saved.');
- }}
+ onClick={handleSaveProgress}
  >
  Save progress
  </Button>
- <Button type="button" variant="outline" size="sm" onClick={() => onTabChange('related')}>
+ <Button type="button" variant="outline" size="sm" onClick={() => guardedTabChange('related')}>
  Related records
  </Button>
  </div>
@@ -402,7 +452,7 @@ export function InvestigationWorkspace({
  <button
  key={p.id}
  type="button"
- onClick={() => onTabChange(p.id)}
+ onClick={() => guardedTabChange(p.id)}
  className={`text-left border p-3 transition-colors ${activeTab === p.id ? 'border-[var(--color-primary-900)] bg-blue-50' : 'border-[var(--color-border-200)] hover:border-[var(--color-primary-700)]'}`}
  >
  <p className="text-xs font-semibold text-[var(--color-text-muted)]">Page {p.step}</p>
@@ -428,7 +478,7 @@ export function InvestigationWorkspace({
  <button
  key={t.id}
  type="button"
- onClick={() => onTabChange(t.id)}
+ onClick={() => guardedTabChange(t.id)}
  className={`w-full text-left px-3 py-2 text-sm rounded-none border-l-2 mb-0.5 ${activeTab === t.id ? 'border-[var(--color-primary-900)] bg-white font-medium text-[var(--color-primary-900)]' : 'border-transparent text-[var(--color-text-secondary)] hover:bg-white/80'}`}
  >
  <span className="flex items-center justify-between gap-2">
@@ -440,7 +490,7 @@ export function InvestigationWorkspace({
  })}
  <button
  type="button"
- onClick={() => onTabChange('related')}
+ onClick={() => guardedTabChange('related')}
  className={`w-full text-left px-3 py-2 text-sm rounded-none border-l-2 mb-0.5 ${activeTab === 'related' ? 'border-[var(--color-primary-900)] bg-white font-medium text-[var(--color-primary-900)]' : 'border-transparent text-[var(--color-text-secondary)] hover:bg-white/80'}`}
  >
  {INVESTIGATION_RELATED_TAB.label}
@@ -449,10 +499,7 @@ export function InvestigationWorkspace({
  <Button
  size="sm"
  className="w-full"
- onClick={() => {
- dataStore.saveInvestigationProgress?.(investigation.id);
- toast.success('Progress saved.');
- }}
+ onClick={handleSaveProgress}
  >
  Save progress
  </Button>
@@ -465,8 +512,8 @@ export function InvestigationWorkspace({
  if (idx < INVESTIGATION_PAGES.length - 1) {
  const pageKey = activeTab === 'page-1' ? 'intake' : activeTab === 'page-2' ? 'gathering' : 'outcome';
  dataStore.markInvestigationPageComplete(investigation.id, pageKey);
- dataStore.saveInvestigationProgress?.(investigation.id);
- onTabChange(INVESTIGATION_PAGES[idx + 1].id);
+ handleSaveProgress();
+ guardedTabChange(INVESTIGATION_PAGES[idx + 1].id);
  toast.success(`Page ${INVESTIGATION_PAGES[idx].step} marked complete.`);
  }
  }}
@@ -476,10 +523,31 @@ export function InvestigationWorkspace({
  </Button>
  </div>
  </nav>
- <div className="flex-1 min-w-0 pb-8">{sectionMap[activeTab]()}</div>
+ <div className="flex-1 min-w-0 pb-8 pt-2">{sectionMap[activeTab]()}</div>
  </div>
 
- <InvestigationPersonDrawer open={Boolean(drawerUserId)} onOpenChange={(o) => !o && setDrawerUserId(null)} user={drawerUser} dataStore={dataStore} onNavigate={onNavigate} />
+ <InvestigationPersonDrawer open={Boolean(drawerUserId)} onOpenChange={(o) => !o && setDrawerUserId(null)} user={drawerUser} dataStore={dataStore} onNavigate={guardedNavigate} />
+
+ <UnsavedChangesDialog
+ open={unsavedDialogOpen}
+ onOpenChange={setUnsavedDialogOpen}
+ detail={
+ unsavedInvestigationDraftLabels(investigationId).length
+ ? `Unsaved: ${unsavedInvestigationDraftLabels(investigationId).join(', ')}`
+ : undefined
+ }
+ onSave={() => {
+ handleSaveProgress();
+ setUnsavedDialogOpen(false);
+ pendingActionRef.current?.();
+ pendingActionRef.current = null;
+ }}
+ onDiscard={() => {
+ setUnsavedDialogOpen(false);
+ pendingActionRef.current?.();
+ pendingActionRef.current = null;
+ }}
+ />
  </div>
  );
 }

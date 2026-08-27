@@ -244,3 +244,90 @@ export async function inviteEmployee(input: InviteEmployeeInput): Promise<Invite
             : 'Invite link ready. Email it to the employee or copy the link.',
   };
 }
+
+export type UpdateEmployeeEmailInput = {
+  targetUserId: string;
+  email: string;
+  authHeader: string | null;
+};
+
+export type UpdateEmployeeEmailResult = {
+  ok: boolean;
+  message: string;
+  email?: string;
+};
+
+/** HR updates an employee's login email (app profile + Supabase Auth when linked). */
+export async function updateEmployeeEmail(input: UpdateEmployeeEmailInput): Promise<UpdateEmployeeEmailResult> {
+  const caller = await authorizeCaller(input.authHeader, { privilegedOnly: true });
+  const email = input.email.trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('A valid email address is required.');
+  }
+
+  const admin = getSupabaseAdmin();
+  const { data: appUser, error: userErr } = await admin
+    .from('users')
+    .select('id, email, auth_user_id, first_name, last_name')
+    .eq('org_id', caller.orgId)
+    .eq('id', input.targetUserId)
+    .maybeSingle();
+  if (userErr) throw new Error(userErr.message);
+  if (!appUser) throw new Error('Employee not found in your organization.');
+
+  const previousEmail = String(appUser.email ?? '').trim().toLowerCase();
+  if (previousEmail === email) {
+    return { ok: true, message: 'Email unchanged.', email };
+  }
+
+  const { data: conflict } = await admin
+    .from('users')
+    .select('id')
+    .eq('org_id', caller.orgId)
+    .ilike('email', email)
+    .neq('id', input.targetUserId)
+    .maybeSingle();
+  if (conflict?.id) {
+    throw new Error('Another person in your organization already uses that email.');
+  }
+
+  const authUserId = appUser.auth_user_id ? String(appUser.auth_user_id) : null;
+  if (authUserId) {
+    const { error: authErr } = await admin.auth.admin.updateUserById(authUserId, {
+      email,
+      email_confirm: true,
+    });
+    if (authErr) throw new Error(authErr.message);
+  }
+
+  const now = new Date().toISOString();
+  const { error: updErr } = await admin
+    .from('users')
+    .update({ email, updated_at: now })
+    .eq('org_id', caller.orgId)
+    .eq('id', input.targetUserId);
+  if (updErr) throw new Error(updErr.message);
+
+  const display =
+    `${appUser.first_name ?? ''} ${appUser.last_name ?? ''}`.trim() || previousEmail || 'Employee';
+
+  await createAppNotification({
+    orgId: caller.orgId,
+    userId: caller.appUserId,
+    kind: 'SYSTEM',
+    title: `Updated login email for ${display}`,
+    body: `${previousEmail || '(none)'} → ${email}`,
+    actionPage: 'employee-detail',
+    actionParams: { id: input.targetUserId },
+    actorUserId: caller.appUserId,
+    force: true,
+  });
+
+  return {
+    ok: true,
+    email,
+    message: authUserId
+      ? 'Email updated. The employee will sign in with the new address.'
+      : 'Email updated on the employee record. Their login will use this address once invited.',
+  };
+}

@@ -26,13 +26,13 @@ export function InvestigationModuleShell({
  children,
 }: InvestigationModuleShellProps) {
  return (
- <div className="space-y-4">
- <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
- <div>
+ <div className="space-y-5 pt-5">
+ <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+ <div className="min-w-0">
  <h2 className="text-xl font-semibold text-[var(--color-primary-900)]">{title}</h2>
- <p className="text-sm text-[var(--color-text-secondary)] mt-1 max-w-2xl">{subtitle}</p>
+ <p className="text-sm text-[var(--color-text-secondary)] mt-2 max-w-2xl">{subtitle}</p>
  </div>
- <div className="flex flex-wrap items-center gap-2 shrink-0">
+ <div className="flex flex-wrap items-center gap-2 shrink-0 sm:pt-0.5">
  {completionPercent !== undefined && (
  <Badge variant="outline">{completionPercent}% module complete</Badge>
  )}

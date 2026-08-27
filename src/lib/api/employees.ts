@@ -57,3 +57,43 @@ export async function inviteEmployeeToMismo(
 
   return res.json() as Promise<InviteEmployeeResult>;
 }
+
+export type UpdateEmployeeEmailResult = {
+  ok: boolean;
+  message: string;
+  email?: string;
+};
+
+/** HR: correct an employee email and sync their Supabase Auth login when linked. */
+export async function updateEmployeeEmail(opts: {
+  targetUserId: string;
+  email: string;
+}): Promise<UpdateEmployeeEmailResult> {
+  const apiBase = getApiBaseUrl();
+  if (!apiBase) throw new Error(API_NOT_CONFIGURED);
+  if (!isSupabaseAppConfigured()) throw new Error(API_NOT_CONFIGURED);
+
+  const supabase = getSupabaseClient();
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error('Sign in again to update employee emails.');
+
+  const res = await fetch(`${apiBase.replace(/\/$/, '')}/employees/update-email`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      targetUserId: opts.targetUserId,
+      email: opts.email.trim().toLowerCase(),
+    }),
+  });
+
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(sanitizeInfraError(err.error ?? `Email update failed (${res.status})`));
+  }
+
+  return res.json() as Promise<UpdateEmployeeEmailResult>;
+}

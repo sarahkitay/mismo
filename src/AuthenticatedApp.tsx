@@ -16,6 +16,8 @@ import { EmployeeResources } from '@/pages/employee/EmployeeResources';
 import { EmployeeSettings } from '@/pages/employee/EmployeeSettings';
 import { WageHourReporting } from '@/pages/employee/WageHourReporting';
 import { EmployeeWageHourIntake } from '@/pages/employee/EmployeeWageHourIntake';
+import { EmployeeCaseNoteReview } from '@/pages/employee/EmployeeCaseNoteReview';
+import { EmployeeInvestigationResponse } from '@/pages/employee/EmployeeInvestigationResponse';
 
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import { AdminInvestigations } from '@/pages/admin/AdminInvestigations';
@@ -251,6 +253,14 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  if (activePage.startsWith('report-detail/')) {
  const reportId = activePage.split('report-detail/')[1];
  return <EmployeeReportDetail dataStore={dataStore} reportId={reportId} onNavigate={handleNavigate} />;
+ }
+ if (activePage.startsWith('case-note-review/')) {
+ const ackId = activePage.split('case-note-review/')[1];
+ return <EmployeeCaseNoteReview dataStore={dataStore} ackId={ackId} onNavigate={handleNavigate} />;
+ }
+ if (activePage.startsWith('investigation-response/')) {
+ const requestId = activePage.split('investigation-response/')[1];
+ return <EmployeeInvestigationResponse dataStore={dataStore} requestId={requestId} onNavigate={handleNavigate} />;
  }
  return <EmployeeHome dataStore={dataStore} onNavigate={handleNavigate} />;
  }

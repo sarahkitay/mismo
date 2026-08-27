@@ -3,6 +3,7 @@ import type {
   InvestigationChecklistStage,
   InvestigationPerson,
   InvestigationPersonRole,
+  InvestigationResponseRequest,
   InvestigationStage,
   InvestigationStageEvent,
   OutcomeClassification,
@@ -11,7 +12,9 @@ import type {
   Report,
   ReportSourceType,
   User,
+  UserRole,
 } from '@/types';
+import { roleLabel } from '@/lib/roleLabels';
 
 export const INVESTIGATION_STAGES: InvestigationStage[] = [
   'INTAKE_RECEIVED',
@@ -45,6 +48,118 @@ export const PERSON_ROLE_LABELS: Record<InvestigationPersonRole, string> = {
   INVESTIGATOR: 'Investigator',
   EXTERNAL_PARTY: 'External party',
 };
+
+const RESPONSE_REQUEST_TEAM_ROLES: UserRole[] = ['HR', 'MANAGER', 'ADMIN'];
+
+export interface ResponseRequestRecipientOption {
+  userId: string;
+  displayName: string;
+  subtitle: string;
+  group: 'involved' | 'team';
+  partyRole: InvestigationPersonRole;
+}
+
+export function getResponseRequestRecipientOptions(
+  inv: Investigation,
+  users: User[],
+  owner?: User,
+  options?: { excludeUserId?: string; primaryReport?: Report }
+): { involved: ResponseRequestRecipientOption[]; team: ResponseRequestRecipientOption[] } {
+  const persons = getInvestigationPersons(inv, owner);
+  const byUserId = new Map<string, ResponseRequestRecipientOption>();
+
+  const addPerson = (userId: string, role: InvestigationPersonRole) => {
+    const user = users.find((u) => u.id === userId);
+    if (!user || user.status === 'inactive') return;
+    if (byUserId.has(userId)) return;
+    byUserId.set(userId, {
+      userId,
+      displayName: `${user.firstName} ${user.lastName}`,
+      subtitle: PERSON_ROLE_LABELS[role],
+      group: 'involved',
+      partyRole: role,
+    });
+  };
+
+  for (const person of persons) {
+    if (person.userId) addPerson(person.userId, person.role);
+  }
+
+  if (options?.primaryReport?.createdByUserId && !options.primaryReport.isAnonymous) {
+    addPerson(options.primaryReport.createdByUserId, 'REPORTING_PARTY');
+  }
+
+  inv.subjectUserIds?.forEach((userId) => addPerson(userId, 'REPORTED_AGAINST'));
+  inv.witnessUserIds?.forEach((userId) => addPerson(userId, 'WITNESS'));
+
+  const involved = Array.from(byUserId.values()).sort((a, b) => a.displayName.localeCompare(b.displayName));
+  const involvedIds = new Set(byUserId.keys());
+
+  const team: ResponseRequestRecipientOption[] = [];
+  for (const user of users) {
+    if (user.status === 'inactive') continue;
+    if (!RESPONSE_REQUEST_TEAM_ROLES.includes(user.role)) continue;
+    if (options?.excludeUserId && user.id === options.excludeUserId) continue;
+    if (involvedIds.has(user.id)) continue;
+    team.push({
+      userId: user.id,
+      displayName: `${user.firstName} ${user.lastName}`,
+      subtitle: roleLabel(user.role),
+      group: 'team',
+      partyRole: 'HR_REPRESENTATIVE',
+    });
+  }
+  team.sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+  return { involved, team };
+}
+
+export function resolveResponseRequestPartyRole(
+  userId: string,
+  inv: Investigation,
+  users: User[],
+  owner?: User,
+  primaryReport?: Report
+): InvestigationPersonRole {
+  const { involved, team } = getResponseRequestRecipientOptions(inv, users, owner, { primaryReport });
+  return [...involved, ...team].find((o) => o.userId === userId)?.partyRole ?? 'WITNESS';
+}
+
+export function findInvestigationResponseRequest(
+  investigations: Investigation[],
+  requestId: string,
+  recipientUserId?: string
+): { investigation: Investigation; request: InvestigationResponseRequest } | null {
+  for (const investigation of investigations) {
+    const request = (investigation.responseRequests ?? []).find(
+      (r) => r.id === requestId && (!recipientUserId || r.partyUserId === recipientUserId)
+    );
+    if (request) return { investigation, request };
+  }
+  return null;
+}
+
+export function pendingResponseRequestsForUser(
+  investigations: Investigation[],
+  userId: string
+): Array<{ investigation: Investigation; request: InvestigationResponseRequest }> {
+  const items: Array<{ investigation: Investigation; request: InvestigationResponseRequest }> = [];
+  for (const investigation of investigations) {
+    for (const request of investigation.responseRequests ?? []) {
+      if (request.partyUserId === userId && request.status !== 'SUBMITTED' && request.status !== 'DECLINED') {
+        items.push({ investigation, request });
+      }
+    }
+  }
+  return items.sort((a, b) => (b.request.sentAt?.getTime() ?? 0) - (a.request.sentAt?.getTime() ?? 0));
+}
+
+export function buildResponseRequestEmailBody(message: string, deadline?: Date): string {
+  const lines = ['Your investigator has asked you to respond through Mismo.', '', message];
+  if (deadline) lines.push('', `Please respond by ${deadline.toLocaleDateString()}.`);
+  lines.push('', 'Open Mismo to read the full request and submit your response.');
+  return lines.join('\n');
+}
 
 export const REPORT_SOURCE_LABELS: Record<ReportSourceType, string> = {
   SELF_REPORTED: 'Self reported',

@@ -83,6 +83,14 @@ export function buildAppUrl(page: string, role: AppRole, routeParams: Record<str
       const rid = page.slice('report-detail/'.length);
       return `/employee/my-reports/${rid}${tail}`;
     }
+    if (page.startsWith('case-note-review/')) {
+      const aid = page.slice('case-note-review/'.length);
+      return `/employee/case-note-review/${aid}${tail}`;
+    }
+    if (page.startsWith('investigation-response/')) {
+      const rid = page.slice('investigation-response/'.length);
+      return `/employee/investigation-response/${rid}${tail}`;
+    }
     return `${employeeMap[page] ?? '/employee/dashboard'}${tail}`;
   }
 
@@ -119,6 +127,14 @@ export function parseAppLocation(
   });
 
   if (pathname === '/employee/dashboard') return merge({ role: 'EMPLOYEE', page: 'home', params: {} });
+  const caseNoteReviewMatch = pathname.match(/^\/employee\/case-note-review\/([^/]+)$/);
+  if (caseNoteReviewMatch) {
+    return merge({ role: 'EMPLOYEE', page: `case-note-review/${caseNoteReviewMatch[1]}`, params: {} });
+  }
+  const investigationResponseMatch = pathname.match(/^\/employee\/investigation-response\/([^/]+)$/);
+  if (investigationResponseMatch) {
+    return merge({ role: 'EMPLOYEE', page: `investigation-response/${investigationResponseMatch[1]}`, params: {} });
+  }
   if (pathname === '/employee/my-reports') return merge({ role: 'EMPLOYEE', page: 'reports', params: {} });
   if (pathname === '/employee/resources') return merge({ role: 'EMPLOYEE', page: 'resources', params: {} });
   if (pathname === '/employee/settings') return merge({ role: 'EMPLOYEE', page: 'settings', params: {} });

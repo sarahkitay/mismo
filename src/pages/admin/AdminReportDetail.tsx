@@ -23,6 +23,7 @@ import { relatedNavForReport } from '@/lib/recordLinks';
 import { toast } from 'sonner';
 import { sendNotificationEmail } from '@/lib/api/notifications';
 import { buildHrSignOff, getSlaLabel } from '@/lib/reportDetailHelpers';
+import { buildCaseNoteReviewEmailBody, caseNoteAckStatusLabel } from '@/lib/caseNoteAcknowledgement';
 
 interface AdminReportDetailProps {
  dataStore: DataStore;
@@ -45,25 +46,12 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  const [plannedSendSubject, setPlannedSendSubject] = useState('Update regarding your workplace concern');
  const [plannedSendBody, setPlannedSendBody] = useState(() => report?.responsePlan ?? '');
  const [includeSignOff, setIncludeSignOff] = useState(true);
- const [responsePlanDraft, setResponsePlanDraft] = useState(report?.responsePlan ?? '');
- const [responseActionDraft, setResponseActionDraft] = useState(report?.responseActionTaken ?? '');
- const [employeeOutcomeDraft, setEmployeeOutcomeDraft] = useState(report?.employeeResponseOutcome ?? '');
- const [planSaved, setPlanSaved] = useState(() => Boolean(report?.responsePlan?.trim()));
- const [actionSaved, setActionSaved] = useState(() => Boolean(report?.responseActionTaken?.trim()));
- const [outcomeSaved, setOutcomeSaved] = useState(() => Boolean(report?.employeeResponseOutcome?.trim()));
+ const [requestEmployeeSignOff, setRequestEmployeeSignOff] = useState(true);
  const [checklistSectionIndex, setChecklistSectionIndex] = useState(0);
  const [showAdvancedChecklist, setShowAdvancedChecklist] = useState(false);
  const [showIntakeSubmission, setShowIntakeSubmission] = useState(false);
- const [showResponseWorkflow, setShowResponseWorkflow] = useState(() =>
- Boolean(
- report?.responsePlan?.trim() ||
- report?.responseActionTaken?.trim() ||
- report?.employeeResponseOutcome?.trim()
- )
- );
  const [showRelatedRecords, setShowRelatedRecords] = useState(false);
  const [evidenceNoteDraft, setEvidenceNoteDraft] = useState<Record<string, string>>({});
- const fileInputRef = useRef<HTMLInputElement>(null);
  const responseContextFileRef = useRef<HTMLInputElement>(null);
  const evidenceFileInputRef = useRef<HTMLInputElement>(null);
  const [evidenceFileForItem, setEvidenceFileForItem] = useState<string | null>(null);
@@ -72,6 +60,14 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  const orderedLedger = useMemo(
  () => [...(report?.handlingLedger ?? [])].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
  [report?.handlingLedger]
+ );
+
+ const reportCaseNoteAcks = useMemo(
+ () =>
+ [...dataStore.caseNoteAcknowledgements]
+ .filter((ack) => ack.reportId === reportId)
+ .sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime()),
+ [dataStore.caseNoteAcknowledgements, reportId]
  );
 
  const responseContextFiles = useMemo(
@@ -166,25 +162,48 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  setSendingEmployeeEmail(true);
  try {
  dataStore.addReportMessage(report.id, fullBody, { sendEmail: false });
+ const employeeRecipient = reporter?.role === 'EMPLOYEE';
+ const withSignOffReview = requestEmployeeSignOff && employeeRecipient;
+ let ackId: string | undefined;
+
+ if (withSignOffReview) {
+ const ack = dataStore.createCaseNoteAcknowledgement({
+ reportId: report.id,
+ userId: recipientUserId,
+ subject,
+ body: fullBody,
+ });
+ ackId = ack.id;
+ dataStore.addReportHandlingEntry(
+ report.id,
+ 'ACTION_TAKEN',
+ `Sent case note for employee sign-off${reporter?.email ? ` (${reporter.email})` : ''}:\n\n${fullBody}`
+ );
+ } else {
  dataStore.addReportHandlingEntry(
  report.id,
  'ACTION_TAKEN',
  `Sent planned message to employee${reporter?.email ? ` (${reporter.email})` : ''}:\n\n${fullBody}`
  );
+ }
+
  dataStore.updateReportHandling(report.id, {
+ responsePlan: bodyText,
  responseActionTaken: fullBody,
  });
- setResponseActionDraft(fullBody);
- setActionSaved(true);
 
- const employeeRecipient = reporter?.role === 'EMPLOYEE';
+ const emailBody = withSignOffReview && ackId ? buildCaseNoteReviewEmailBody(fullBody) : fullBody;
  const result = await sendNotificationEmail({
  recipientUserId,
- subject,
- body: fullBody,
+ subject: withSignOffReview ? `${subject} (review and sign off)` : subject,
+ body: emailBody,
  kind: 'CASE_UPDATE',
- actionPage: employeeRecipient ? `report-detail/${report.id}` : 'report-detail',
- actionParams: employeeRecipient ? undefined : { id: report.id },
+ actionPage: withSignOffReview && ackId
+ ? `employee/case-note-review/${ackId}`
+ : employeeRecipient
+ ? `report-detail/${report.id}`
+ : 'report-detail',
+ actionParams: employeeRecipient || withSignOffReview ? undefined : { id: report.id },
  templateId: 'new_message',
  });
 
@@ -194,13 +213,17 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  }
 
  if (result.ok && result.emailStatus === 'sent') {
- toast.success(`Email sent to ${reporter?.email ?? 'employee'} via Resend.`);
+ toast.success(
+ withSignOffReview
+ ? `Email sent with sign-off link to ${reporter?.email ?? 'employee'}.`
+ : `Email sent to ${reporter?.email ?? 'employee'} via Resend.`
+ );
  void dataStore.refreshAppNotifications?.();
  return;
  }
 
  if (result.ok && result.emailStatus?.startsWith('skipped')) {
- toast.message('Message logged on the case.', {
+ toast.message(withSignOffReview ? 'Case note logged with sign-off request.' : 'Message logged on the case.', {
  description: result.message || 'Resend is not configured for this environment.',
  });
  return;
@@ -495,265 +518,6 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  <CardContent className="p-5 space-y-4">
  <div className="flex flex-wrap items-start justify-between gap-2">
  <div>
- <h2 className="text-sm uppercase tracking-wide text-[var(--color-text-secondary)]">Response workflow</h2>
- <p className="text-xs text-[var(--color-text-muted)] mt-1">
- Optional. Draft plan, action, and outcome; attach screenshots of texts or emails for context; use AI before you save.
- </p>
- </div>
- <Button type="button" variant="outline" size="sm" onClick={() => setShowResponseWorkflow((v) => !v)}>
- {showResponseWorkflow ? 'Hide workflow' : 'Show workflow'}
- </Button>
- </div>
-
- {!showResponseWorkflow ? (
- <p className="text-sm text-[var(--color-text-secondary)]">
- {responsePlanDraft.trim() || responseActionDraft.trim() || employeeOutcomeDraft.trim() || responseContextFiles.length > 0
- ? 'Workflow notes or attachments are on file. Open to review or continue.'
- : 'Skip unless you need to document outreach wording or attach message screenshots.'}
- </p>
- ) : (
- <div className="space-y-4">
- <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] p-3 space-y-3">
- <div className="flex flex-wrap items-start justify-between gap-2">
- <div>
- <p className="text-sm font-medium text-[var(--color-text-primary)]">Context attachments</p>
- <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
- Upload screenshots of texts or emails (PNG, JPG, WEBP, PDF). AI can draft a Planned Response from image screenshots.
- </p>
- </div>
- <div>
- <input
- ref={responseContextFileRef}
- type="file"
- accept="image/png,image/jpeg,image/webp,image/gif,image/heic,.png,.jpg,.jpeg,.webp,.gif,.heic,.pdf,application/pdf"
- multiple
- className="hidden"
- onChange={(e) => {
- const files = Array.from(e.target.files ?? []);
- files.forEach((file) => {
- if (dataStore.addReportLedgerFile) dataStore.addReportLedgerFile(report.id, file);
- });
- e.target.value = '';
- }}
- />
- <Button type="button" variant="outline" size="sm" onClick={() => responseContextFileRef.current?.click()}>
- <Icons.upload className="h-3.5 w-3.5 mr-1.5" />
- Upload screenshot / email
- </Button>
- </div>
- </div>
- {responseContextFiles.length > 0 ? (
- <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
- {responseContextFiles.map((entry) => {
- const isImage = Boolean(
- entry.fileDataUrl?.startsWith('data:image/') ||
- /\.(png|jpe?g|gif|webp|heic)$/i.test(entry.fileFileName ?? entry.text)
- );
- return (
- <li key={entry.id} className="border border-[var(--color-border-200)] bg-white p-2 text-sm space-y-1">
- {isImage && entry.fileDataUrl ? (
- <button
- type="button"
- className="block w-full text-left"
- onClick={() => {
- const url = entry.fileDataUrl!;
- window.setTimeout(() => {
- window.open(url, '_blank', 'noopener,noreferrer');
- }, 0);
- }}
- >
- <img
- src={entry.fileDataUrl}
- alt={entry.fileFileName ?? entry.text}
- className="max-h-36 w-full object-contain bg-[var(--color-surface-200)]"
- loading="lazy"
- decoding="async"
- />
- </button>
- ) : null}
- <p className="font-medium truncate">{entry.fileFileName ?? entry.text}</p>
- <p className="text-xs text-[var(--color-text-secondary)]">{entry.createdAt.toLocaleString()}</p>
- <div className="flex flex-wrap items-center gap-3">
- {entry.fileDataUrl ? (
- <button
- type="button"
- className="text-xs text-[var(--mismo-blue)] underline"
- onClick={() => {
- const url = entry.fileDataUrl!;
- window.setTimeout(() => {
- window.open(url, '_blank', 'noopener,noreferrer');
- }, 0);
- }}
- >
- Open / download
- </button>
- ) : null}
- <button
- type="button"
- className="text-xs text-[var(--color-alert-600)] hover:underline"
- onClick={() => {
- dataStore.removeReportLedgerEntry(report.id, entry.id);
- toast.success('Attachment removed.');
- }}
- >
- Remove
- </button>
- </div>
- </li>
- );
- })}
- </ul>
- ) : (
- <p className="text-xs text-[var(--color-text-secondary)]">No screenshots or email attachments yet.</p>
- )}
- </div>
-
- <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
- <div className="space-y-2 min-w-0">
- <p className="text-sm font-medium">Planned Response</p>
- <textarea
- value={responsePlanDraft}
- onChange={(event) => {
- setResponsePlanDraft(event.target.value);
- setPlanSaved(false);
- }}
- className="w-full min-h-[120px] border border-[var(--color-border-200)] p-2 text-sm"
- placeholder="How HR plans to respond to the employee…"
- />
- <OutreachToneCoach
- bodyOnly
- task="draft_from_screenshots"
- title="Draft follow-up from screenshots"
- description="AI reads your uploaded text/email screenshots and drafts a professional follow-up. Softens an existing draft when text is already entered."
- orgId={report.orgId}
- reportId={report.id}
- investigationId={linkedInvestigation?.id}
- subject="Planned Response"
- body={responsePlanDraft}
- caseCategory={report.category}
- caseType={report.caseType}
- createdBy={dataStore.currentUser.id}
- contextAttachments={responseContextFiles}
- employeeEmail={reporter?.email}
- employeeName={reporter ? `${reporter.firstName} ${reporter.lastName}`.trim() : undefined}
- onApplySuggestion={(_subject, nextBody) => {
- setResponsePlanDraft(nextBody);
- setPlanSaved(false);
- }}
- />
- <Button
- size="sm"
- className="w-full justify-center"
- disabled={planSaved}
- onClick={() => {
- dataStore.updateReportHandling(report.id, { responsePlan: responsePlanDraft });
- dataStore.addReportHandlingEntry(report.id, 'PLAN', responsePlanDraft || 'Plan saved');
- setPlanSaved(true);
- }}
- >
- {planSaved ? 'Saved' : 'Save plan'}
- </Button>
- </div>
- <div className="space-y-2 min-w-0">
- <p className="text-sm font-medium">Actual Response</p>
- <textarea
- value={responseActionDraft}
- onChange={(event) => {
- setResponseActionDraft(event.target.value);
- setActionSaved(false);
- }}
- className="w-full min-h-[120px] border border-[var(--color-border-200)] p-2 text-sm"
- placeholder="What was said or done…"
- />
- <OutreachToneCoach
- bodyOnly
- title="Soften actual response"
- description="AI cleans up the logged action for clear, factual case notes. Screenshots are used as extra context when attached."
- orgId={report.orgId}
- reportId={report.id}
- investigationId={linkedInvestigation?.id}
- subject="Actual Response"
- body={responseActionDraft}
- caseCategory={report.category}
- caseType={report.caseType}
- createdBy={dataStore.currentUser.id}
- contextAttachments={responseContextFiles}
- employeeEmail={reporter?.email}
- employeeName={reporter ? `${reporter.firstName} ${reporter.lastName}`.trim() : undefined}
- onApplySuggestion={(_subject, nextBody) => {
- setResponseActionDraft(nextBody);
- setActionSaved(false);
- }}
- />
- <Button
- size="sm"
- className="w-full justify-center"
- disabled={actionSaved}
- onClick={() => {
- dataStore.updateReportHandling(report.id, { responseActionTaken: responseActionDraft });
- dataStore.addReportHandlingEntry(report.id, 'ACTION_TAKEN', responseActionDraft || 'Action logged');
- setActionSaved(true);
- }}
- >
- {actionSaved ? 'Saved' : 'Save action'}
- </Button>
- </div>
- <div className="space-y-2 min-w-0">
- <p className="text-sm font-medium">Employee Response Outcome</p>
- <textarea
- value={employeeOutcomeDraft}
- onChange={(event) => {
- setEmployeeOutcomeDraft(event.target.value);
- setOutcomeSaved(false);
- }}
- className="w-full min-h-[120px] border border-[var(--color-border-200)] p-2 text-sm"
- placeholder="How the employee responded / next steps…"
- />
- <OutreachToneCoach
- bodyOnly
- task="employee_outcome"
- title="Generate outcome from actual response"
- description="AI drafts how the employee responded and next steps from the Actual Response (and screenshots when attached)."
- orgId={report.orgId}
- reportId={report.id}
- investigationId={linkedInvestigation?.id}
- subject="Employee Response Outcome"
- body={employeeOutcomeDraft}
- sourceMaterial={responseActionDraft}
- caseCategory={report.category}
- caseType={report.caseType}
- createdBy={dataStore.currentUser.id}
- contextAttachments={responseContextFiles}
- employeeEmail={reporter?.email}
- employeeName={reporter ? `${reporter.firstName} ${reporter.lastName}`.trim() : undefined}
- onApplySuggestion={(_subject, nextBody) => {
- setEmployeeOutcomeDraft(nextBody);
- setOutcomeSaved(false);
- }}
- />
- <Button
- size="sm"
- className="w-full justify-center"
- disabled={outcomeSaved}
- onClick={() => {
- dataStore.updateReportHandling(report.id, { employeeResponseOutcome: employeeOutcomeDraft });
- dataStore.addReportHandlingEntry(report.id, 'EMPLOYEE_RESPONSE', employeeOutcomeDraft || 'Employee outcome logged');
- setOutcomeSaved(true);
- }}
- >
- {outcomeSaved ? 'Saved' : 'Save outcome'}
- </Button>
- </div>
- </div>
- </div>
- )}
- </CardContent>
- </Card>
-
- <Card className="mismo-card">
- <CardContent className="p-5 space-y-4">
- <div className="flex flex-wrap items-start justify-between gap-2">
- <div>
  <h2 className="text-sm uppercase tracking-wide text-[var(--color-text-secondary)]">
  Optional compliance checklist
  </h2>
@@ -923,25 +687,120 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  </Card>
 
  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
- <Card className="mismo-card">
+ <Card className="mismo-card xl:col-span-2">
  <CardContent className="p-5 space-y-4">
  <div>
  <h2 className="text-sm uppercase tracking-wide text-[var(--color-text-secondary)]">Handling ledger</h2>
  <p className="text-xs text-[var(--color-text-muted)] mt-1">
- Log internal notes, or email the employee through Resend with your HR sign-off included.
+ Log notes and plan entries, attach message screenshots, soften drafts with AI, and send planned responses to the employee with your sign-off.
  </p>
  </div>
 
  <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] p-3 space-y-3">
+ <div className="flex flex-wrap items-start justify-between gap-2">
+ <div>
+ <p className="text-sm font-medium text-[var(--color-text-primary)]">Context attachments</p>
+ <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+ Upload screenshots of texts or emails (PNG, JPG, WEBP, PDF). AI uses these when drafting a planned response.
+ </p>
+ </div>
+ <div>
+ <input
+ ref={responseContextFileRef}
+ type="file"
+ accept="image/png,image/jpeg,image/webp,image/gif,image/heic,.png,.jpg,.jpeg,.webp,.gif,.heic,.pdf,application/pdf"
+ multiple
+ className="hidden"
+ onChange={(e) => {
+ const files = Array.from(e.target.files ?? []);
+ files.forEach((file) => {
+ if (dataStore.addReportLedgerFile) dataStore.addReportLedgerFile(report.id, file);
+ });
+ e.target.value = '';
+ }}
+ />
+ <Button type="button" variant="outline" size="sm" onClick={() => responseContextFileRef.current?.click()}>
+ <Icons.upload className="h-3.5 w-3.5 mr-1.5" />
+ Upload screenshot / email
+ </Button>
+ </div>
+ </div>
+ {responseContextFiles.length > 0 ? (
+ <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+ {responseContextFiles.map((entry) => {
+ const isImage = Boolean(
+ entry.fileDataUrl?.startsWith('data:image/') ||
+ /\.(png|jpe?g|gif|webp|heic)$/i.test(entry.fileFileName ?? entry.text)
+ );
+ return (
+ <li key={entry.id} className="border border-[var(--color-border-200)] bg-white p-2 text-sm space-y-1">
+ {isImage && entry.fileDataUrl ? (
+ <button
+ type="button"
+ className="block w-full text-left"
+ onClick={() => {
+ const url = entry.fileDataUrl!;
+ window.setTimeout(() => {
+ window.open(url, '_blank', 'noopener,noreferrer');
+ }, 0);
+ }}
+ >
+ <img
+ src={entry.fileDataUrl}
+ alt={entry.fileFileName ?? entry.text}
+ className="max-h-36 w-full object-contain bg-[var(--color-surface-200)]"
+ loading="lazy"
+ decoding="async"
+ />
+ </button>
+ ) : null}
+ <p className="font-medium truncate">{entry.fileFileName ?? entry.text}</p>
+ <p className="text-xs text-[var(--color-text-secondary)]">{entry.createdAt.toLocaleString()}</p>
+ <div className="flex flex-wrap items-center gap-3">
+ {entry.fileDataUrl ? (
+ <button
+ type="button"
+ className="text-xs text-[var(--mismo-blue)] underline"
+ onClick={() => {
+ const url = entry.fileDataUrl!;
+ window.setTimeout(() => {
+ window.open(url, '_blank', 'noopener,noreferrer');
+ }, 0);
+ }}
+ >
+ Open / download
+ </button>
+ ) : null}
+ <button
+ type="button"
+ className="text-xs text-[var(--color-alert-600)] hover:underline"
+ onClick={() => {
+ dataStore.removeReportLedgerEntry(report.id, entry.id);
+ toast.success('Attachment removed.');
+ }}
+ >
+ Remove
+ </button>
+ </div>
+ </li>
+ );
+ })}
+ </ul>
+ ) : (
+ <p className="text-xs text-[var(--color-text-secondary)]">No context attachments yet.</p>
+ )}
+ </div>
+
+ <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] p-3 space-y-3">
  <div className="flex flex-wrap items-center justify-between gap-2">
- <p className="text-sm font-medium">Send planned message</p>
+ <p className="text-sm font-medium">Planned response</p>
  <div className="flex flex-wrap gap-2">
  <Button
  type="button"
  variant="outline"
  size="sm"
- onClick={() => setPlannedSendBody(responsePlanDraft)}
- disabled={!responsePlanDraft.trim()}
+ onClick={() => setPlannedSendBody(report.responsePlan ?? '')}
+ disabled={!report.responsePlan?.trim()}
  >
  Use saved plan
  </Button>
@@ -969,7 +828,29 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  value={plannedSendBody}
  onChange={(e) => setPlannedSendBody(e.target.value)}
  className="w-full min-h-[120px] border border-[var(--color-border-200)] p-2 text-sm bg-white"
- placeholder="Message to the employee…"
+ placeholder="Paste the message you are responding to, or draft your planned response…"
+ />
+ <OutreachToneCoach
+ bodyOnly
+ task={responseContextFiles.length > 0 ? 'draft_from_screenshots' : 'soften'}
+ title={responseContextFiles.length > 0 ? 'Draft from screenshots' : 'Soften with AI'}
+ description={
+ responseContextFiles.length > 0
+ ? 'AI reads uploaded screenshots and drafts a professional follow-up. Softens existing text when a draft is already entered.'
+ : 'AI softens your draft for clear, professional employee outreach. Attach screenshots above for richer context.'
+ }
+ orgId={report.orgId}
+ reportId={report.id}
+ investigationId={linkedInvestigation?.id}
+ subject={plannedSendSubject}
+ body={plannedSendBody}
+ caseCategory={report.category}
+ caseType={report.caseType}
+ createdBy={dataStore.currentUser.id}
+ contextAttachments={responseContextFiles}
+ employeeEmail={reporter?.email}
+ employeeName={reporter ? `${reporter.firstName} ${reporter.lastName}`.trim() : undefined}
+ onApplySuggestion={(_subject, nextBody) => setPlannedSendBody(nextBody)}
  />
  <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
  <input
@@ -978,6 +859,15 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  onChange={(e) => setIncludeSignOff(e.target.checked)}
  />
  Include my sign-off
+ </label>
+ <label className="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+ <input
+ type="checkbox"
+ checked={requestEmployeeSignOff}
+ onChange={(e) => setRequestEmployeeSignOff(e.target.checked)}
+ disabled={report.isAnonymous || !report.createdByUserId}
+ />
+ Request employee sign-off (email includes link to review in Mismo)
  </label>
  {includeSignOff && (
  <pre className="text-xs text-[var(--color-text-secondary)] whitespace-pre-wrap border border-dashed border-[var(--color-border-200)] bg-white p-2 rounded-sm">
@@ -1002,14 +892,41 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  className="flex-1 min-w-[140px] justify-center"
  onClick={() => {
  if (!plannedSendBody.trim()) return;
+ dataStore.updateReportHandling(report.id, { responsePlan: plannedSendBody.trim() });
  dataStore.addReportHandlingEntry(report.id, 'PLAN', plannedSendBody.trim());
- toast.success('Planned message logged (not sent).');
+ toast.success('Planned response logged (not sent).');
  }}
  disabled={!plannedSendBody.trim()}
  >
  Log as plan only
  </Button>
  </div>
+ {reportCaseNoteAcks.length > 0 && (
+ <div className="border border-[var(--color-border-200)] bg-white rounded-md p-3 space-y-2">
+ <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Employee sign-off status</p>
+ <ul className="space-y-2">
+ {reportCaseNoteAcks.map((ack) => (
+ <li key={ack.id} className="text-sm border border-[var(--color-border-200)] rounded px-2 py-1.5">
+ <div className="flex flex-wrap items-center justify-between gap-2">
+ <span className="font-medium">{ack.subject}</span>
+ <Badge variant="outline" className="text-xs">
+ {caseNoteAckStatusLabel(ack.status)}
+ </Badge>
+ </div>
+ <p className="text-xs text-[var(--color-text-muted)] mt-1">
+ Sent {formatRelativeTime(ack.sentAt)}
+ {ack.respondedAt ? ` · Responded ${formatRelativeTime(ack.respondedAt)}` : ''}
+ </p>
+ {ack.status === 'REVISION_REQUESTED' && ack.revisionNote && (
+ <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1 whitespace-pre-wrap">
+ {ack.revisionNote}
+ </p>
+ )}
+ </li>
+ ))}
+ </ul>
+ </div>
+ )}
  {!reporter?.email && report.createdByUserId && !report.isAnonymous && (
  <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
  No employee email on file. Sending will still log the message on the case.
@@ -1017,51 +934,77 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  )}
  </div>
 
+ <div className="border border-[var(--color-border-200)] bg-[var(--color-surface-100)] p-3 space-y-3">
+ <p className="text-sm font-medium">Log handling entry</p>
  <div className="flex flex-col sm:flex-row gap-2">
  <select
  value={ledgerType}
  onChange={(event) => setLedgerType(event.target.value as typeof ledgerType)}
- className="border border-[var(--color-border-200)] px-2 py-2 text-sm"
+ className="border border-[var(--color-border-200)] px-2 py-2 text-sm bg-white sm:w-44"
  >
- <option value="NOTE">Case Note</option>
- <option value="PLAN">Plan Entry</option>
- <option value="ACTION_TAKEN">Action Entry</option>
- <option value="EMPLOYEE_RESPONSE">Employee Response</option>
+ <option value="NOTE">Case note</option>
+ <option value="PLAN">Plan entry</option>
+ <option value="ACTION_TAKEN">Action taken</option>
+ <option value="EMPLOYEE_RESPONSE">Employee response</option>
  </select>
- <input
+ </div>
+ <textarea
  value={ledgerText}
  onChange={(event) => setLedgerText(event.target.value)}
- className="flex-1 border border-[var(--color-border-200)] px-3 py-2 text-sm"
- placeholder="Add handling entry..."
+ className="w-full min-h-[88px] border border-[var(--color-border-200)] px-3 py-2 text-sm bg-white"
+ placeholder={
+ ledgerType === 'PLAN'
+ ? 'Internal plan or draft wording…'
+ : ledgerType === 'ACTION_TAKEN'
+ ? 'What was said or done…'
+ : ledgerType === 'EMPLOYEE_RESPONSE'
+ ? 'How the employee responded…'
+ : 'Internal case note…'
+ }
  />
+ {(ledgerType === 'PLAN' || ledgerType === 'ACTION_TAKEN' || ledgerType === 'NOTE') && ledgerText.trim() && (
+ <OutreachToneCoach
+ bodyOnly
+ task={ledgerType === 'PLAN' && responseContextFiles.length > 0 ? 'draft_from_screenshots' : 'soften'}
+ title="Soften with AI"
+ description="Clean up this entry before logging it on the case."
+ orgId={report.orgId}
+ reportId={report.id}
+ investigationId={linkedInvestigation?.id}
+ subject={ledgerType}
+ body={ledgerText}
+ caseCategory={report.category}
+ caseType={report.caseType}
+ createdBy={dataStore.currentUser.id}
+ contextAttachments={responseContextFiles}
+ onApplySuggestion={(_subject, nextBody) => setLedgerText(nextBody)}
+ />
+ )}
+ <div className="flex flex-wrap gap-2">
  <Button
  size="sm"
  onClick={() => {
- dataStore.addReportHandlingEntry(report.id, ledgerType, ledgerText);
+ if (!ledgerText.trim()) {
+ toast.error('Add text before logging.');
+ return;
+ }
+ dataStore.addReportHandlingEntry(report.id, ledgerType, ledgerText.trim());
+ if (ledgerType === 'PLAN') {
+ dataStore.updateReportHandling(report.id, { responsePlan: ledgerText.trim() });
+ } else if (ledgerType === 'ACTION_TAKEN') {
+ dataStore.updateReportHandling(report.id, { responseActionTaken: ledgerText.trim() });
+ } else if (ledgerType === 'EMPLOYEE_RESPONSE') {
+ dataStore.updateReportHandling(report.id, { employeeResponseOutcome: ledgerText.trim() });
+ }
  setLedgerText('');
+ toast.success('Entry logged.');
  }}
  >
- Log
+ Log entry
  </Button>
  </div>
- <div className="flex items-center gap-2">
- <input
- ref={fileInputRef}
- type="file"
- accept=".pdf,application/pdf"
- className="hidden"
- onChange={(e) => {
- const file = e.target.files?.[0];
- if (file && dataStore.addReportLedgerFile) {
- dataStore.addReportLedgerFile(report.id, file);
- }
- e.target.value = '';
- }}
- />
- <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
- Upload PDF to ledger
- </Button>
  </div>
+
  <div className="space-y-2 max-h-[360px] overflow-auto">
  {orderedLedger.map((entry) => (
  <div key={entry.id} className="border border-[var(--color-border-200)] p-2 text-sm space-y-2">
@@ -1092,7 +1035,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  className="h-7 text-xs"
  onClick={() => {
  setPlannedSendBody(entry.text);
- toast.message('Loaded into Send planned message above.');
+ toast.message('Loaded into planned response above.');
  }}
  >
  Edit &amp; send

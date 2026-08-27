@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useMemo } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
+import { CaseNoteAcknowledgementPanel } from '@/components/CaseNoteAcknowledgementPanel';
+import { InvestigationResponseRequestPanel } from '@/components/InvestigationResponseRequestPanel';
+import { InvestigationOutcomeAcknowledgementPanel } from '@/components/InvestigationOutcomeAcknowledgementPanel';
+import { pendingCaseNoteAcksForReport } from '@/lib/caseNoteAcknowledgement';
 import { Icons } from '@/lib/icons';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
   employeeIncidentReportHeadline,
@@ -28,13 +31,20 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
     users,
     reportStatusEvents,
     investigations,
+    caseNoteAcknowledgements,
+    currentUser,
     employeeAcknowledgeInvestigationOutcome,
     submitEmployeeInvestigationResponse,
     updateInvestigationResponseRequest,
+    respondToCaseNoteAcknowledgement,
   } = dataStore;
-  const [responseDrafts, setResponseDrafts] = useState<Record<string, string>>({});
   
   const report = employeeReports.find(r => r.id === reportId);
+
+  const pendingCaseNoteAcks = useMemo(
+    () => pendingCaseNoteAcksForReport(caseNoteAcknowledgements, reportId, currentUser.id),
+    [caseNoteAcknowledgements, currentUser.id, reportId]
+  );
   
   if (!report) {
     return (
@@ -131,6 +141,27 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
         </Card>
       )}
 
+      {pendingCaseNoteAcks.map((ack) => (
+        <Card key={ack.id} className="mismo-card border-2 border-[var(--color-primary-700)]/30">
+          <CardContent className="p-5">
+            <CaseNoteAcknowledgementPanel
+              subject={ack.subject}
+              body={ack.body}
+              variant={ack.kind === 'INITIAL_CONTACT' ? 'initial_contact' : 'case_note'}
+              attachments={ack.attachments}
+              onConfirm={(signatureDataUrl) => {
+                respondToCaseNoteAcknowledgement(ack.id, { outcome: 'CONFIRMED', signatureDataUrl });
+                toast.success('Thank you. Your sign-off has been recorded.');
+              }}
+              onRequestRevision={(note) => {
+                respondToCaseNoteAcknowledgement(ack.id, { outcome: 'REVISION_REQUESTED', revisionNote: note });
+                toast.success('Revision request sent to HR.');
+              }}
+            />
+          </CardContent>
+        </Card>
+      ))}
+
       {investigation && invPhase && invPhase !== 'CLOSED' && (
         <Card className="mismo-card border border-[var(--color-border-200)]">
           <CardContent className="p-5">
@@ -146,7 +177,7 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
 
       {investigation &&
         (investigation.responseRequests ?? []).filter(
-          (r) => r.partyUserId === report.createdByUserId && r.status !== 'SUBMITTED'
+          (r) => r.partyUserId === currentUser.id && r.status !== 'SUBMITTED'
         ).length > 0 && (
           <Card className="mismo-card border-2 border-[var(--color-primary-700)]/30">
             <CardContent className="p-6 space-y-4">
@@ -155,60 +186,24 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
                 Your investigator asked for a response. Replies here are attached to your case and visible to authorized HR staff only.
               </p>
               {(investigation.responseRequests ?? [])
-                .filter((r) => r.partyUserId === report.createdByUserId)
+                .filter((r) => r.partyUserId === currentUser.id)
                 .map((req) => (
-                  <div key={req.id} className="border border-[var(--color-border-200)] rounded-md p-4 space-y-3">
-                    {req.message && (
-                      <p className="text-sm text-[var(--mismo-text)] whitespace-pre-wrap">{req.message}</p>
-                    )}
-                    {req.status === 'SUBMITTED' ? (
-                      <p className="text-xs text-emerald-800">
-                        Submitted {req.submittedAt ? formatRelativeTime(req.submittedAt) : ''}. Thank you.
-                      </p>
-                    ) : (
-                      <>
-                        {req.status === 'SENT' && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              updateInvestigationResponseRequest(investigation.id, req.id, {
-                                status: 'VIEWED',
-                                viewedAt: new Date(),
-                              })
-                            }
-                          >
-                            Mark as read
-                          </Button>
-                        )}
-                        <Textarea
-                          rows={4}
-                          placeholder="Type your response…"
-                          value={responseDrafts[req.id] ?? ''}
-                          onChange={(e) =>
-                            setResponseDrafts((prev) => ({ ...prev, [req.id]: e.target.value }))
-                          }
-                        />
-                        <Button
-                          className="bg-[var(--mismo-blue)] hover:bg-blue-600"
-                          onClick={() => {
-                            const text = responseDrafts[req.id] ?? '';
-                            if (!text.trim()) {
-                              toast.error('Please enter a response before submitting.');
-                              return;
-                            }
-                            const ok = submitEmployeeInvestigationResponse(investigation.id, req.id, text);
-                            if (ok) {
-                              toast.success('Your response has been submitted to HR.');
-                              setResponseDrafts((prev) => ({ ...prev, [req.id]: '' }));
-                            }
-                          }}
-                        >
-                          Submit response
-                        </Button>
-                      </>
-                    )}
-                  </div>
+                  <InvestigationResponseRequestPanel
+                    key={req.id}
+                    request={req}
+                    onMarkViewed={() =>
+                      updateInvestigationResponseRequest(investigation.id, req.id, {
+                        status: 'VIEWED',
+                        viewedAt: new Date(),
+                      })
+                    }
+                    onSubmit={(text) => {
+                      const ok = submitEmployeeInvestigationResponse(investigation.id, req.id, text);
+                      if (ok) toast.success('Your response has been submitted to HR.');
+                      else toast.error('Please enter a response before submitting.');
+                      return ok;
+                    }}
+                  />
                 ))}
             </CardContent>
           </Card>
@@ -237,59 +232,43 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
       {awaitingOutcome && (
         <Card className="mismo-card border-2 border-[var(--color-primary-700)]/35">
           <CardContent className="p-6 space-y-4">
-            <h3 className="text-lg font-semibold text-[var(--mismo-text)]">Outcome of your case</h3>
+            <h3 className="text-lg font-semibold text-[var(--mismo-text)]">Investigation outcome</h3>
             <p className="text-sm text-[var(--mismo-text-secondary)]">
-              Please read the information below.{' '}
-              {investigation.outcomeRequiresSignature ? 'Confirm whether you agree with this resolution.' : ''}
+              HR has completed the investigation. Review the summary below, then sign off if you agree the matter is resolved.
             </p>
-            <div className="rounded-md bg-[var(--color-surface-200)] p-4 text-sm whitespace-pre-wrap text-[var(--mismo-text)]">
-              {investigation.outcomeSummary}
-            </div>
-            {investigation.outcomeAttachment && (
-              <a
-                href={investigation.outcomeAttachment.dataUrl}
-                download={investigation.outcomeAttachment.fileName}
-                className="text-sm text-[var(--mismo-blue)] hover:underline"
-              >
-                Download attachment: {investigation.outcomeAttachment.fileName}
-              </a>
-            )}
-            {investigation.outcomeRequiresSignature ? (
-              <div className="flex flex-wrap gap-3 pt-2">
-                <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                  onClick={() => {
-                    employeeAcknowledgeInvestigationOutcome(investigation.id, true);
-                    toast.success('Thank you. Your confirmation is recorded.');
-                  }}
-                >
-                  I agree with this resolution
-                </Button>
-                <Button
-                  variant="outline"
-                  className="border-[var(--color-alert-600)] text-[var(--color-alert-700)]"
-                  onClick={() => {
-                    employeeAcknowledgeInvestigationOutcome(investigation.id, false);
-                    toast.success('Your response has been recorded. HR may follow up with you.');
-                  }}
-                >
-                  I do not agree
-                </Button>
-              </div>
-            ) : (
-              <div className="pt-2">
-                <p className="text-xs text-[var(--mismo-text-secondary)] mb-2">No signature is required for this letter.</p>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    employeeAcknowledgeInvestigationOutcome(investigation.id, true);
-                    toast.success('Acknowledged. Your review is on file.');
-                  }}
-                >
-                  I&apos;ve read the outcome
-                </Button>
-              </div>
-            )}
+            <InvestigationOutcomeAcknowledgementPanel
+              summary={investigation.outcomeSummary ?? ''}
+              requiresSignature={investigation.outcomeRequiresSignature !== false}
+              attachment={
+                investigation.outcomeAttachment
+                  ? {
+                      fileName: investigation.outcomeAttachment.fileName,
+                      dataUrl: investigation.outcomeAttachment.dataUrl,
+                    }
+                  : undefined
+              }
+              onAgree={(signatureDataUrl) => {
+                const result = employeeAcknowledgeInvestigationOutcome(investigation.id, {
+                  agreed: true,
+                  signatureDataUrl,
+                });
+                if (result.ok) toast.success('Thank you. Your sign-off is recorded.');
+                else toast.error(result.message ?? 'Could not save sign-off.');
+              }}
+              onDisagree={(note) => {
+                const result = employeeAcknowledgeInvestigationOutcome(investigation.id, {
+                  agreed: false,
+                  revisionNote: note,
+                });
+                if (result.ok) toast.success('Your response has been recorded. HR may follow up with you.');
+                else toast.error(result.message ?? 'Could not save response.');
+              }}
+              onAcknowledgeRead={() => {
+                const result = employeeAcknowledgeInvestigationOutcome(investigation.id, { agreed: true });
+                if (result.ok) toast.success('Acknowledged. Your review is on file.');
+                else toast.error(result.message ?? 'Could not save acknowledgment.');
+              }}
+            />
           </CardContent>
         </Card>
       )}
@@ -301,11 +280,26 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
             <p className="text-[var(--mismo-text-secondary)] mt-1">
               Signed {formatDate(investigation.outcomeEmployeeSignedAt)}.{' '}
               {investigation.outcomeEmployeeAgreed === true
-                ? 'You agreed with the resolution.'
+                ? 'You agreed the investigation is complete and the issue is resolved.'
                 : investigation.outcomeEmployeeAgreed === false
-                  ? 'You indicated you do not agree. HR will follow up as needed.'
-                  : ''}
+                  ? 'You indicated you do not agree with the outcome.'
+                  : 'You acknowledged the outcome letter.'}
             </p>
+            {investigation.outcomeEmployeeRevisionNote && (
+              <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mt-2 whitespace-pre-wrap">
+                {investigation.outcomeEmployeeRevisionNote}
+              </p>
+            )}
+            {investigation.outcomeEmployeeSignatureDataUrl && (
+              <div className="mt-3">
+                <p className="text-xs font-medium text-[var(--color-text-muted)] mb-2">Your signature</p>
+                <img
+                  src={investigation.outcomeEmployeeSignatureDataUrl}
+                  alt="Your signature"
+                  className="max-h-24 border border-[var(--color-border-200)] bg-white rounded"
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

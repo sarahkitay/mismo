@@ -23,7 +23,8 @@ import { formatRelativeTime, formatPercent, getInitials } from '@/lib/utils';
 import { compareByLastFirstName } from '@/lib/sortUsers';
 import type { User, UserRole, UserStatus } from '@/types';
 import { ASSIGNABLE_ROLES, roleLabel } from '@/lib/roleLabels';
-import { inviteEmployeeToMismo } from '@/lib/api/employees';
+import { inviteEmployeeToMismo, updateEmployeeEmail } from '@/lib/api/employees';
+import { getApiBaseUrl } from '@/lib/api/aiServices';
 import { sanitizeInfraError } from '@/lib/infraMessaging';
 import { toast } from 'sonner';
 import { PageMoreInfo } from '@/components/PageMoreInfo';
@@ -107,12 +108,14 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  const [editJobTitle, setEditJobTitle] = useState<string | undefined>(undefined);
  const [editDepartment, setEditDepartment] = useState('UNASSIGNED');
  const [editPhone, setEditPhone] = useState('');
+ const [editEmail, setEditEmail] = useState('');
  const [editEmployeeId, setEditEmployeeId] = useState('');
  const [editLocation, setEditLocation] = useState('');
  const [editArchiveStart, setEditArchiveStart] = useState('');
   const [editArchiveEnd, setEditArchiveEnd] = useState('');
   const [editStatus, setEditStatus] = useState<UserStatus>('active');
   const [editError, setEditError] = useState<string | null>(null);
+ const [savingUserEdits, setSavingUserEdits] = useState(false);
 
  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
  const [newFirstName, setNewFirstName] = useState('');
@@ -331,6 +334,7 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  setEditJobTitle(user.jobTitle);
  setEditDepartment(user.departmentId ?? 'UNASSIGNED');
  setEditPhone(user.phone ?? '');
+ setEditEmail(user.email ?? '');
  setEditEmployeeId(user.employeeId ?? '');
  setEditLocation(user.location ?? '');
     setEditArchiveStart(toDateInput(user.archiveStartDate));
@@ -345,20 +349,49 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  setEditError('Archive end date cannot be before the start date.');
  return;
  }
+ const normalizedEmail = editEmail.trim().toLowerCase();
+ if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+ setEditError('Enter a valid email address.');
+ return;
+ }
+ const duplicateEmail = directoryUsers.find(
+ (u) => u.id !== editingUser.id && u.email.trim().toLowerCase() === normalizedEmail
+ );
+ if (duplicateEmail) {
+ setEditError('Another employee in your organization already uses that email.');
+ return;
+ }
  setEditError(null);
-    updateUser(editingUser.id, {
-      role: editRole,
-      jobTitle: editJobTitle,
-      status: editStatus,
-      departmentId: editDepartment === 'UNASSIGNED' ? undefined : editDepartment,
+ void (async () => {
+ setSavingUserEdits(true);
+ try {
+ const emailChanged = normalizedEmail !== editingUser.email.trim().toLowerCase();
+ if (emailChanged) {
+ const apiBase = getApiBaseUrl();
+ if (apiBase) {
+ await updateEmployeeEmail({ targetUserId: editingUser.id, email: normalizedEmail });
+ }
+ }
+ updateUser(editingUser.id, {
+ role: editRole,
+ jobTitle: editJobTitle,
+ status: editStatus,
+ departmentId: editDepartment === 'UNASSIGNED' ? undefined : editDepartment,
  phone: editPhone || undefined,
+ email: normalizedEmail,
  employeeId: editEmployeeId.trim() || undefined,
  location: editLocation.trim() || undefined,
  archiveStartDate: editArchiveStart ? new Date(editArchiveStart) : undefined,
  archiveEndDate: editArchiveEnd ? new Date(editArchiveEnd) : undefined,
  });
- toast.success('Employee record updated.');
+ toast.success(emailChanged ? 'Employee record and login email updated.' : 'Employee record updated.');
  setEditingUserId(null);
+ } catch (err) {
+ setEditError(sanitizeInfraError(err instanceof Error ? err.message : 'Could not save changes.'));
+ } finally {
+ setSavingUserEdits(false);
+ }
+ })();
  };
 
  const handleAddEmployee = () => {
@@ -1025,6 +1058,23 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
             Check-in and case history is never deleted from this screen.
           </p>
           <div className="space-y-1.5">
+            <Label htmlFor="edit-employee-email">Email (login username)</Label>
+            <Input
+              id="edit-employee-email"
+              type="email"
+              value={editEmail}
+              onChange={(e) => {
+                setEditEmail(e.target.value);
+                setEditError(null);
+              }}
+              placeholder="name@company.com"
+              autoComplete="off"
+            />
+            <p className="text-xs text-[var(--color-text-muted)]">
+              Correct typos here. Saving updates the employee record and their Mismo sign-in email when a login exists.
+            </p>
+          </div>
+          <div className="space-y-1.5">
  <Label>Employee ID</Label>
  <Input value={editEmployeeId} onChange={(e) => setEditEmployeeId(e.target.value)} placeholder="Company / badge number" />
  </div>
@@ -1129,8 +1179,13 @@ export function AdminEmployees({ dataStore, onNavigate, initialFilters }: AdminE
  <Label>Phone</Label>
  <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
  </div>
- <div className="flex justify-end">
- <Button type="button" onClick={saveUserEdits}>Save Changes</Button>
+ <div className="flex justify-end gap-2">
+ <Button type="button" variant="outline" onClick={() => setEditingUserId(null)} disabled={savingUserEdits}>
+ Cancel
+ </Button>
+ <Button type="button" onClick={saveUserEdits} disabled={savingUserEdits}>
+ {savingUserEdits ? 'Saving…' : 'Save Changes'}
+ </Button>
  </div>
  </div>
  </DialogContent>

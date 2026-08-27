@@ -1,4 +1,4 @@
-import { useRef, useState, type ComponentType } from 'react';
+import { useRef, useState, type ComponentType, useCallback } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import type {
  CorrectiveActionType,
@@ -19,7 +19,9 @@ import { Textarea } from '@/components/ui/textarea';
 import {
  Select,
  SelectContent,
+ SelectGroup,
  SelectItem,
+ SelectLabel,
  SelectTrigger,
  SelectValue,
 } from '@/components/ui/select';
@@ -36,6 +38,9 @@ import {
  getInvestigationPersons,
  getLinkedPromptContext,
  getModuleProgress,
+ getResponseRequestRecipientOptions,
+ resolveResponseRequestPartyRole,
+ buildResponseRequestEmailBody,
  OUTCOME_CLASSIFICATION_LABELS,
  PERSON_ROLE_LABELS,
  REPORT_SOURCE_LABELS,
@@ -43,7 +48,23 @@ import {
 import { formatDate, formatRelativeTime, getCategoryLabel, isIncidentIntakeComplete } from '@/lib/utils';
 import { EmployeeIntakeReadOnly } from '@/components/admin/EmployeeIntakeReadOnly';
 import { downloadCsv } from '@/lib/exportCsv';
+import { PreservedFilePreviewDialog } from '@/components/PreservedFilePreviewDialog';
+import { InvestigationResponseRequestPanel } from '@/components/InvestigationResponseRequestPanel';
+import { InitialContactWithEmployeeSection } from '@/components/admin/investigation/InitialContactWithEmployeeSection';
+import { EVIDENCE_PROMPT_ACCEPT } from '@/lib/preservedFilePreview';
+import type { PreservedFilePreviewSource } from '@/lib/preservedFilePreview';
+import { Icons } from '@/lib/icons';
 import { toast } from 'sonner';
+import { sendNotificationEmail } from '@/lib/api/notifications';
+import { useInvestigationDraftRegistration } from '@/hooks/useInvestigationDraftRegistration';
+import type { AppNotification } from '@/types';
+import {
+ buildInvestigationOutcomeEmailBody,
+ buildInvestigationOutcomeOverview,
+ canCloseInvestigation,
+ investigationOutcomeSignOffPending,
+ investigationOutcomeStatusLabel,
+} from '@/lib/investigationOutcome';
 
 export interface WorkflowContext {
  investigation: Investigation;
@@ -247,14 +268,12 @@ export function IntakeTriageModule(ctx: WorkflowContext) {
  )}
  </InvestigationSubModule>
 
- <InvestigationSubModule title="Initial contact with employee" description="Document first outreach, scheduling, and triage thoughts. Internal only until you send a shared note.">
- <Textarea
- rows={4}
- placeholder="Initial contact notes - call summary, meeting scheduled, interim safety steps…"
- value={investigation.initialContactNotes ?? ''}
- onChange={(e) => dataStore.setInvestigationInitialContactNotes(investigation.id, e.target.value)}
+ <InitialContactWithEmployeeSection
+ investigation={investigation}
+ dataStore={dataStore}
+ primaryReport={primaryReport}
+ reporter={reporter}
  />
- </InvestigationSubModule>
 
  <AIGuidancePanel
  items={[
@@ -276,6 +295,20 @@ export function InformationGatheringModule(ctx: WorkflowContext) {
  const [activePrompt, setActivePrompt] = useState(EVIDENCE_GATHERING_PROMPTS[0].id);
  const [uploadDesc, setUploadDesc] = useState('');
  const [legalNote, setLegalNote] = useState(investigation.legalInvolvementNotes ?? '');
+ const [previewFile, setPreviewFile] = useState<PreservedFilePreviewSource | null>(null);
+ const [previewOpen, setPreviewOpen] = useState(false);
+
+ useInvestigationDraftRegistration(
+ investigation.id,
+ 'Legal involvement notes',
+ useCallback(
+ () => legalNote.trim() !== (investigation.legalInvolvementNotes ?? '').trim(),
+ [investigation.legalInvolvementNotes, legalNote]
+ ),
+ useCallback(() => {
+ dataStore.updateInvestigationAnalysis(investigation.id, { legalInvolvementNotes: legalNote.trim() });
+ }, [dataStore, investigation.id, legalNote])
+ );
  const complaintAt = primaryReport?.createdAt ?? investigation.openedAt;
  const persons = getInvestigationPersons(investigation, ctx.owner).filter((p) => p.userId);
  const policiesInEffect = dataStore.policies.filter(
@@ -296,6 +329,24 @@ export function InformationGatheringModule(ctx: WorkflowContext) {
  });
  setUploadDesc('');
  toast.success('Evidence uploaded and preserved with audit timestamp.');
+ };
+
+ const openEvidencePreview = (record: { fileName: string; mimeType: string; dataUrl?: string; type: string; promptLabel?: string; uploadedAt: Date }) => {
+ if (!record.dataUrl) {
+ toast.error('This evidence file has no preview available.');
+ return;
+ }
+ setPreviewFile({
+ fileName: record.fileName,
+ mimeType: record.mimeType,
+ dataUrl: record.dataUrl,
+ });
+ setPreviewOpen(true);
+ };
+
+ const openPromptUpload = (promptId: string) => {
+ setActivePrompt(promptId);
+ window.setTimeout(() => fileRef.current?.click(), 0);
  };
 
  return (
@@ -406,22 +457,31 @@ export function InformationGatheringModule(ctx: WorkflowContext) {
  <button
  key={p.id}
  type="button"
- onClick={() => setActivePrompt(p.id)}
- className={`text-xs px-3 py-1.5 border ${activePrompt === p.id ? 'border-[var(--color-primary-900)] bg-blue-50 font-medium' : 'border-[var(--color-border-200)]'}`}
+ onClick={() => openPromptUpload(p.id)}
+ className={`text-xs px-3 py-1.5 border text-left hover:bg-[var(--color-surface-100)] ${activePrompt === p.id ? 'border-[var(--color-primary-900)] bg-blue-50 font-medium' : 'border-[var(--color-border-200)]'}`}
  >
  {p.label}
  </button>
  ))}
  </div>
- <input ref={fileRef} type="file" className="hidden" onChange={async (e) => {
+ <input
+ ref={fileRef}
+ type="file"
+ className="hidden"
+ accept={EVIDENCE_PROMPT_ACCEPT[activePrompt] ?? 'image/*,.pdf,application/pdf'}
+ onChange={async (e) => {
  const file = e.target.files?.[0];
  if (!file) return;
  const prompt = EVIDENCE_GATHERING_PROMPTS.find((p) => p.id === activePrompt);
  await handleUpload(file, prompt?.type ?? 'DOCUMENT', prompt?.label);
  e.target.value = '';
- }} />
+ }}
+ />
  <Textarea rows={2} placeholder="Optional description for this evidence item…" value={uploadDesc} onChange={(e) => setUploadDesc(e.target.value)} />
- <Button variant="outline" onClick={() => fileRef.current?.click()}>Upload evidence file</Button>
+ <Button variant="outline" onClick={() => fileRef.current?.click()}>
+ <Icons.upload className="h-3.5 w-3.5 mr-1.5" />
+ Upload evidence file
+ </Button>
  </InvestigationSubModule>
 
  <InvestigationSubModule
@@ -433,24 +493,38 @@ export function InformationGatheringModule(ctx: WorkflowContext) {
  <p className="text-[var(--color-text-secondary)]">No evidence uploaded yet. Use the collection prompts above.</p>
  ) : (
  evidence.map((e) => (
- <li key={e.id} className="flex flex-wrap justify-between gap-2 border border-[var(--color-border-200)] p-3">
- <div>
- {e.dataUrl ? (
- <a href={e.dataUrl} target="_blank" rel="noreferrer" className="font-medium text-[var(--mismo-blue)] hover:underline">
- View {e.fileName}
- </a>
- ) : <p className="font-medium">{e.fileName}</p>}
- <p className="text-xs text-[var(--color-text-muted)]">
+ <li key={e.id}>
+ <button
+ type="button"
+ onClick={() => openEvidencePreview(e)}
+ disabled={!e.dataUrl}
+ className="flex w-full flex-wrap items-start justify-between gap-2 border border-[var(--color-border-200)] p-3 text-left transition-colors hover:bg-[var(--color-surface-100)] disabled:cursor-not-allowed disabled:opacity-60"
+ >
+ <div className="min-w-0 flex-1">
+ <p className="font-medium text-[var(--mismo-blue)] hover:underline truncate">
+ {e.dataUrl ? `View ${e.fileName}` : e.fileName}
+ </p>
+ {'description' in e && e.description ? (
+ <p className="text-xs text-[var(--mismo-text-secondary)] mt-1 line-clamp-2">{e.description}</p>
+ ) : null}
+ <p className="text-xs text-[var(--color-text-muted)] mt-1">
  {e.type} · {e.promptLabel ?? e.sourceType} · {formatRelativeTime(e.uploadedAt)}
  </p>
  </div>
- <Badge className={e.preserved ? 'bg-emerald-100 text-emerald-900' : 'bg-amber-100 text-amber-900'}>
+ <Badge className={e.preserved ? 'bg-emerald-100 text-emerald-900 shrink-0' : 'bg-amber-100 text-amber-900 shrink-0'}>
  {e.preserved ? 'Preserved' : 'Pending preservation'}
  </Badge>
+ </button>
  </li>
  ))
  )}
  </ul>
+ <PreservedFilePreviewDialog
+ file={previewFile}
+ open={previewOpen}
+ onOpenChange={setPreviewOpen}
+ subtitle={previewFile ? 'Click outside or use Close to return to the investigation.' : undefined}
+ />
  </InvestigationSubModule>
  </div>
 
@@ -466,9 +540,8 @@ export function InformationGatheringModule(ctx: WorkflowContext) {
 }
 
 export function InterviewsNotesModule(ctx: WorkflowContext) {
- const { investigation, dataStore, users } = ctx;
+ const { investigation, dataStore, users, primaryReport, owner } = ctx;
  const progress = getModuleProgress(investigation)['interviews-notes'];
- const persons = getInvestigationPersons(investigation, ctx.owner);
  const [noteBody, setNoteBody] = useState('');
  const [noteType, setNoteType] = useState<'INTERVIEW' | 'PRIVATE_HR' | 'LEGAL' | 'SHARED'>('INTERVIEW');
  const [reqParty, setReqParty] = useState('');
@@ -476,24 +549,81 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
  const [reqMessage, setReqMessage] = useState('');
  const [reqDeadline, setReqDeadline] = useState('');
  const [notesTab, setNotesTab] = useState<'compose' | 'request' | 'timeline'>('compose');
+ const [sendingRequest, setSendingRequest] = useState(false);
 
- const partyOptions = persons.filter((p) => p.userId);
+ const recipientOptions = getResponseRequestRecipientOptions(investigation, users, owner, {
+ primaryReport,
+ });
+ const myPendingRequests = (investigation.responseRequests ?? []).filter(
+ (r) => r.partyUserId === dataStore.currentUser.id && r.status !== 'SUBMITTED' && r.status !== 'DECLINED'
+ );
  const allNotes = [...(investigation.notes ?? [])].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
  const requests = investigation.responseRequests ?? [];
 
- const saveNote = () => {
+ useInvestigationDraftRegistration(
+ investigation.id,
+ 'Note composer',
+ useCallback(() => noteBody.trim().length > 0, [noteBody]),
+ useCallback(() => undefined, [])
+ );
+
+ const saveNote = async () => {
  if (!noteBody.trim()) {
  toast.error('Enter a note before saving.');
  return;
  }
  const isShared = noteType === 'SHARED';
+ const body = noteBody.trim();
  dataStore.addInvestigationNote(investigation.id, {
  visibility: isShared ? 'EMPLOYEE' : 'INTERNAL',
- body: noteBody.trim(),
+ body,
  noteType: isShared ? 'SHARED' : noteType,
  });
  setNoteBody('');
- toast.success(isShared ? 'Shared note sent to employee portal.' : 'Note saved with timestamp.');
+
+ if (isShared) {
+ const recipientUserId = primaryReport?.createdByUserId;
+ if (recipientUserId && primaryReport && !primaryReport.isAnonymous) {
+ try {
+ const result = await sendNotificationEmail({
+ recipientUserId,
+ subject: 'Note received from HR',
+ body: `HR shared an update on your case (ref ${formatReportReference(primaryReport)}):\n\n${body}`,
+ kind: 'MESSAGE',
+ actionPage: 'report-detail',
+ actionParams: { id: primaryReport.id },
+ templateId: 'new_message',
+ });
+ const employeeNotification: AppNotification = {
+ id: result?.notificationId ?? `notif-shared-note-${Date.now()}`,
+ orgId: investigation.orgId,
+ userId: recipientUserId,
+ kind: 'MESSAGE',
+ title: 'Note received',
+ body: body.slice(0, 500),
+ actionPage: 'report-detail',
+ actionParams: { id: primaryReport.id },
+ emailStatus: result?.emailStatus,
+ actorUserId: dataStore.currentUser.id,
+ createdAt: new Date(),
+ };
+ dataStore.pushAppNotification(employeeNotification);
+ void dataStore.refreshAppNotifications?.();
+ if (result?.ok && result.emailStatus === 'sent') {
+ toast.success('Shared note sent to employee portal and notification delivered.');
+ } else {
+ toast.success('Shared note sent to employee portal.');
+ }
+ } catch {
+ toast.success('Shared note saved on the case. Notification could not be sent.');
+ }
+ } else {
+ toast.success('Shared note sent to employee portal.');
+ }
+ } else {
+ toast.success('Note saved with timestamp.');
+ }
+
  dataStore.saveInvestigationProgress?.(investigation.id);
  setNotesTab('timeline');
  };
@@ -577,26 +707,77 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
  )}
 
  {notesTab === 'request' && (
+ <>
+ {myPendingRequests.length > 0 && (
+ <InvestigationSubModule
+ title="Your pending response"
+ description="You were asked to respond on this investigation."
+ >
+ {myPendingRequests.map((request) => {
+ const requestInvestigator = users.find((u) => u.id === request.createdByUserId);
+ return (
+ <InvestigationResponseRequestPanel
+ key={request.id}
+ request={request}
+ investigatorName={
+ requestInvestigator ? `${requestInvestigator.firstName} ${requestInvestigator.lastName}` : undefined
+ }
+ onMarkViewed={() =>
+ dataStore.updateInvestigationResponseRequest(investigation.id, request.id, {
+ status: 'VIEWED',
+ viewedAt: new Date(),
+ })
+ }
+ onSubmit={(text) => {
+ const ok = dataStore.submitEmployeeInvestigationResponse(investigation.id, request.id, text);
+ if (ok) toast.success('Your response has been submitted.');
+ return ok;
+ }}
+ />
+ );
+ })}
+ </InvestigationSubModule>
+ )}
  <InvestigationSubModule
  title="Response request"
- description="Ask a party to respond to allegations through a tracked, deadline-aware process."
+ description="Ask an employee involved in this case or another HR/admin team member to respond through a tracked, deadline-aware process."
  >
  <div className="grid sm:grid-cols-2 gap-3">
  <div className="space-y-1">
- <Label className="text-xs">Party</Label>
+ <Label className="text-xs">Recipient</Label>
  <Select value={reqParty} onValueChange={setReqParty}>
  <SelectTrigger>
- <SelectValue placeholder="Select party" />
+ <SelectValue placeholder="Select employee or team member" />
  </SelectTrigger>
  <SelectContent>
- {partyOptions.map((p) => {
- const u = users.find((x) => x.id === p.userId);
- return u ? (
- <SelectItem key={p.id} value={p.userId!}>
- {PERSON_ROLE_LABELS[p.role]} - {u.firstName} {u.lastName}
+ {recipientOptions.involved.length === 0 && recipientOptions.team.length === 0 ? (
+ <SelectItem value="__none__" disabled>
+ Add persons on Page 2 or ensure HR team members exist
  </SelectItem>
- ) : null;
- })}
+ ) : (
+ <>
+ {recipientOptions.involved.length > 0 && (
+ <SelectGroup>
+ <SelectLabel>Employees &amp; parties involved</SelectLabel>
+ {recipientOptions.involved.map((option) => (
+ <SelectItem key={option.userId} value={option.userId}>
+ {option.displayName} · {option.subtitle}
+ </SelectItem>
+ ))}
+ </SelectGroup>
+ )}
+ {recipientOptions.team.length > 0 && (
+ <SelectGroup>
+ <SelectLabel>HR &amp; admin team</SelectLabel>
+ {recipientOptions.team.map((option) => (
+ <SelectItem key={option.userId} value={option.userId}>
+ {option.displayName} · {option.subtitle}
+ </SelectItem>
+ ))}
+ </SelectGroup>
+ )}
+ </>
+ )}
  </SelectContent>
  </Select>
  </div>
@@ -626,29 +807,66 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
  <Input type="date" className="mt-2 max-w-xs" value={reqDeadline} onChange={(e) => setReqDeadline(e.target.value)} />
  <Button
  className="mt-2"
+ disabled={sendingRequest}
  onClick={() => {
+ void (async () => {
  if (!reqParty || !reqMessage.trim()) {
- toast.error('Select a party and enter a request message.');
+ toast.error('Select a recipient and enter a request message.');
  return;
  }
- const person = partyOptions.find((p) => p.userId === reqParty);
- dataStore.addInvestigationResponseRequest(investigation.id, {
+ const deadline = reqDeadline ? new Date(reqDeadline) : undefined;
+ const partyRole = resolveResponseRequestPartyRole(reqParty, investigation, users, owner, primaryReport);
+ const recipient = users.find((u) => u.id === reqParty);
+ setSendingRequest(true);
+ try {
+ const req = dataStore.addInvestigationResponseRequest(investigation.id, {
  partyUserId: reqParty,
- partyRole: person?.role ?? 'WITNESS',
+ partyRole,
  method: reqMethod,
  message: reqMessage.trim(),
- deadline: reqDeadline ? new Date(reqDeadline) : undefined,
+ deadline,
  sentAt: new Date(),
  });
+ const isTeamRecipient = recipientOptions.team.some((o) => o.userId === reqParty);
+ const actionPage = isTeamRecipient
+ ? 'investigation-detail'
+ : `employee/investigation-response/${req.id}`;
+ const result = await sendNotificationEmail({
+ recipientUserId: reqParty,
+ subject: 'Response requested on an investigation',
+ body: buildResponseRequestEmailBody(reqMessage.trim(), deadline),
+ kind: 'CASE_UPDATE',
+ actionPage,
+ actionParams: isTeamRecipient ? { id: investigation.id, tab: 'page-3' } : undefined,
+ templateId: 'new_message',
+ });
+ if (result?.ok && result.emailStatus === 'sent') {
+ toast.success(`Response request sent to ${recipient?.firstName ?? 'recipient'}.`);
+ } else if (result?.ok && result.emailStatus?.startsWith('skipped')) {
+ toast.message('Response request logged in Mismo.', {
+ description: result.message || 'Email skipped in this environment.',
+ });
+ } else {
+ toast.success('Response request logged. Email could not be delivered.');
+ }
  setReqMessage('');
- toast.success('Response request sent and logged.');
+ setReqParty('');
+ setReqDeadline('');
  dataStore.saveInvestigationProgress?.(investigation.id);
  setNotesTab('timeline');
+ void dataStore.refreshAppNotifications?.();
+ } catch {
+ toast.error('Could not send response request.');
+ } finally {
+ setSendingRequest(false);
+ }
+ })();
  }}
  >
- Send response request
+ {sendingRequest ? 'Sending…' : 'Send response request'}
  </Button>
  </InvestigationSubModule>
+ </>
  )}
 
  {(notesTab === 'timeline' || (notesTab === 'compose' && allNotes.length > 0)) && (
@@ -743,6 +961,24 @@ export function EvidenceAnalysisModule(ctx: WorkflowContext) {
  const review = getCompletenessReview(investigation);
  const [rationale, setRationale] = useState(investigation.findingsRationale ?? '');
  const [policyNotes, setPolicyNotes] = useState(investigation.policyAnalysisNotes ?? '');
+
+ useInvestigationDraftRegistration(
+ investigation.id,
+ 'Findings analysis',
+ useCallback(
+ () =>
+ rationale.trim() !== (investigation.findingsRationale ?? '').trim() ||
+ policyNotes.trim() !== (investigation.policyAnalysisNotes ?? '').trim(),
+ [investigation.findingsRationale, investigation.policyAnalysisNotes, policyNotes, rationale]
+ ),
+ useCallback(() => {
+ dataStore.updateInvestigationAnalysis(investigation.id, {
+ findingsRationale: rationale.trim(),
+ policyAnalysisNotes: policyNotes.trim(),
+ });
+ }, [dataStore, investigation.id, policyNotes, rationale])
+ );
+
  const policies = dataStore.policies.filter((p) => p.status === 'PUBLISHED').slice(0, 6);
 
  return (
@@ -909,13 +1145,14 @@ export function FindingsOutcomeModule(ctx: WorkflowContext) {
 }
 
 export function ResolutionActionsModule(ctx: WorkflowContext) {
- const { investigation, dataStore, users } = ctx;
+ const { investigation, dataStore, users, primaryReport, reporter } = ctx;
  const progress = getModuleProgress(investigation)['resolution-actions'];
  const [actionType, setActionType] = useState<CorrectiveActionType>('COACHING');
  const [actionDesc, setActionDesc] = useState('');
  const [actionAssignee, setActionAssignee] = useState(investigation.ownerId);
  const [outcomeSummary, setOutcomeSummary] = useState(investigation.outcomeSummary ?? '');
- const [outcomeRequiresSig, setOutcomeRequiresSig] = useState(true);
+ const [outcomeRequiresSig, setOutcomeRequiresSig] = useState(investigation.outcomeRequiresSignature !== false);
+ const [sendingOutcomeEmail, setSendingOutcomeEmail] = useState(false);
 
  return (
  <InvestigationModuleShell
@@ -987,35 +1224,90 @@ export function ResolutionActionsModule(ctx: WorkflowContext) {
  </InvestigationSubModule>
 
  <InvestigationSubModule title="Communicate outcome to parties">
- <Textarea rows={5} value={outcomeSummary} onChange={(e) => setOutcomeSummary(e.target.value)} placeholder="Final resolution summary for employee portal…" />
+ <p className="text-sm text-[var(--color-text-secondary)] mb-2">
+ Send a final overview of what was done and how the matter was handled. The employee must sign off before you can close the investigation.
+ </p>
+ <div className="flex flex-wrap gap-2 mb-2">
+ <Button
+ type="button"
+ variant="outline"
+ size="sm"
+ onClick={() => setOutcomeSummary(buildInvestigationOutcomeOverview(investigation))}
+ >
+ Generate overview from investigation
+ </Button>
+ </div>
+ <Textarea rows={8} value={outcomeSummary} onChange={(e) => setOutcomeSummary(e.target.value)} placeholder="Final resolution summary for employee sign-off…" />
  <label className="flex items-center gap-2 text-sm mt-2">
  <input type="checkbox" checked={outcomeRequiresSig} onChange={(e) => setOutcomeRequiresSig(e.target.checked)} />
- Require employee acknowledgment
+ Require employee sign-off before close
  </label>
  <div className="flex flex-wrap gap-2 mt-3">
  <Button
  className="bg-[var(--mismo-blue)]"
+ disabled={sendingOutcomeEmail}
  onClick={() => {
+ void (async () => {
  if (!outcomeSummary.trim()) {
  toast.error('Enter outcome summary.');
  return;
  }
+ setSendingOutcomeEmail(true);
+ try {
  dataStore.sendInvestigationOutcomeToEmployee(investigation.id, {
  summary: outcomeSummary.trim(),
  requiresSignature: outcomeRequiresSig,
  });
  if (!investigation.nonRetaliationSentAt) dataStore.sendNonRetaliationReminder(investigation.id);
+
+ const recipientUserId = primaryReport?.createdByUserId;
+ if (recipientUserId && !primaryReport?.isAnonymous) {
+ const emailBody = buildInvestigationOutcomeEmailBody(outcomeSummary.trim());
+ const result = await sendNotificationEmail({
+ recipientUserId,
+ subject: 'Investigation complete: review and sign off',
+ body: emailBody,
+ kind: 'CASE_UPDATE',
+ actionPage: primaryReport ? `employee/my-reports/${primaryReport.id}` : 'home',
+ templateId: 'new_message',
+ });
+ if (result?.ok && result.emailStatus === 'sent') {
+ toast.success('Outcome sent. Employee notified by email with a link to sign off.');
+ } else if (result?.ok && result.emailStatus?.startsWith('skipped')) {
+ toast.message('Outcome sent in Mismo.', {
+ description: result.message || 'Email skipped in this environment.',
+ });
+ } else {
+ toast.success('Outcome sent in Mismo. Email could not be delivered.');
+ }
+ } else {
  toast.success('Outcome sent. Non-retaliation reminder logged automatically.');
+ }
+
+ void dataStore.refreshAppNotifications?.();
+ } finally {
+ setSendingOutcomeEmail(false);
+ }
+ })();
  }}
  >
- Send outcome to employee
+ {sendingOutcomeEmail ? 'Sending…' : 'Send outcome for employee sign-off'}
  </Button>
  </div>
  {investigation.outcomeSentAt && (
- <div className="mt-3 text-sm border border-[var(--color-border-200)] p-3 bg-[var(--color-surface-100)]">
+ <div className="mt-3 text-sm border border-[var(--color-border-200)] p-3 bg-[var(--color-surface-100)] space-y-1">
  <p>Sent: {formatDate(investigation.outcomeSentAt)}</p>
+ <p>Status: {investigationOutcomeStatusLabel(investigation)}</p>
  <p>Signed: {investigation.outcomeEmployeeSignedAt ? formatDate(investigation.outcomeEmployeeSignedAt) : 'Pending'}</p>
+ {investigation.outcomeEmployeeRevisionNote && (
+ <p className="text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1 whitespace-pre-wrap">
+ Employee response: {investigation.outcomeEmployeeRevisionNote}
+ </p>
+ )}
  {investigation.nonRetaliationSentAt && <p>Non-retaliation reminder: {formatDate(investigation.nonRetaliationSentAt)}</p>}
+ {investigationOutcomeSignOffPending(investigation) && reporter?.email && (
+ <p className="text-xs text-[var(--color-text-muted)]">Waiting for {reporter.email} to sign off before you can close.</p>
+ )}
  </div>
  )}
  </InvestigationSubModule>
@@ -1119,24 +1411,49 @@ export function ClosureAuditModule(ctx: WorkflowContext) {
  const { investigation, dataStore, users } = ctx;
  const progress = getModuleProgress(investigation)['closure-audit'];
  const invAudit = dataStore.auditLogs.filter((a) => a.recordId === investigation.id || a.recordType === 'INVESTIGATION');
+ const closeGate = canCloseInvestigation(investigation);
 
  return (
  <InvestigationModuleShell
  title="Closure & Audit Export"
- subtitle="Export an audit-safe case packet and close the investigation. Status updates are logged automatically."
+ subtitle="Export an audit-safe case packet and close the investigation after the employee signs off on the outcome."
  completionPercent={progress.percent}
  status={progress.status}
  primaryAction={
  investigation.status !== 'CLOSED' ? (
- <Button variant="outline" className="border-red-300 text-red-700" onClick={() => {
- dataStore.closeInvestigation(investigation.id);
+ <Button
+ variant="outline"
+ className="border-red-300 text-red-700"
+ disabled={!closeGate.ok}
+ onClick={() => {
+ const result = dataStore.closeInvestigation(investigation.id);
+ if (!result.ok) {
+ toast.error(result.message ?? 'Investigation could not be closed.');
+ return;
+ }
  toast.success('Investigation closed. Audit record archived.');
- }}>
+ }}
+ >
  Close investigation
  </Button>
  ) : undefined
  }
  >
+ {investigation.status !== 'CLOSED' && !closeGate.ok && (
+ <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+ {closeGate.message}
+ </div>
+ )}
+ {investigation.outcomeSentAt && (
+ <div className="mb-4 rounded-md border border-[var(--color-border-200)] bg-[var(--color-surface-100)] px-3 py-2 text-sm">
+ <p className="font-medium">Employee sign-off: {investigationOutcomeStatusLabel(investigation)}</p>
+ {investigation.outcomeEmployeeSignedAt && (
+ <p className="text-[var(--color-text-secondary)] mt-1">
+ Responded {formatDate(investigation.outcomeEmployeeSignedAt)}
+ </p>
+ )}
+ </div>
+ )}
  <InvestigationSubModule title="Export audit packet">
  <div className="flex flex-wrap gap-2">
  <Button
