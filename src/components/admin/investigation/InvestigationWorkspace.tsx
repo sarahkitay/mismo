@@ -92,6 +92,16 @@ export function InvestigationWorkspace({
  [reports, investigation?.linkedReportIds]
  );
 
+ useEffect(() => {
+ if (!investigation || investigation.pickedUpAt) return;
+ const role = dataStore.currentUser.role;
+ if (!['HR', 'ADMIN', 'MANAGER'].includes(role)) return;
+ dataStore.pickUpInvestigation(
+ investigationId,
+ investigation.employeePreferredContact ?? 'IN_APP_MESSAGE'
+ );
+ }, [investigationId, investigation?.pickedUpAt, investigation?.employeePreferredContact, dataStore.currentUser.role, dataStore.pickUpInvestigation]);
+
  const guardLeave = useCallback(
  (action: () => void) => {
  if (!investigationHasUnsavedDrafts(investigationId)) {
@@ -151,6 +161,54 @@ export function InvestigationWorkspace({
  const persons = getInvestigationPersons(investigation, owner);
  const moduleProgress = getModuleProgress(investigation);
  const drawerUser = drawerUserId ? users.find((u) => u.id === drawerUserId) ?? null : null;
+
+ useEffect(() => {
+ if (!investigation) return;
+ const current = investigation.persons?.length
+ ? [...investigation.persons]
+ : getInvestigationPersons(investigation, owner);
+ let changed = false;
+ const next = [...current];
+
+ if (
+ primaryReport?.createdByUserId &&
+ !primaryReport.isAnonymous &&
+ !next.some((p) => p.role === 'REPORTING_PARTY' && p.userId === primaryReport.createdByUserId)
+ ) {
+ next.push({
+ id: `person-rp-${primaryReport.createdByUserId}`,
+ role: 'REPORTING_PARTY',
+ userId: primaryReport.createdByUserId,
+ addedAt: new Date(),
+ addedByUserId: dataStore.currentUser.id,
+ });
+ changed = true;
+ }
+
+ if (
+ investigation.ownerId &&
+ !next.some((p) => p.role === 'INVESTIGATOR' && p.userId === investigation.ownerId)
+ ) {
+ next.push({
+ id: `person-inv-${investigation.ownerId}`,
+ role: 'INVESTIGATOR',
+ userId: investigation.ownerId,
+ addedAt: investigation.pickedUpAt ?? new Date(),
+ addedByUserId: dataStore.currentUser.id,
+ });
+ changed = true;
+ }
+
+ if (changed) {
+ setInvestigationPersons(investigation.id, next);
+ }
+ }, [
+ dataStore.currentUser.id,
+ investigation,
+ owner,
+ primaryReport,
+ setInvestigationPersons,
+ ]);
 
  const workflowCtx: WorkflowContext = {
  investigation,

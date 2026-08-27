@@ -443,13 +443,24 @@ export function getAllInvestigationEvidence(inv: Investigation) {
   return [...fromRecords, ...fromNotes];
 }
 
-export function getCompletenessReview(inv: Investigation): { checks: CompletenessCheck[]; ready: boolean } {
-  const persons = getInvestigationPersons(inv);
+/** Parties who matter for intake completeness (excludes lead investigator / HR staff on the file). */
+export function getCasePartyPersons(inv: Investigation, owner?: User): InvestigationPerson[] {
+  return getInvestigationPersons(inv, owner).filter(
+    (p) => p.role !== 'INVESTIGATOR' && p.role !== 'HR_REPRESENTATIVE'
+  );
+}
+
+export function getCompletenessReview(inv: Investigation, owner?: User): { checks: CompletenessCheck[]; ready: boolean } {
+  const persons = getInvestigationPersons(inv, owner);
+  const caseParties = getCasePartyPersons(inv, owner);
   const evidence = getAllInvestigationEvidence(inv);
   const requests = inv.responseRequests ?? [];
   const pendingRequests = requests.filter((r) => !['SUBMITTED', 'DECLINED'].includes(r.status));
   const interviewNotes = (inv.notes ?? []).filter((n) => n.noteType === 'INTERVIEW' || n.visibility === 'INTERNAL');
   const hasReportingParty = persons.some((p) => p.role === 'REPORTING_PARTY');
+  const hasReportedAgainst = persons.some((p) => p.role === 'REPORTED_AGAINST');
+  const hasWitness = persons.some((p) => p.role === 'WITNESS' || p.role === 'EXTERNAL_PARTY');
+  const keyPartiesIdentified = caseParties.length >= 1 && (hasReportingParty || hasReportedAgainst || hasWitness);
   const preservedCount = evidence.filter((e) => e.preserved).length;
 
   const checks: CompletenessCheck[] = [
@@ -464,8 +475,12 @@ export function getCompletenessReview(inv: Investigation): { checks: Completenes
     {
       id: 'persons',
       label: 'Key parties identified',
-      pass: hasReportingParty && persons.length >= 2,
-      detail: `${persons.length} persons on file`,
+      pass: keyPartiesIdentified,
+      detail: keyPartiesIdentified
+        ? `${caseParties.length} case part${caseParties.length === 1 ? 'y' : 'ies'} on file (${persons.length} total)`
+        : caseParties.length === 0
+          ? 'Add reporting party, reported-against, or witness on Page 2'
+          : `${persons.length} persons on file — add a reporting party, reported-against, or witness`,
       tab: 'page-2',
       sectionId: 'inv-section-persons',
     },
@@ -526,10 +541,14 @@ export function getModuleProgress(inv: Investigation): Record<string, { percent:
       percent: inv.ownerId && inv.pickedUpAt ? 100 : inv.ownerId ? 50 : 0,
       status: inv.pickedUpAt ? 'complete' : inv.ownerId ? 'in_progress' : 'not_started',
     },
-    'information-gathering': {
-      percent: Math.min(100, evidence.length * 25),
-      status: evidence.length >= 2 ? 'complete' : evidence.length ? 'in_progress' : 'not_started',
-    },
+    'information-gathering': (() => {
+      const casePartyCount = getCasePartyPersons(inv).length;
+      const score = Math.min(100, evidence.length * 25 + casePartyCount * 20);
+      return {
+        percent: score,
+        status: score >= 80 ? ('complete' as const) : evidence.length || casePartyCount ? ('in_progress' as const) : ('not_started' as const),
+      };
+    })(),
     'interviews-notes': {
       percent: Math.min(100, (notes.filter((n) => n.noteType === 'INTERVIEW').length + requests.filter((r) => r.status === 'SUBMITTED').length) * 33),
       status: notes.length || requests.length ? 'in_progress' : 'not_started',
@@ -558,12 +577,19 @@ export function getModuleProgress(inv: Investigation): Record<string, { percent:
       percent: inv.workflowPagesCompleted?.intake ? 100 : inv.ownerId && inv.pickedUpAt ? 75 : inv.ownerId ? 40 : 10,
       status: inv.workflowPagesCompleted?.intake ? 'complete' : inv.ownerId ? 'in_progress' : 'not_started',
     },
-    'page-2': {
-      percent: inv.workflowPagesCompleted?.gathering
-        ? 100
-        : Math.min(90, evidence.length * 20 + (inv.persons?.length ?? 0) * 15),
-      status: inv.workflowPagesCompleted?.gathering ? 'complete' : evidence.length ? 'in_progress' : 'not_started',
-    },
+    'page-2': (() => {
+      const personCount = getInvestigationPersons(inv).length;
+      const casePartyCount = getCasePartyPersons(inv).length;
+      const gatheringScore = Math.min(90, evidence.length * 20 + casePartyCount * 20 + (personCount > 0 ? 10 : 0));
+      return {
+        percent: inv.workflowPagesCompleted?.gathering ? 100 : gatheringScore,
+        status: inv.workflowPagesCompleted?.gathering
+          ? ('complete' as const)
+          : evidence.length || casePartyCount
+            ? ('in_progress' as const)
+            : ('not_started' as const),
+      };
+    })(),
     'page-3': {
       percent: inv.workflowPagesCompleted?.outcome ? 100 : inv.outcomeSentAt ? 75 : inv.outcomeClassification ? 40 : 0,
       status: inv.workflowPagesCompleted?.outcome ? 'complete' : inv.outcomeSentAt ? 'in_progress' : 'not_started',

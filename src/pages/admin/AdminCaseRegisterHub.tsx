@@ -24,7 +24,6 @@ import {
   getSeverityColor,
   getStatusColor,
 } from '@/lib/utils';
-import { compareByLastFirstName } from '@/lib/sortUsers';
 import { Badge } from '@/components/ui/badge';
 import { CASE_TYPE_LABELS, MARK_INITIAL_REVIEW_ACTION, MARK_INITIAL_REVIEW_TOAST, formatCaseReference, getCaseTypeShortLabel, getReportStatusLabel, getReportStatusShortLabel, inferCaseType } from '@/lib/caseTypes';
 import { Icons } from '@/lib/icons';
@@ -273,16 +272,8 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
       }).filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q));
     }
 
-    const sortRows = <T extends { userId?: string; userName: string; date: Date }>(rows: T[]) =>
-      [...rows].sort((a, b) => {
-        const ua = a.userId ? users.find((u) => u.id === a.userId) : undefined;
-        const ub = b.userId ? users.find((u) => u.id === b.userId) : undefined;
-        if (ua && ub) {
-          const byName = compareByLastFirstName(ua, ub);
-          if (byName !== 0) return byName;
-        }
-        return b.date.getTime() - a.date.getTime();
-      });
+    const sortRows = <T extends { modified: Date }>(rows: T[]) =>
+      [...rows].sort((a, b) => b.modified.getTime() - a.modified.getTime());
 
     if (bucket === 'PROMPT_UNANSWERED') {
       return sortRows(

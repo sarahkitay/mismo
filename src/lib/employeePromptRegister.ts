@@ -82,7 +82,7 @@ export function buildEmployeePromptRegisterRows(
     }
   }
 
-  return rows.sort((a, b) => b.date.getTime() - a.date.getTime());
+  return rows.sort((a, b) => b.modified.getTime() - a.modified.getTime());
 }
 
 export function exportEmployeePromptRegisterCsv(

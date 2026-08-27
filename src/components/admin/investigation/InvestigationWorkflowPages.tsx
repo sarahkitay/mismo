@@ -1,4 +1,4 @@
-import { useRef, useState, type ComponentType, useCallback } from 'react';
+import { useRef, useState, type ComponentType, useCallback, useEffect } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import type {
  CorrectiveActionType,
@@ -132,9 +132,17 @@ export function IntakeTriageModule(ctx: WorkflowContext) {
  const { investigation, dataStore, primaryReport, reporter, owner, onNavigate } = ctx;
  const progress = getModuleProgress(investigation)['intake-triage'];
  const promptCtx = getLinkedPromptContext(investigation, primaryReport, dataStore.prompts, dataStore.responses);
- const [pickupContact, setPickupContact] = useState<InvestigationEmployeeContactPreference>('IN_APP_MESSAGE');
+ const [pickupContact, setPickupContact] = useState<InvestigationEmployeeContactPreference>(
+ investigation.employeePreferredContact ?? 'IN_APP_MESSAGE'
+ );
  const [showIntake, setShowIntake] = useState(true);
- const stage = investigation.stage ?? 'PENDING_REVIEW';
+ const isCaseOpen = Boolean(investigation.pickedUpAt);
+
+ useEffect(() => {
+ if (investigation.employeePreferredContact) {
+ setPickupContact(investigation.employeePreferredContact);
+ }
+ }, [investigation.employeePreferredContact]);
 
  return (
  <InvestigationModuleShell
@@ -242,7 +250,16 @@ export function IntakeTriageModule(ctx: WorkflowContext) {
  </div>
  <div className="space-y-2">
  <Label className="text-xs">Preferred contact method</Label>
- <Select value={pickupContact} onValueChange={(v) => setPickupContact(v as InvestigationEmployeeContactPreference)}>
+ <Select
+ value={pickupContact}
+ onValueChange={(v) => {
+ const method = v as InvestigationEmployeeContactPreference;
+ setPickupContact(method);
+ if (isCaseOpen) {
+ dataStore.pickUpInvestigation(investigation.id, method);
+ }
+ }}
+ >
  <SelectTrigger><SelectValue /></SelectTrigger>
  <SelectContent>
  <SelectItem value="IN_APP_MESSAGE">Direct message</SelectItem>
@@ -253,18 +270,23 @@ export function IntakeTriageModule(ctx: WorkflowContext) {
  </Select>
  </div>
  </div>
- {(stage === 'PENDING_REVIEW' || stage === 'ASSIGNED' || !investigation.pickedUpAt) && (
+ {isCaseOpen ? (
+ <div className="mt-3 flex flex-wrap items-center gap-3">
+ <Badge className="bg-emerald-100 text-emerald-900 border-0">Case open</Badge>
+ <p className="text-sm text-[var(--color-text-secondary)]">
+ Opened {investigation.pickedUpAt ? formatRelativeTime(investigation.pickedUpAt) : ''}. Information gathering is ready.
+ </p>
  <Button
- className="mt-3 bg-[var(--color-primary-900)]"
- onClick={() => {
- dataStore.pickUpInvestigation(investigation.id, pickupContact);
- toast.success('Case opened. Proceed to Information Gathering.');
- ctx.onTabChange('page-2');
- dataStore.markInvestigationPageComplete(investigation.id, 'intake');
- }}
+ type="button"
+ variant="outline"
+ size="sm"
+ onClick={() => ctx.onTabChange('page-2')}
  >
- Open case &amp; begin investigation
+ Continue to information gathering
  </Button>
+ </div>
+ ) : (
+ <p className="mt-3 text-sm text-[var(--color-text-secondary)]">Opening case…</p>
  )}
  </InvestigationSubModule>
 
@@ -958,7 +980,7 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
 export function EvidenceAnalysisModule(ctx: WorkflowContext) {
  const { investigation, dataStore } = ctx;
  const progress = getModuleProgress(investigation)['evidence-analysis'];
- const review = getCompletenessReview(investigation);
+ const review = getCompletenessReview(investigation, ctx.owner);
  const [rationale, setRationale] = useState(investigation.findingsRationale ?? '');
  const [policyNotes, setPolicyNotes] = useState(investigation.policyAnalysisNotes ?? '');
 

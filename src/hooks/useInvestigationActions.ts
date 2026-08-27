@@ -74,6 +74,7 @@ export function useInvestigationActions(deps: InvestigationActionDeps) {
  const stageHistory = [
  buildStageHistoryEntry('INTAKE_RECEIVED', currentUser.id, ownerId, 'Investigation shell created from linked report'),
  buildStageHistoryEntry('PENDING_REVIEW', currentUser.id, ownerId),
+ buildStageHistoryEntry('IN_PROGRESS', currentUser.id, ownerId, 'Investigation opened'),
  ];
  const newInvestigation: Investigation = {
  id: `inv-${Date.now()}`,
@@ -93,13 +94,33 @@ export function useInvestigationActions(deps: InvestigationActionDeps) {
  lastUpdateAt: now,
  createdAt: now,
  updatedAt: now,
- workflowPhase: 'QUEUED',
- stage: 'PENDING_REVIEW',
+ workflowPhase: 'IN_PROGRESS',
+ stage: 'IN_PROGRESS',
+ pickedUpAt: now,
+ employeePreferredContact: 'IN_APP_MESSAGE',
  stageHistory,
  checklistStages: buildDefaultChecklistStages(),
- subjectUserIds:
- report.createdByUserId && !report.isAnonymous ? [report.createdByUserId] : [],
- persons: [],
+ subjectUserIds: [],
+ persons: [
+ ...(report.createdByUserId && !report.isAnonymous
+ ? [
+ {
+ id: `person-rp-${report.createdByUserId}`,
+ role: 'REPORTING_PARTY' as const,
+ userId: report.createdByUserId,
+ addedAt: now,
+ addedByUserId: currentUser.id,
+ },
+ ]
+ : []),
+ {
+ id: `person-inv-${ownerId}`,
+ role: 'INVESTIGATOR' as const,
+ userId: ownerId,
+ addedAt: now,
+ addedByUserId: currentUser.id,
+ },
+ ],
  notes: [],
  workflowPagesCompleted: { intake: false, gathering: false, outcome: false },
  };
@@ -246,11 +267,17 @@ export function useInvestigationActions(deps: InvestigationActionDeps) {
 
  const setInvestigationPersons = useCallback((investigationId: string, persons: InvestigationPerson[]) => {
  const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
+ setInvestigations((prev) => {
+ const next = prev.map((inv) =>
  inv.id === investigationId ? { ...inv, persons, lastUpdateAt: now, updatedAt: now } : inv
- )
  );
+ const updated = next.find((i) => i.id === investigationId);
+ if (updated) {
+ saveInvestigationWorkspace(updated);
+ void persistInvestigation(updated);
+ }
+ return next;
+ });
  }, []);
 
  const updateInvestigationChecklist = useCallback(
@@ -514,26 +541,42 @@ export function useInvestigationActions(deps: InvestigationActionDeps) {
  const pickUpInvestigation = useCallback(
  (investigationId: string, preferred: InvestigationEmployeeContactPreference) => {
  const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) =>
- inv.id === investigationId
- ? {
+ let pickedUp = false;
+ setInvestigations((prev) => {
+ const next = prev.map((inv) => {
+ if (inv.id !== investigationId) return inv;
+ if (inv.pickedUpAt) {
+ return {
  ...inv,
- workflowPhase: 'IN_PROGRESS',
- stage: 'IN_PROGRESS',
+ employeePreferredContact: preferred,
+ lastUpdateAt: now,
+ updatedAt: now,
+ };
+ }
+ pickedUp = true;
+ return {
+ ...inv,
+ workflowPhase: 'IN_PROGRESS' as const,
+ stage: 'IN_PROGRESS' as const,
  pickedUpAt: now,
  employeePreferredContact: preferred,
- ownerId: currentUser.id,
+ ownerId: inv.ownerId || currentUser.id,
  stageHistory: [
  ...(inv.stageHistory ?? []),
- buildStageHistoryEntry('IN_PROGRESS', currentUser.id, currentUser.id, 'Investigator opened case'),
+ buildStageHistoryEntry('IN_PROGRESS', currentUser.id, inv.ownerId || currentUser.id, 'Investigator opened case'),
  ],
  lastUpdateAt: now,
  updatedAt: now,
+ };
+ });
+ const updated = next.find((i) => i.id === investigationId);
+ if (updated) {
+ saveInvestigationWorkspace(updated);
+ void persistInvestigation(updated);
  }
- : inv
- )
- );
+ return next;
+ });
+ if (pickedUp) {
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
  orgId: effectiveOrgId,
@@ -543,8 +586,9 @@ export function useInvestigationActions(deps: InvestigationActionDeps) {
  createdAt: now,
  };
  setActivities((prev) => [newActivity, ...prev]);
+ }
  },
- [currentUser.id]
+ [currentUser.id, effectiveOrgId]
  );
 
  const setInvestigationInitialContactNotes = useCallback((investigationId: string, notes: string) => {
