@@ -3,6 +3,7 @@ import type {
   ActivityEvent,
   AuditLogEntry,
   Prompt,
+  PromptAnswer,
   PromptDelivery,
   PromptResponse,
   Report,
@@ -290,7 +291,11 @@ export function useReportCaseActions(deps: ReportCaseDeps) {
  );
 
  const beginWageHourCase = useCallback(
- async (userId: string, sourceType: Report['reportSourceType'] = 'SELF_REPORTED') => {
+ async (
+ userId: string,
+ sourceType: Report['reportSourceType'] = 'SELF_REPORTED',
+ opts?: { deliveryId?: string; promptId?: string; promptResponseId?: string }
+ ) => {
  const now = new Date();
  const refNum = allocateCaseReferenceNumber(reports, effectiveOrgId, 'WAGE_HOUR');
  const defaultAdmin = users.find((u) => u.role === 'HR' || u.role === 'ADMIN');
@@ -308,6 +313,8 @@ export function useReportCaseActions(deps: ReportCaseDeps) {
  description: 'Protected wage and hour concern - complete intake to submit details.',
  status: 'PENDING_WAGE_HOUR_REVIEW',
  assignedTo: defaultAdmin?.id,
+ sourcePromptId: opts?.promptId,
+ sourcePromptResponseId: opts?.promptResponseId,
  needsExtendedWageHourIntake: true,
  messages: [],
  responseChecklist: createIndustryChecklistForReport(),
@@ -441,6 +448,8 @@ export function useReportCaseActions(deps: ReportCaseDeps) {
  deliveryId?: string;
  promptId?: string;
  promptNotes?: string;
+ /** Keep the original incident answer when only the pay path is taken. */
+ promptAnswer?: PromptAnswer;
  sourceType?: Report['reportSourceType'];
  }
  ) => {
@@ -458,8 +467,9 @@ export function useReportCaseActions(deps: ReportCaseDeps) {
  const note =
  opts.promptNotes ??
  'Payroll memo: employee reported a payroll issue with no additional details (expedited 24h path).';
+ const answer = opts.promptAnswer ?? 'HAS_ISSUE';
  // Defer persist so report FK waits on the response row.
- const response = submitPromptResponse(delivery.id, 'HAS_ISSUE', note, { skipPersist: true });
+ const response = submitPromptResponse(delivery.id, answer, note, { skipPersist: true });
  responseId = response?.id;
  linkedResponse = response;
  linkedDelivery = delivery;

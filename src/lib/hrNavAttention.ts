@@ -1,5 +1,8 @@
 const STORAGE_KEY = 'mismo_hr_nav_seen_v1';
 
+import type { Investigation, PromptResponse, Report } from '@/types';
+import { promptResponseNeedsHrReview } from '@/lib/investigationWorkload';
+
 type SeenKind = 'investigation' | 'prompt_response';
 
 type SeenStore = Record<string, Partial<Record<SeenKind, string[]>>>;
@@ -50,16 +53,12 @@ export function countUnseenOpenInvestigations(
   return investigations.filter((inv) => inv.status === 'OPEN' && !seen.has(inv.id)).length;
 }
 
+/** Shared org-wide: Yes still needing review (opened by anyone clears it). */
 export function countUnseenYesNeedingReview(
-  userId: string,
-  responses: Array<{ id: string; answer: string; reviewedAt?: Date; needsReview?: boolean }>
+  _userId: string,
+  responses: PromptResponse[],
+  reports: Report[] = [],
+  investigations: Investigation[] = []
 ): number {
-  const seen = getHrNavSeenIds(userId, 'prompt_response');
-  return responses.filter(
-    (r) =>
-      r.answer === 'HAS_ISSUE' &&
-      !r.reviewedAt &&
-      r.needsReview !== false &&
-      !seen.has(r.id)
-  ).length;
+  return responses.filter((r) => promptResponseNeedsHrReview(r, reports, investigations)).length;
 }

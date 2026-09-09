@@ -93,9 +93,10 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
         dataStore.users,
         dataStore.deliveries,
         dataStore.responses,
-        dataStore.prompts
+        dataStore.prompts,
+        { reports: dataStore.reports }
       ),
-    [employee.id, dataStore.users, dataStore.deliveries, dataStore.responses, dataStore.prompts]
+    [employee.id, dataStore.users, dataStore.deliveries, dataStore.responses, dataStore.prompts, dataStore.reports]
   );
 
  const engagement = dataStore.getEmployeeEngagement(employee.id);

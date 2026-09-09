@@ -213,6 +213,7 @@ export function getCategoryLabel(category: string): string {
 export function getPromptTypeLabel(type: string): string {
  const labels: Record<string, string> = {
  INCIDENT: 'Incident Query',
+ WAGE_HOUR: 'Wage & Hour Query',
  TEAM_DYNAMIC: 'Team Dynamic Check-In',
  MONTHLY_CHECKIN: 'Monthly Health Check',
  CUSTOM: 'Company-made',

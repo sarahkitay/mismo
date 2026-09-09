@@ -56,7 +56,7 @@ function SidebarContent({
   activePage,
   onNavigate,
 }: Omit<SidebarProps, 'isOpen' | 'onClose'>) {
-  const { currentRole, dashboardCounts, employeeReports, currentUser, investigations, responses } = dataStore;
+  const { currentRole, dashboardCounts, employeeReports, currentUser, investigations, responses, reports } = dataStore;
   /** Re-read local seen markers when the active page changes (e.g. after opening a case). */
   const [seenTick, setSeenTick] = useState(0);
   useEffect(() => {
@@ -68,12 +68,12 @@ function SidebarContent({
       return { promptResponses: 0, investigations: 0 };
     }
     return {
-      promptResponses: countUnseenYesNeedingReview(currentUser.id, responses),
+      promptResponses: countUnseenYesNeedingReview(currentUser.id, responses, reports, investigations),
       investigations: countUnseenOpenInvestigations(currentUser.id, investigations),
     };
     // seenTick forces refresh after navigation marks items seen
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentRole, currentUser.id, investigations, responses, seenTick]);
+  }, [currentRole, currentUser.id, investigations, reports, responses, seenTick]);
 
   const navItems =
     currentRole === 'EMPLOYEE'

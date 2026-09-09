@@ -120,6 +120,7 @@ function mapResponse(row: Record<string, unknown>): PromptResponse {
     notes: row.notes ? String(row.notes) : undefined,
     needsReview: row.needs_review !== false,
     reviewedAt: optDate(row.reviewed_at as string | null),
+    reviewedByUserId: row.reviewed_by_user_id ? String(row.reviewed_by_user_id) : undefined,
     createdAt: d(row.created_at as string),
     updatedAt: d(row.updated_at as string),
   };

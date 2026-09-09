@@ -7,9 +7,11 @@ import { RelatedRecordsNav } from '@/components/admin/RelatedRecordsNav';
 import {
   destinationForPromptResponse,
   findReportForPromptResponse,
+  linkedReportForPromptRow,
   relatedNavForDelivery,
   userDisplayName,
 } from '@/lib/recordLinks';
+import { checkInResponseDisplayLabel } from '@/lib/checkInResponseDisplay';
 import { markHrNavSeen } from '@/lib/hrNavAttention';
 import { toast } from 'sonner';
 
@@ -41,6 +43,7 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
     let cancelled = false;
 
     const goToCase = async () => {
+      dataStore.markPromptResponseReviewed?.(response.id);
       const existing = findReportForPromptResponse(response.id, dataStore.reports, {
         userId: response.userId,
         promptDeliveryId: response.promptDeliveryId,
@@ -172,6 +175,17 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
   const prompt = dataStore.prompts.find((p) => p.id === response.promptId);
   const user = dataStore.users.find((u) => u.id === response.userId);
   const dest = destinationForPromptResponse(response, dataStore.reports);
+  const linked = linkedReportForPromptRow(
+    {
+      id: response.id,
+      answer: response.answer,
+      userId: response.userId,
+      deliveryId: response.promptDeliveryId,
+      promptId: response.promptId,
+    },
+    dataStore.reports
+  );
+  const display = checkInResponseDisplayLabel(prompt, response, linked);
 
   return (
     <div className="space-y-4">
@@ -193,7 +207,7 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
       <Card className="mismo-card">
         <CardContent className="p-5 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold">{prompt?.title ?? 'Check-in response'}</h1>
+            <h1 className="text-xl font-semibold">{display.title}</h1>
             <Badge className="status-chip status-chip--success">No</Badge>
           </div>
           <p className="text-sm text-[var(--mismo-text-secondary)]">

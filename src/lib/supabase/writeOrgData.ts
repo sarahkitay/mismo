@@ -352,6 +352,7 @@ function responseRow(response: PromptResponse): Record<string, unknown> {
     notes: response.notes ?? null,
     needs_review: Boolean(response.needsReview),
     reviewed_at: iso(response.reviewedAt),
+    reviewed_by_user_id: response.reviewedByUserId ?? null,
     finalized_at: iso(response.finalizedAt),
     submitted_at: iso(response.submittedAt) ?? new Date().toISOString(),
     updated_at: iso(response.updatedAt) ?? new Date().toISOString(),

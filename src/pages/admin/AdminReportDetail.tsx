@@ -94,8 +94,11 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  useEffect(() => {
  if (sourceResponse) {
  markHrNavSeen(dataStore.currentUser.id, 'prompt_response', sourceResponse.id);
+ if (sourceResponse.answer === 'HAS_ISSUE') {
+ dataStore.markPromptResponseReviewed?.(sourceResponse.id);
  }
- }, [dataStore.currentUser.id, sourceResponse]);
+ }
+ }, [dataStore, sourceResponse]);
 
  const linkedInvestigation = fromInvestigationId
  ? dataStore.investigations.find((i) => i.id === fromInvestigationId)
@@ -118,6 +121,11 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  sourceResponse!.needsReview !== false;
  const promptReviewer = sourceResponse?.reviewedByUserId
  ? dataStore.users.find((u) => u.id === sourceResponse.reviewedByUserId)
+ : null;
+ const openedByLabel = promptReviewer
+ ? `${promptReviewer.firstName} ${promptReviewer.lastName}`
+ : sourceResponse?.reviewedByUserId
+ ? 'HR'
  : null;
  const isWageHourCase = Boolean(
  sourcePrompt?.includeFinancialQuestion || sourcePrompt?.routeToPayroll || report.caseType === 'WAGE_HOUR'
@@ -534,9 +542,14 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  {sourceResponse.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}
  </Badge>
  {needsPromptReview && <Badge className="status-chip status-chip--warn">Needs HR review</Badge>}
+ {!needsPromptReview && sourceResponse.reviewedAt && (
+ <Badge variant="outline" className="border-emerald-600/40 text-emerald-800">
+ Opened
+ </Badge>
+ )}
  {linkedInvestigation && (
  <Badge variant="outline" className="border-emerald-600/40 text-emerald-800">
- Investigation open
+ {linkedInvestigation.status === 'OPEN' ? 'Investigation open' : 'Investigation closed'}
  </Badge>
  )}
  </div>
@@ -546,16 +559,15 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  {sourcePrompt?.includeFinancialQuestion ? ' · includes pay screening' : ''}
  </p>
  <p>Submitted: {sourceResponse.submittedAt.toLocaleString()}</p>
- <p>
- Needs HR review: {needsPromptReview ? 'Yes' : 'No'}
- {promptReviewer && sourceResponse.reviewedAt && (
- <>
- {' '}
- · Reviewed by {promptReviewer.firstName} {promptReviewer.lastName} on{' '}
+ {sourceResponse.reviewedAt ? (
+ <p className="sm:col-span-2 text-[var(--color-text-primary)]">
+ <span className="font-medium">Opened by {openedByLabel ?? 'HR'}</span>
+ {' · '}
  {sourceResponse.reviewedAt.toLocaleString()}
- </>
- )}
  </p>
+ ) : (
+ <p>Needs HR review: Yes</p>
+ )}
  {reporter && !report.isAnonymous && (
  <p>
  Employee:{' '}

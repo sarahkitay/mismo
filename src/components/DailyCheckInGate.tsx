@@ -178,12 +178,44 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  setFinancialPayrollChoice(true);
  };
 
+ const submitFullPayrollFromCheckIn = async () => {
+ if (!financialFollowUp) return;
+ const { deliveryId, answer } = financialFollowUp;
+ // Keep the incident answer (e.g. No) — do not re-label a pay-only path as an Incident Yes.
+ const response = submitPromptResponse(
+ deliveryId,
+ answer,
+ answer === 'NO_ISSUE'
+ ? 'Financial follow-up: employee chose to complete the full wage & hour report sheet (no workplace incident indicated).'
+ : 'Financial follow-up: employee chose to complete the full wage & hour report sheet.'
+ );
+ try {
+ const report = await beginWageHourCase(currentUser.id, 'EMPLOYEE_PROMPT_RESPONSE', {
+ deliveryId,
+ promptId: heroPrompt?.prompt.id,
+ promptResponseId: response?.id,
+ });
+ setFinancialFollowUp(null);
+ setFinancialPayrollChoice(false);
+ setIncidentStep('question');
+ toast.success(`Complete the report sheet to submit details (${formatCaseReference(report)}).`, { duration: 7000 });
+ goToWageHour(report.id);
+ } catch (err) {
+ toast.error(err instanceof Error ? err.message : 'Could not open wage & hour case.');
+ }
+ };
+
  const submitExpeditedPayrollFromCheckIn = async () => {
  if (!financialFollowUp) return;
  try {
  const report = await submitExpeditedPayrollReport(currentUser.id, {
  deliveryId: financialFollowUp.deliveryId,
  promptId: heroPrompt?.prompt.id,
+ promptAnswer: financialFollowUp.answer,
+ promptNotes:
+ financialFollowUp.answer === 'NO_ISSUE'
+ ? 'Payroll memo: employee reported a payroll issue with no additional details (no workplace incident indicated).'
+ : 'Payroll memo: employee reported a payroll issue with no additional details (expedited 24h path).',
  sourceType: 'EMPLOYEE_PROMPT_RESPONSE',
  });
  setFinancialFollowUp(null);
@@ -194,26 +226,6 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
  if (portal === 'staff') onNavigate('report-detail', { id: report.id });
  } catch (err) {
  toast.error(err instanceof Error ? err.message : 'Could not submit payroll report.');
- }
- };
-
- const submitFullPayrollFromCheckIn = async () => {
- if (!financialFollowUp) return;
- const { deliveryId } = financialFollowUp;
- submitPromptResponse(
- deliveryId,
- 'HAS_ISSUE',
- 'Financial follow-up: employee chose to complete the full wage & hour report sheet.'
- );
- try {
- const report = await beginWageHourCase(currentUser.id, 'EMPLOYEE_PROMPT_RESPONSE');
- setFinancialFollowUp(null);
- setFinancialPayrollChoice(false);
- setIncidentStep('question');
- toast.success(`Complete the report sheet to submit details (${formatCaseReference(report)}).`, { duration: 7000 });
- goToWageHour(report.id);
- } catch (err) {
- toast.error(err instanceof Error ? err.message : 'Could not open wage & hour case.');
  }
  };
 

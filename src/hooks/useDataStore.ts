@@ -34,6 +34,7 @@ import {
   computeOpenInvestigationWorkload,
   computePromptResponsesNavCount,
   openCaseRegisterReports,
+  yesResponsesUnderReview,
 } from '@/lib/investigationWorkload';
 import {
  DEFAULT_ORG_ID,
@@ -1001,31 +1002,34 @@ export function useDataStore() {
 
  const markPromptResponseReviewed = useCallback(
  (responseId: string) => {
+ const existing = responses.find((r) => r.id === responseId);
+ if (!existing) return;
+
+ // First opener/reviewer wins so every admin sees the same person and time.
+ if (existing.reviewedAt && existing.needsReview === false) return;
+
  const now = new Date();
- setResponses((prev) =>
- prev.map((r) =>
- r.id === responseId
- ? {
- ...r,
- reviewedAt: now,
- reviewedByUserId: currentUser.id,
+ const updated: PromptResponse = {
+ ...existing,
+ reviewedAt: existing.reviewedAt ?? now,
+ reviewedByUserId: existing.reviewedByUserId ?? currentUser.id,
  needsReview: false,
  updatedAt: now,
- }
- : r
- )
- );
+ };
+ setResponses((prev) => prev.map((r) => (r.id === responseId ? updated : r)));
+ void persistPromptResponse(updated);
+
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
  orgId: effectiveOrgId,
  type: 'PROMPT_RESPONSE',
  actorUserId: currentUser.id,
- metadata: { responseId, action: 'REVIEWED' },
+ metadata: { responseId, action: 'OPENED' },
  createdAt: now,
  };
  setActivities((prev) => [newActivity, ...prev]);
  },
- [currentUser.id]
+ [currentUser.id, effectiveOrgId, responses]
  );
 
   const sendMemoReminderToUnacknowledged = useCallback(
@@ -1582,8 +1586,10 @@ export function useDataStore() {
  return d.dueAt <= nextWeek || d.dueAt < now;
  }).length,
  activeCampaigns: effectivePrompts.filter((p) => p.status === 'ACTIVE').length,
- yesResponsesNeedingReview: effectiveResponses.filter(
- (r) => r.answer === 'HAS_ISSUE' && !r.reviewedAt && r.needsReview !== false
+ yesResponsesNeedingReview: yesResponsesUnderReview(
+ effectiveResponses,
+ effectiveReports,
+ effectiveInvestigations
  ).length,
  // Only employee check-ins still awaiting an answer (not HR/admin's own gate, not closed prompts).
  unansweredPromptDeliveries: effectiveDeliveries.filter((d) => {

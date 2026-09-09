@@ -1,6 +1,7 @@
 import type { Prompt, PromptDelivery, PromptResponse, Report, User } from '@/types';
 import { inDateRange, type DateRangeState } from '@/lib/dateFilters';
 import { formatCaseReference } from '@/lib/caseTypes';
+import { checkInResponseDisplayLabel } from '@/lib/checkInResponseDisplay';
 import { linkedReportForPromptRow } from '@/lib/recordLinks';
 
 export type EmployeePromptRegisterRow = {
@@ -27,6 +28,7 @@ export function buildEmployeePromptRegisterRows(
     range?: DateRangeState;
     answerFilter?: 'HAS_ISSUE' | 'NO_ISSUE' | 'UNANSWERED' | null;
     needsReviewOnly?: boolean;
+    reports?: Report[];
   }
 ): EmployeePromptRegisterRow[] {
   const employee = users.find((u) => u.id === employeeId);
@@ -35,6 +37,7 @@ export function buildEmployeePromptRegisterRows(
   const range = options?.range;
   const answerFilter = options?.answerFilter ?? null;
   const needsReviewOnly = options?.needsReviewOnly ?? false;
+  const reports = options?.reports ?? [];
 
   const rows: EmployeePromptRegisterRow[] = [];
 
@@ -67,12 +70,17 @@ export function buildEmployeePromptRegisterRows(
       if (answerFilter && r.answer !== answerFilter) continue;
       if (needsReviewOnly && (r.answer !== 'HAS_ISSUE' || r.reviewedAt || r.needsReview === false)) continue;
       const prompt = prompts.find((p) => p.id === r.promptId);
+      const linked = linkedReportForPromptRow(
+        { id: r.id, answer: r.answer, userId: r.userId, deliveryId: r.promptDeliveryId, promptId: r.promptId },
+        reports
+      );
+      const display = checkInResponseDisplayLabel(prompt, r, linked);
       rows.push({
         id: r.id,
         deliveryId: r.promptDeliveryId,
         userId: employeeId,
-        promptTitle: prompt?.title ?? 'Prompt',
-        promptType: prompt?.type ?? 'GENERAL',
+        promptTitle: display.title,
+        promptType: display.type,
         userName,
         answer: r.answer,
         date: r.submittedAt,
@@ -108,7 +116,7 @@ export function exportEmployeePromptRegisterCsv(
       row.promptTitle,
       row.promptType,
       row.answer === 'HAS_ISSUE' ? 'Yes' : row.answer === 'NO_ISSUE' ? 'No' : 'Unanswered',
-      row.answer === 'UNANSWERED' ? 'Pending' : row.needsReview ? 'Needs review' : 'Reviewed',
+      row.answer === 'UNANSWERED' ? 'Pending' : row.needsReview ? 'Needs review' : 'Opened',
       row.date.toISOString(),
       row.modified.toISOString(),
       linkedCase ? formatCaseReference(linkedCase) : '',
