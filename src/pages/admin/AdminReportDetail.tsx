@@ -1,6 +1,6 @@
-import { useMemo, useState, useRef } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
-import type { ReportHandlingEntry, ReportChecklistItem } from '@/types';
+import type { ReportHandlingEntry } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,16 +14,24 @@ import {
 } from '@/lib/utils';
 import { exportCaseCsv, exportCasePdf } from '@/lib/evidenceExport';
 import { getInvestigationDisplayId, REPORT_SOURCE_LABELS } from '@/lib/investigationWorkflow';
-import { ASSIGN_CASE_TO_ME_ACTION, MARK_INITIAL_REVIEW_ACTION, MARK_INITIAL_REVIEW_TOAST, formatCaseReference, getPayrollExpeditedSlaLabel, getReportStatusLabel } from '@/lib/caseTypes';
+import { ASSIGN_CASE_TO_ME_ACTION, MARK_INITIAL_REVIEW_ACTION, MARK_INITIAL_REVIEW_TOAST, INITIAL_REVIEW_COMPLETED_LABEL, formatCaseReference, getPayrollExpeditedSlaLabel, getReportStatusLabel, isInitialReviewComplete } from '@/lib/caseTypes';
 import { isIncidentIntakeComplete, isWageHourIntakeComplete } from '@/lib/utils';
 import { EmployeeIntakeReadOnly } from '@/components/admin/EmployeeIntakeReadOnly';
 import { RelatedRecordsNav } from '@/components/admin/RelatedRecordsNav';
 import { OutreachToneCoach } from '@/components/admin/OutreachToneCoach';
-import { relatedNavForReport } from '@/lib/recordLinks';
+import { OutreachReminderModal } from '@/components/admin/OutreachReminderModal';
+import { ManualOutreachModal } from '@/components/admin/ManualOutreachModal';
+import {
+ findInvestigationForPromptResponse,
+ findInvestigationForReport,
+ relatedNavForReport,
+} from '@/lib/recordLinks';
 import { toast } from 'sonner';
 import { sendNotificationEmail } from '@/lib/api/notifications';
 import { buildHrSignOff, getSlaLabel } from '@/lib/reportDetailHelpers';
 import { buildCaseNoteReviewEmailBody, caseNoteAckStatusLabel } from '@/lib/caseNoteAcknowledgement';
+import { CaseQuickNoteFab } from '@/components/admin/CaseQuickNoteFab';
+import { markHrNavSeen } from '@/lib/hrNavAttention';
 
 interface AdminReportDetailProps {
  dataStore: DataStore;
@@ -47,15 +55,12 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  const [plannedSendBody, setPlannedSendBody] = useState(() => report?.responsePlan ?? '');
  const [includeSignOff, setIncludeSignOff] = useState(true);
  const [requestEmployeeSignOff, setRequestEmployeeSignOff] = useState(true);
- const [checklistSectionIndex, setChecklistSectionIndex] = useState(0);
- const [showAdvancedChecklist, setShowAdvancedChecklist] = useState(false);
  const [showIntakeSubmission, setShowIntakeSubmission] = useState(false);
  const [showRelatedRecords, setShowRelatedRecords] = useState(false);
- const [evidenceNoteDraft, setEvidenceNoteDraft] = useState<Record<string, string>>({});
  const responseContextFileRef = useRef<HTMLInputElement>(null);
- const evidenceFileInputRef = useRef<HTMLInputElement>(null);
- const [evidenceFileForItem, setEvidenceFileForItem] = useState<string | null>(null);
  const [sendingEmployeeEmail, setSendingEmployeeEmail] = useState(false);
+ const [outreachOpen, setOutreachOpen] = useState(false);
+ const [manualOpen, setManualOpen] = useState(false);
 
  const orderedLedger = useMemo(
  () => [...(report?.handlingLedger ?? [])].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
@@ -81,38 +86,45 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  [orderedLedger]
  );
 
- const checklistSections = useMemo(() => {
- const checklist = report?.responseChecklist ?? [];
- const withSection = checklist.filter((i): i is ReportChecklistItem & { sectionId: string } => !!i.sectionId);
- const seen = new Map<string, { label: string; items: ReportChecklistItem[] }>();
- withSection.forEach((item) => {
- const sid = item.sectionId ?? 'legacy';
- if (!seen.has(sid)) {
- seen.set(sid, { label: item.sectionLabel ?? `Section ${sid}`, items: [] });
- }
- seen.get(sid)!.items.push(item);
- });
- return Array.from(seen.entries()).map(([id, v]) => ({ id, ...v }));
- }, [report?.responseChecklist]);
+ const sourcePrompt = report?.sourcePromptId ? dataStore.prompts.find((p) => p.id === report.sourcePromptId) : undefined;
+ const sourceResponse = report?.sourcePromptResponseId
+ ? dataStore.responses.find((r) => r.id === report.sourcePromptResponseId)
+ : undefined;
 
- const legacyChecklistItems = useMemo(
- () => (report?.responseChecklist ?? []).filter((i) => !i.sectionId),
- [report?.responseChecklist]
- );
+ useEffect(() => {
+ if (sourceResponse) {
+ markHrNavSeen(dataStore.currentUser.id, 'prompt_response', sourceResponse.id);
+ }
+ }, [dataStore.currentUser.id, sourceResponse]);
 
  const linkedInvestigation = fromInvestigationId
  ? dataStore.investigations.find((i) => i.id === fromInvestigationId)
- : dataStore.investigations.find((i) => i.linkedReportIds.includes(reportId));
+ : report
+ ? findInvestigationForReport(report, dataStore.investigations) ??
+ (report.sourcePromptResponseId
+ ? findInvestigationForPromptResponse(report.sourcePromptResponseId, dataStore.reports, dataStore.investigations)
+ : undefined)
+ : undefined;
 
  if (!report) {
  return <div className="text-sm text-[var(--mismo-text-secondary)]">Report not found.</div>;
  }
 
  const caseId = formatCaseReference(report);
- const sourcePrompt = report.sourcePromptId ? dataStore.prompts.find((p) => p.id === report.sourcePromptId) : undefined;
- const sourceResponse = report.sourcePromptResponseId
- ? dataStore.responses.find((r) => r.id === report.sourcePromptResponseId)
- : undefined;
+ const needsPromptReview =
+ Boolean(sourceResponse) &&
+ sourceResponse!.answer === 'HAS_ISSUE' &&
+ !sourceResponse!.reviewedAt &&
+ sourceResponse!.needsReview !== false;
+ const promptReviewer = sourceResponse?.reviewedByUserId
+ ? dataStore.users.find((u) => u.id === sourceResponse.reviewedByUserId)
+ : null;
+ const isWageHourCase = Boolean(
+ sourcePrompt?.includeFinancialQuestion || sourcePrompt?.routeToPayroll || report.caseType === 'WAGE_HOUR'
+ );
+ const needsIntake = Boolean(report.needsExtendedIncidentIntake && !report.incidentIntakeCompletedAt);
+ const employeeName = reporter ? `${reporter.firstName} ${reporter.lastName}` : 'Employee';
+
  const intakeComplete =
  report.caseType === 'WAGE_HOUR' ? isWageHourIntakeComplete(report) : isIncidentIntakeComplete(report);
  const reporterIdentity = report.isAnonymous ? 'Anonymous' : reporter ? 'Named' : 'Confidential';
@@ -237,8 +249,8 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
 
  return (
  <div className="space-y-5">
- {linkedInvestigation ? (
  <div className="space-y-2">
+ {linkedInvestigation && (
  <nav className="flex flex-wrap items-center gap-2 text-sm text-[var(--color-text-muted)]">
  <button
  type="button"
@@ -250,20 +262,22 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  <span aria-hidden>/</span>
  <span className="text-[var(--color-text-primary)] font-mono">{caseId}</span>
  </nav>
+ )}
  <Button
  variant="ghost"
- onClick={() => onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'page-1' })}
+ onClick={() =>
+ onNavigate(
+ 'back',
+ linkedInvestigation
+ ? { fallback: 'investigation-detail', id: linkedInvestigation.id, tab: 'page-1' }
+ : { fallback: 'case-register', view: 'register', register: '1' }
+ )
+ }
  >
  <Icons.arrowLeft className="h-4 w-4 mr-2" />
- Back to investigation
+ Back
  </Button>
  </div>
- ) : (
- <Button variant="ghost" onClick={() => onNavigate('case-register', { view: 'register', register: '1' })}>
- <Icons.arrowLeft className="h-4 w-4 mr-2" />
- Back to case register
- </Button>
- )}
 
  <Card className="mismo-card border border-[var(--color-border-200)]">
  <CardContent className="p-4 space-y-3">
@@ -331,17 +345,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  {sourcePrompt && (
  <>
  {' · '}
- <button
- type="button"
- className="text-[var(--mismo-blue)] hover:underline"
- onClick={() =>
- sourceResponse
- ? onNavigate('prompt-response-detail', { id: sourceResponse.id })
- : onNavigate('prompts')
- }
- >
- {sourcePrompt.title}
- </button>
+ <span className="font-medium text-[var(--color-text-primary)]">{sourcePrompt.title}</span>
  </>
  )}
  </p>
@@ -363,13 +367,18 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
 
  <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
  {linkedInvestigation ? (
+ <div className="flex flex-col items-stretch sm:items-end gap-1">
  <Button
  size="lg"
  className="min-h-12 px-6 text-base font-semibold"
  onClick={() => onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'page-2' })}
  >
- Open investigation
+ Investigation open — add info
  </Button>
+ <p className="text-[11px] text-[var(--color-text-muted)] sm:text-right">
+ {getInvestigationDisplayId(linkedInvestigation)} · continue workspace
+ </p>
+ </div>
  ) : (
  <Button
  size="lg"
@@ -448,7 +457,9 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  {!isExpeditedPayroll && (
  <Button
  variant="outline"
+ disabled={isInitialReviewComplete(report.status)}
  onClick={() => {
+ if (isInitialReviewComplete(report.status)) return;
  dataStore.updateReportStatus(report.id, 'TRIAGED', 'Initial review complete');
  dataStore.addReportHandlingEntry(
  report.id,
@@ -458,7 +469,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  toast.success(MARK_INITIAL_REVIEW_TOAST);
  }}
  >
- {MARK_INITIAL_REVIEW_ACTION}
+ {isInitialReviewComplete(report.status) ? INITIAL_REVIEW_COMPLETED_LABEL : MARK_INITIAL_REVIEW_ACTION}
  </Button>
  )}
  <Button
@@ -510,181 +521,133 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  </CardContent>
  </Card>
 
+ {sourceResponse && (
+ <Card className="mismo-card border border-[var(--color-border-200)]">
+ <CardContent className="p-5 space-y-3">
+ <div className="flex flex-wrap items-center gap-2">
+ <h2 className="text-sm font-semibold text-[var(--color-primary-900)]">Source check-in</h2>
+ <Badge
+ className={
+ sourceResponse.answer === 'HAS_ISSUE' ? 'status-chip status-chip--warn' : 'status-chip status-chip--success'
+ }
+ >
+ {sourceResponse.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}
+ </Badge>
+ {needsPromptReview && <Badge className="status-chip status-chip--warn">Needs HR review</Badge>}
+ {linkedInvestigation && (
+ <Badge variant="outline" className="border-emerald-600/40 text-emerald-800">
+ Investigation open
+ </Badge>
+ )}
+ </div>
+ <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-[var(--color-text-secondary)]">
+ <p>
+ Prompt type: {sourcePrompt?.type ?? '—'}
+ {sourcePrompt?.includeFinancialQuestion ? ' · includes pay screening' : ''}
+ </p>
+ <p>Submitted: {sourceResponse.submittedAt.toLocaleString()}</p>
+ <p>
+ Needs HR review: {needsPromptReview ? 'Yes' : 'No'}
+ {promptReviewer && sourceResponse.reviewedAt && (
+ <>
+ {' '}
+ · Reviewed by {promptReviewer.firstName} {promptReviewer.lastName} on{' '}
+ {sourceResponse.reviewedAt.toLocaleString()}
+ </>
+ )}
+ </p>
+ {reporter && !report.isAnonymous && (
+ <p>
+ Employee:{' '}
+ <button
+ type="button"
+ className="text-[var(--mismo-blue)] hover:underline font-medium"
+ onClick={() => onNavigate('employee-detail', { id: reporter.id, tab: 'prompts' })}
+ >
+ {employeeName}
+ </button>
+ </p>
+ )}
+ </div>
+ {sourceResponse.notes && (
+ <p className="text-sm border-l-2 border-[var(--color-border-200)] pl-3">{sourceResponse.notes}</p>
+ )}
+ {needsIntake && (
+ <p className="text-xs text-[var(--color-text-secondary)] rounded-md border border-amber-200 bg-amber-50/80 p-3">
+ This Yes response still needs the employee&apos;s secure incident intake form. Use Contact employee to send
+ instructions, or continue case follow-up below.
+ </p>
+ )}
+ <div className="flex flex-wrap gap-2 pt-1">
+ {reporter && !report.isAnonymous && (
+ <Button type="button" variant="outline" onClick={() => onNavigate('employee-detail', { id: reporter.id })}>
+ Open employee record
+ </Button>
+ )}
+ {sourceResponse.answer === 'HAS_ISSUE' && (
+ <>
+ <Button type="button" variant="outline" onClick={() => setOutreachOpen(true)}>
+ {needsIntake ? 'Request incident details…' : 'Contact employee…'}
+ </Button>
+ <Button type="button" variant="outline" onClick={() => setManualOpen(true)}>
+ Log outreach
+ </Button>
+ </>
+ )}
+ {needsPromptReview && (
+ <Button
+ className="bg-[var(--color-primary-900)] text-white"
+ onClick={() => {
+ dataStore.markPromptResponseReviewed(sourceResponse.id);
+ toast.success('Marked as reviewed.');
+ }}
+ >
+ Mark reviewed
+ </Button>
+ )}
+ {sourcePrompt?.routeToPayroll && (
+ <Button onClick={() => toast.success('Response sent to payroll team for handling.')}>
+ Send to payroll team
+ </Button>
+ )}
+ {isWageHourCase && !['RESOLVED', 'CLOSED'].includes(report.status) && (
+ <Button
+ className="bg-emerald-600 text-white hover:bg-emerald-700"
+ onClick={() => {
+ dataStore.markPromptResponseReviewed(sourceResponse.id);
+ dataStore.updateReportStatus(report.id, 'RESOLVED', 'Resolved directly from wage and hour response review.');
+ dataStore.addReportHandlingEntry(
+ report.id,
+ 'NOTE',
+ 'Wage and hour concern reviewed and resolved without a formal investigation.'
+ );
+ toast.success('Wage and hour response reviewed and resolved.');
+ }}
+ >
+ Review &amp; resolve without investigation
+ </Button>
+ )}
+ {linkedInvestigation ? (
+ <Button
+ type="button"
+ variant="outline"
+ onClick={() => onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'page-2' })}
+ >
+ Investigation open — add info
+ </Button>
+ ) : sourceResponse.answer === 'HAS_ISSUE' ? (
+ <Button type="button" variant="outline" onClick={convertToInvestigation}>
+ Convert to investigation
+ </Button>
+ ) : null}
+ </div>
+ </CardContent>
+ </Card>
+ )}
+
  {showIntakeSubmission && (
  <EmployeeIntakeReadOnly report={report} organizationName={dataStore.organizationName} />
  )}
-
- <Card className="mismo-card">
- <CardContent className="p-5 space-y-4">
- <div className="flex flex-wrap items-start justify-between gap-2">
- <div>
- <h2 className="text-sm uppercase tracking-wide text-[var(--color-text-secondary)]">
- Optional compliance checklist
- </h2>
- <p className="text-xs text-[var(--color-text-muted)] mt-1">
- Intake, case ID, and assignment are handled automatically on the investigation (Page 1). Expand this only
- if you need the legacy section-by-section checklist.
- </p>
- </div>
- <Button type="button" variant="outline" size="sm" onClick={() => setShowAdvancedChecklist((v) => !v)}>
- {showAdvancedChecklist ? 'Hide checklist' : 'Show checklist'}
- </Button>
- </div>
- {!showAdvancedChecklist ? (
- <p className="text-sm text-[var(--color-text-secondary)]">
- {linkedInvestigation ? (
- <>
- Continue in{' '}
- <button
- type="button"
- className="text-[var(--mismo-blue)] hover:underline"
- onClick={() =>
- onNavigate('investigation-detail', { id: linkedInvestigation.id, tab: 'page-1' })
- }
- >
- investigation {getInvestigationDisplayId(linkedInvestigation)}
- </button>{' '}
- for the simplified 3-page workflow.
- </>
- ) : (
- 'Convert to an investigation to use the 3-page intake → gather → outcome flow.'
- )}
- </p>
- ) : null}
- {showAdvancedChecklist && checklistSections.length === 0 && legacyChecklistItems.length === 0 ? (
- <p className="text-sm text-[var(--color-text-secondary)]">No checklist items. Checklist is created for new cases.</p>
- ) : showAdvancedChecklist ? (
- <>
- {checklistSections.length > 0 && (
- <div className="flex items-center gap-2 flex-wrap">
- <span className="text-xs text-[var(--color-text-secondary)]">
- Section {checklistSectionIndex + 1} of {checklistSections.length}
- </span>
- <Button
- type="button"
- variant="outline"
- size="sm"
- disabled={checklistSectionIndex <= 0}
- onClick={() => setChecklistSectionIndex((i) => Math.max(0, i - 1))}
- >
- Previous
- </Button>
- <Button
- type="button"
- variant="outline"
- size="sm"
- disabled={checklistSectionIndex >= checklistSections.length - 1}
- onClick={() => setChecklistSectionIndex((i) => Math.min(checklistSections.length - 1, i + 1))}
- >
- Next
- </Button>
- </div>
- )}
- {checklistSections.length > 0 && checklistSections[checklistSectionIndex] && (
- <div className="space-y-2">
- <p className="font-medium text-[var(--color-text-primary)]">{checklistSections[checklistSectionIndex].label}</p>
- {checklistSections[checklistSectionIndex].items.map((item) => (
- <div key={item.id} className="border border-[var(--color-border-200)] p-3 space-y-2">
- <label className="flex items-start gap-2">
- <input
- type="checkbox"
- checked={item.completed}
- onChange={(e) => {
- dataStore.toggleReportChecklistItem(report.id, item.id, e.target.checked);
- if (e.target.checked && evidenceNoteDraft[item.id])
- dataStore.updateReportChecklistItemEvidence(report.id, item.id, { evidenceNote: evidenceNoteDraft[item.id] });
- }}
- className="mt-1"
- />
- <span className="text-sm">{item.label}</span>
- </label>
- {item.completed && (
- <div className="ml-6 space-y-1 text-xs">
- {item.completedAt && (
- <p className="text-[var(--color-text-secondary)]">
- Completed {item.completedAt.toLocaleString()}
- {item.evidenceNote && ` · ${item.evidenceNote}`}
- </p>
- )}
- {item.evidenceFileFileName && item.evidenceFileDataUrl && (
- <p>
- Evidence: <a href={item.evidenceFileDataUrl} target="_blank" rel="noopener noreferrer" className="text-[var(--color-emerald-600)] underline">{item.evidenceFileFileName}</a>
- </p>
- )}
- </div>
- )}
- {!item.completed && (
- <div className="ml-6 flex flex-col gap-2">
- <input
- type="text"
- placeholder="Evidence note (optional)"
- value={evidenceNoteDraft[item.id] ?? ''}
- onChange={(e) => setEvidenceNoteDraft((prev) => ({ ...prev, [item.id]: e.target.value }))}
- className="border border-[var(--color-border-200)] px-2 py-1 text-sm w-full max-w-md"
- />
- <div className="flex items-center gap-2">
- <Button
- type="button"
- variant="outline"
- size="sm"
- onClick={() => {
- setEvidenceFileForItem(item.id);
- setTimeout(() => evidenceFileInputRef.current?.click(), 0);
- }}
- >
- Attach PDF evidence
- </Button>
- </div>
- </div>
- )}
- </div>
- ))}
- </div>
- )}
- {checklistSections.length === 0 && legacyChecklistItems.length > 0 && (
- <div className="space-y-2">
- {legacyChecklistItems.map((item) => (
- <label key={item.id} className="flex items-start gap-2 border border-[var(--color-border-200)] p-2">
- <input
- type="checkbox"
- checked={item.completed}
- onChange={(e) => dataStore.toggleReportChecklistItem(report.id, item.id, e.target.checked)}
- className="mt-1"
- />
- <span className="text-sm">{item.label}</span>
- </label>
- ))}
- </div>
- )}
- </>
- ) : null}
- {/* Single hidden file input for checklist item evidence */}
- {showAdvancedChecklist && checklistSections.length > 0 && (
- <input
- ref={evidenceFileInputRef}
- type="file"
- accept=".pdf,application/pdf"
- className="hidden"
- onChange={(e) => {
- const file = e.target.files?.[0];
- const itemId = evidenceFileForItem;
- if (file && itemId && dataStore.updateReportChecklistItemEvidence) {
- const reader = new FileReader();
- reader.onload = () => {
- dataStore.updateReportChecklistItemEvidence(report.id, itemId, {
- evidenceFileFileName: file.name,
- evidenceFileDataUrl: reader.result as string,
- });
- setEvidenceFileForItem(null);
- };
- reader.readAsDataURL(file);
- }
- e.target.value = '';
- }}
- />
- )}
- </CardContent>
- </Card>
 
  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
  <Card className="mismo-card xl:col-span-2">
@@ -1118,7 +1081,79 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  </div>
  </CardContent>
  </Card>
- </div>
+
+ {sourceResponse && reporter && !report.isAnonymous && (
+ <>
+ <OutreachReminderModal
+ open={outreachOpen}
+ onOpenChange={setOutreachOpen}
+ orgId={dataStore.currentUser.orgId}
+ createdByUserId={dataStore.currentUser.id}
+ employeeName={employeeName}
+ relatedLabel={sourcePrompt?.title ?? 'Incident check-in'}
+ reportId={report.id}
+ defaultSubject={
+ needsIntake
+ ? 'Action needed: complete your confidential incident form'
+ : 'Follow-up on your HR check-in response'
+ }
+ defaultBody={
+ needsIntake
+ ? 'Thank you for indicating a concern on the mandatory incident check-in. Please sign in to Mismo and complete the secure incident intake form so HR can review the details confidentially.'
+ : 'HR is following up on your recent check-in response. Please sign in to Mismo or reply if you have additional information to share.'
+ }
+ onSend={(payload) => {
+ const fullMessage = payload.internalNote
+ ? `${payload.subject}\n\n${payload.body}\n\n[Internal: ${payload.internalNote}]`
+ : `${payload.subject}\n\n${payload.body}`;
+ payload.channels.forEach((ch) => {
+ dataStore.sendNudge(sourceResponse.userId, ch, fullMessage, {
+ type: 'CASE_REPORT_REMINDER',
+ promptId: sourceResponse.promptId,
+ relatedLabel: payload.reason || sourcePrompt?.title || 'Check-in follow-up',
+ reportId: report.id,
+ });
+ });
+ toast.success(`Message logged via ${payload.channels.join(' & ')}.`);
+ void dataStore.refreshAppNotifications?.();
+ }}
+ />
+ <ManualOutreachModal
+ open={manualOpen}
+ onOpenChange={setManualOpen}
+ employeeName={employeeName}
+ relatedOptions={[
+ { id: `report:${report.id}`, label: formatCaseReference(report) },
+ { id: `prompt:${sourceResponse.promptId}`, label: sourcePrompt?.title ?? 'Check-in query' },
+ ]}
+ onSave={(payload) => {
+ const channel = payload.contactMethod === 'EMAIL' ? 'EMAIL' : payload.contactMethod === 'SMS' ? 'SMS' : 'MANUAL';
+ const outreachMessage = [
+ payload.notes,
+ payload.outcome && `Outcome: ${payload.outcome}`,
+ payload.followUpDate && `Follow-up: ${payload.followUpDate}`,
+ ]
+ .filter(Boolean)
+ .join('\n');
+ const context: {
+ type: 'MANUAL_OUTREACH';
+ relatedLabel?: string;
+ reportId?: string;
+ promptId?: string;
+ } = {
+ type: 'MANUAL_OUTREACH',
+ relatedLabel: payload.relatedItem ?? 'Manual outreach',
+ };
+ if (payload.relatedItem?.startsWith('report:')) context.reportId = payload.relatedItem.slice(7);
+ if (payload.relatedItem?.startsWith('prompt:')) context.promptId = payload.relatedItem.slice(7);
+ dataStore.sendNudge(sourceResponse.userId, channel, outreachMessage, context);
+ toast.success(channel === 'EMAIL' ? 'Outreach emailed and logged.' : 'Manual outreach logged.');
+ void dataStore.refreshAppNotifications?.();
+ }}
+ />
+ </>
+ )}
+ <CaseQuickNoteFab dataStore={dataStore} reportId={report.id} />
  </div>
  );
 }

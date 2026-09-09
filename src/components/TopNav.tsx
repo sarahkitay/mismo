@@ -17,6 +17,7 @@ interface TopNavProps {
   dataStore: DataStore;
   onMenuClick?: () => void;
   onNavigate?: (page: string, params?: Record<string, string>) => void;
+  activePage?: string;
 }
 
 function roleLabel(role: DataStore['currentRole']): string {
@@ -27,7 +28,7 @@ function roleLabel(role: DataStore['currentRole']): string {
   return role;
 }
 
-export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
+export function TopNav({ dataStore, onMenuClick, onNavigate, activePage }: TopNavProps) {
   const { currentUser, currentRole, switchRole, logout, users, setPreviewUserId } = dataStore;
   const directoryRole = users.find((u) => u.id === currentUser.id)?.role;
   /** Only platform super-admins can switch preview roles. HR users stay in HR. */
@@ -140,7 +141,7 @@ export function TopNav({ dataStore, onMenuClick, onNavigate }: TopNavProps) {
             </DropdownMenu>
           )}
 
-          <TopNavNotifications dataStore={dataStore} onNavigate={onNavigate} />
+          <TopNavNotifications dataStore={dataStore} onNavigate={onNavigate} activePage={activePage} />
 
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden md:block text-right">

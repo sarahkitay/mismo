@@ -55,10 +55,10 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
           The incident report you&apos;re looking for doesn&apos;t exist or you don&apos;t have access to it.
         </p>
         <button 
-          onClick={() => onNavigate('reports')}
+          onClick={() => onNavigate('back', { fallback: 'reports' })}
           className="text-[var(--mismo-blue)] mt-4 hover:underline"
         >
-          Back to my incident reports
+          Back
         </button>
       </div>
     );
@@ -109,11 +109,11 @@ export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailPr
       {/* Header */}
       <div className="detail-header">
         <button 
-          onClick={() => onNavigate('reports')}
+          onClick={() => onNavigate('back', { fallback: 'reports' })}
           className="flex items-center gap-2 text-sm text-[var(--mismo-text-secondary)] hover:text-[var(--mismo-text)] mb-4"
         >
           <Icons.arrowLeft className="h-4 w-4" />
-          Back to my incident reports
+          Back
         </button>
         
         <div className="flex flex-wrap items-center gap-2 mb-2">

@@ -4,6 +4,11 @@ import { Icons } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { employeeNeedsPolicyAck } from '@/lib/lawDigestMemo';
+import {
+  countUnseenOpenInvestigations,
+  countUnseenYesNeedingReview,
+} from '@/lib/hrNavAttention';
+import { useMemo, useState, useEffect } from 'react';
 
 interface NavItem {
   id: string;
@@ -22,11 +27,11 @@ const employeeNavItems: NavItem[] = [
 const adminNavItems: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { id: 'prompt-responses', label: 'Prompt Responses', icon: 'reports' },
-  { id: 'investigations', label: 'Investigations', icon: 'investigations', badgeKey: 'activeInvestigations' },
+  { id: 'investigations', label: 'Investigations', icon: 'investigations' },
   { id: 'policies', label: "Memos & Announcements", icon: 'bookOpen' },
   { id: 'analytics', label: 'Analytics', icon: 'analytics' },
   { id: 'compliance', label: 'State Compliance', icon: 'shield' },
-  { id: 'users', label: 'Manage Employees', icon: 'employees', badgeKey: 'atRiskEmployees' },
+  { id: 'users', label: 'Manage Employees', icon: 'employees' },
   { id: 'prompts', label: 'Manage Prompts', icon: 'message' },
 ];
 
@@ -51,7 +56,25 @@ function SidebarContent({
   activePage,
   onNavigate,
 }: Omit<SidebarProps, 'isOpen' | 'onClose'>) {
-  const { currentRole, dashboardCounts, employeeReports } = dataStore;
+  const { currentRole, dashboardCounts, employeeReports, currentUser, investigations, responses } = dataStore;
+  /** Re-read local seen markers when the active page changes (e.g. after opening a case). */
+  const [seenTick, setSeenTick] = useState(0);
+  useEffect(() => {
+    setSeenTick((t) => t + 1);
+  }, [activePage]);
+
+  const attentionBadges = useMemo(() => {
+    if (currentRole === 'EMPLOYEE' || currentRole === 'CLIENT' || currentRole === 'SUPER_ADMIN') {
+      return { promptResponses: 0, investigations: 0 };
+    }
+    return {
+      promptResponses: countUnseenYesNeedingReview(currentUser.id, responses),
+      investigations: countUnseenOpenInvestigations(currentUser.id, investigations),
+    };
+    // seenTick forces refresh after navigation marks items seen
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRole, currentUser.id, investigations, responses, seenTick]);
+
   const navItems =
     currentRole === 'EMPLOYEE'
       ? employeeNavItems
@@ -76,7 +99,15 @@ function SidebarContent({
         case 'home':
           return pendingMemos > 0 ? pendingMemos : dataStore.pendingPromptsForEmployee.length || undefined;
         case 'reports':
-          return (employeeReports?.length ?? 0) > 0 ? (employeeReports?.length ?? 0) : undefined;
+          // Only flag reports that still need employee action (pending intake), not total count.
+          {
+            const pendingIntake = (employeeReports ?? []).filter(
+              (r) =>
+                (r.needsExtendedIncidentIntake && !r.incidentIntakeCompletedAt) ||
+                (r.needsExtendedWageHourIntake && !r.wageHourIntakeCompletedAt)
+            ).length;
+            return pendingIntake > 0 ? pendingIntake : undefined;
+          }
         default:
           return undefined;
       }
@@ -85,9 +116,10 @@ function SidebarContent({
       return dataStore.pendingPromptsForEmployee.length;
     }
     if (item.id === 'prompt-responses') {
-      // Deduped: unanswered + open cases + Yes needing review that don't already have an open case.
-      const n = dashboardCounts.promptResponsesNavCount;
-      return n > 0 ? n : undefined;
+      return attentionBadges.promptResponses > 0 ? attentionBadges.promptResponses : undefined;
+    }
+    if (item.id === 'investigations') {
+      return attentionBadges.investigations > 0 ? attentionBadges.investigations : undefined;
     }
     if (!item.badgeKey) return undefined;
     const n = dashboardCounts[item.badgeKey];

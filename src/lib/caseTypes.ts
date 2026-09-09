@@ -135,8 +135,13 @@ export function getCaseTypeShortLabel(caseType: CaseType): string {
 
 /** Admin action: HR has read the report and decided what happens next (not the same as closing it). */
 export const MARK_INITIAL_REVIEW_ACTION = 'Mark initial review complete';
+export const INITIAL_REVIEW_COMPLETED_LABEL = 'Initial review completed';
 
 export const MARK_INITIAL_REVIEW_TOAST = 'Initial review recorded. Case stays open until resolved or assigned.';
+
+export function isInitialReviewComplete(status: string): boolean {
+  return status !== 'NEW' && status !== 'PAYROLL_EXPEDITED';
+}
 
 export const ASSIGN_CASE_TO_ME_ACTION = 'Take ownership';
 

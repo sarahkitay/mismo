@@ -139,8 +139,8 @@ export function HelpSupport({ dataStore, onNavigate }: HelpSupportProps) {
           </>
         )}
         {!isEmployee && onNavigate && (
-          <Button variant="outline" onClick={() => onNavigate('dashboard')}>
-            Back to dashboard
+          <Button variant="outline" onClick={() => onNavigate('back', { fallback: 'dashboard' })}>
+            Back
           </Button>
         )}
       </div>

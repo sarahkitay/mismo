@@ -118,6 +118,7 @@ const rawIcons = {
   checkCircle: CheckCircle,
   checkSquare: CheckSquare,
   xCircle: XCircle,
+  x: X,
   alertCircle: AlertCircle,
   alertTriangle: AlertTriangle,
   info: Info,

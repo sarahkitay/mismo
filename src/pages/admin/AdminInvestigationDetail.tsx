@@ -7,6 +7,8 @@ import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
 import { investigationHasUnsavedDrafts, unsavedInvestigationDraftLabels } from '@/lib/investigationDraftRegistry';
 import type { InvestigationTab } from '@/lib/investigationWorkflow';
 import { parseInvestigationTab } from '@/lib/investigationWorkflow';
+import { CaseQuickNoteFab } from '@/components/admin/CaseQuickNoteFab';
+import { markHrNavSeen } from '@/lib/hrNavAttention';
 import { toast } from 'sonner';
 
 interface AdminInvestigationDetailProps {
@@ -34,6 +36,10 @@ export function AdminInvestigationDetail({
     setActiveTab(parseTab(initialTab));
   }, [investigationId, initialTab]);
 
+  useEffect(() => {
+    markHrNavSeen(dataStore.currentUser.id, 'investigation', investigationId);
+  }, [dataStore.currentUser.id, investigationId]);
+
   const requestLeave = useCallback(
     (action: () => void) => {
       if (!investigationHasUnsavedDrafts(investigationId)) {
@@ -53,9 +59,9 @@ export function AdminInvestigationDetail({
 
   return (
     <div className="space-y-4">
-      <Button variant="ghost" className="enterprise-interactive w-fit" onClick={() => requestLeave(() => onNavigate('investigations'))}>
+      <Button variant="ghost" className="enterprise-interactive w-fit" onClick={() => requestLeave(() => onNavigate('back', { fallback: 'investigations' }))}>
         <Icons.arrowLeft className="h-4 w-4 mr-2" />
-        Back to register
+        Back
       </Button>
       <InvestigationWorkspace
         dataStore={dataStore}
@@ -85,6 +91,7 @@ export function AdminInvestigationDetail({
           pendingLeaveRef.current = null;
         }}
       />
+      <CaseQuickNoteFab dataStore={dataStore} investigationId={investigationId} />
     </div>
   );
 }

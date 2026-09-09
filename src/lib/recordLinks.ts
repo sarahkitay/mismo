@@ -165,9 +165,26 @@ export function buildInvestigationNav(inv: Investigation | undefined): RecordNav
 
 export function buildPromptResponseNav(
   response: PromptResponse | undefined,
-  promptTitle?: string
+  promptTitle?: string,
+  reports?: Report[]
 ): RecordNavTarget | undefined {
   if (!response) return undefined;
+  if (response.answer === 'HAS_ISSUE' && reports) {
+    const linkedCase = findReportForPromptResponse(response.id, reports, {
+      userId: response.userId,
+      promptDeliveryId: response.promptDeliveryId,
+      promptId: response.promptId,
+    });
+    if (linkedCase) {
+      return {
+        kind: 'case',
+        page: 'report-detail',
+        params: { id: linkedCase.id },
+        label: promptTitle ?? 'Check-in response',
+        sublabel: `Yes · open case ${formatCaseReference(linkedCase)}`,
+      };
+    }
+  }
   return {
     kind: 'query',
     page: 'prompt-response-detail',
@@ -175,6 +192,24 @@ export function buildPromptResponseNav(
     label: promptTitle ?? 'Check-in response',
     sublabel: response.answer === 'HAS_ISSUE' ? 'Yes' : 'No',
   };
+}
+
+/** Prefer the case page for Yes responses; keep detail for No / unanswered. */
+export function destinationForPromptResponse(
+  response: PromptResponse,
+  reports: Report[]
+): { page: string; params: Record<string, string> } {
+  if (response.answer === 'HAS_ISSUE') {
+    const linkedCase = findReportForPromptResponse(response.id, reports, {
+      userId: response.userId,
+      promptDeliveryId: response.promptDeliveryId,
+      promptId: response.promptId,
+    });
+    if (linkedCase) {
+      return { page: 'report-detail', params: { id: linkedCase.id } };
+    }
+  }
+  return { page: 'prompt-response-detail', params: { id: response.id, type: response.answer } };
 }
 
 export function buildDeliveryNav(delivery: PromptDelivery, promptTitle?: string): RecordNavTarget | undefined {
@@ -207,7 +242,7 @@ export function relatedNavForPromptResponse(
   const emp = buildEmployeeNav(employee, response.userId);
   if (emp) links.push(emp);
   if (options?.includeSelf) {
-    const query = buildPromptResponseNav(response, prompt?.title);
+    const query = buildPromptResponseNav(response, prompt?.title, reports);
     if (query) links.push(query);
   }
   links.push({
@@ -278,13 +313,20 @@ export function relatedNavForReport(
     links.push({ ...buildEmployeeNav(assignee)!, sublabel: 'Assigned owner' });
   }
   if (sourceResponse) {
-    links.push({
-      ...buildPromptResponseNav(sourceResponse, sourcePrompt?.title)!,
-      sublabel:
-        sourceResponse.answer === 'HAS_ISSUE'
-          ? 'Open Yes response · Mark reviewed'
-          : 'Open check-in response',
-    });
+    if (sourceResponse.answer === 'HAS_ISSUE') {
+      links.push({
+        kind: 'register',
+        page: 'prompt-responses',
+        params: { view: 'prompts', channel: 'incident', answer: 'HAS_ISSUE' },
+        label: sourcePrompt?.title ?? 'Source check-in',
+        sublabel: 'Yes · check-in register',
+      });
+    } else {
+      links.push({
+        ...buildPromptResponseNav(sourceResponse, sourcePrompt?.title, dataStore.reports)!,
+        sublabel: 'Open check-in response',
+      });
+    }
   } else if (sourcePrompt) {
     links.push({
       kind: 'prompt',

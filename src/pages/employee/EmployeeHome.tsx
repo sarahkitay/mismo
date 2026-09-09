@@ -7,7 +7,6 @@ import { DailyCheckInGate, useDailyCheckInViewState } from '@/components/DailyCh
 import { DashboardCheckInShortcuts } from '@/components/DashboardCheckInShortcuts';
 import { ReportConcernSection } from '@/components/employee/ReportConcernSection';
 import { employeeNeedsPolicyAck, pendingLawDigestEntries } from '@/lib/lawDigestMemo';
-import { DashboardNotifications } from '@/components/DashboardNotifications';
 
 interface EmployeeHomeProps {
  dataStore: DataStore;
@@ -101,8 +100,6 @@ export function EmployeeHome({ dataStore, onNavigate }: EmployeeHomeProps) {
  </div>
  </CardContent>
  </Card>
-
- <DashboardNotifications dataStore={dataStore} onNavigate={onNavigate} />
 
  {!isFullyCaughtUp && unreadPolicies.length > 0 && (
  <Card className="mismo-card border border-[var(--color-border-200)]">

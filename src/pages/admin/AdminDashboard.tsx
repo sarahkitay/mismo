@@ -8,7 +8,6 @@ import { Icons } from '@/lib/icons';
 import { DailyCheckInGate, useDailyCheckInViewState } from '@/components/DailyCheckInGate';
 import { DashboardCheckInShortcuts } from '@/components/DashboardCheckInShortcuts';
 import { PageMoreInfo } from '@/components/PageMoreInfo';
-import { DashboardNotifications } from '@/components/DashboardNotifications';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 interface AdminDashboardProps {
@@ -132,23 +131,6 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  <PageMoreInfo>
  Employee relations and compliance command center. Every count below opens the underlying filtered register.
  </PageMoreInfo>
- <div className="mt-4 flex flex-wrap gap-2">
- <Button variant="outline" size="sm" onClick={() => onNavigate('case-register', { view: 'register', action: 'pending' })}>
- Open action register
- </Button>
- <Button variant="outline" size="sm" onClick={() => onNavigate('users')}>
- Manage employees
- </Button>
- <Button variant="outline" size="sm" onClick={() => onNavigate('users', { import: 'csv' })}>
- Bulk import employees
- </Button>
- <Button variant="outline" size="sm" onClick={() => onNavigate('policies')}>
- Manage memos
- </Button>
- <Button variant="outline" size="sm" onClick={() => onNavigate('prompts')}>
- Manage prompts
- </Button>
- </div>
  </div>
 
  <div>
@@ -180,20 +162,12 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  />
  </div>
  )}
- <Button
- className="mt-4 bg-[var(--color-primary-900)] hover:bg-[var(--color-primary-700)] text-white"
- onClick={() => onNavigate('case-register', { view: 'register', register: '1' })}
- >
- Open action register →
- </Button>
  </div>
  </div>
  </CardContent>
  </Card>
 
  </div>
-
- <DashboardNotifications dataStore={dataStore} onNavigate={onNavigate} />
 
  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
  {[
@@ -314,6 +288,10 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  return;
  }
  if (row.kind === 'response') {
+ if (row.answer === 'HAS_ISSUE' && linkedCase) {
+ onNavigate('report-detail', { id: linkedCase.id });
+ return;
+ }
  onNavigate('prompt-response-detail', { id: row.id, type: row.answer });
  }
  };

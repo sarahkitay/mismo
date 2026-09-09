@@ -1,4 +1,4 @@
-import { useRef, useState, type ComponentType, useCallback, useEffect } from 'react';
+import { useRef, useState, type ComponentType, useCallback, useEffect, useMemo } from 'react';
 import type { DataStore } from '@/hooks/useDataStore';
 import type {
  CorrectiveActionType,
@@ -58,6 +58,11 @@ import { toast } from 'sonner';
 import { sendNotificationEmail } from '@/lib/api/notifications';
 import { useInvestigationDraftRegistration } from '@/hooks/useInvestigationDraftRegistration';
 import type { AppNotification } from '@/types';
+import {
+ autoLinkPolicyIds,
+ buildSuggestedPolicyAnalysisNotes,
+ suggestPoliciesForInvestigation,
+} from '@/lib/investigationPolicySuggestions';
 import {
  buildInvestigationOutcomeEmailBody,
  buildInvestigationOutcomeOverview,
@@ -205,7 +210,9 @@ export function IntakeTriageModule(ctx: WorkflowContext) {
  className="px-0 h-auto mt-1"
  onClick={() =>
  promptCtx.response
- ? onNavigate('prompt-response-detail', { id: promptCtx.response.id })
+ ? promptCtx.response.answer === 'HAS_ISSUE' && primaryReport
+ ? onNavigate('report-detail', { id: primaryReport.id, fromInvestigation: investigation.id })
+ : onNavigate('prompt-response-detail', { id: promptCtx.response.id })
  : onNavigate('prompts')
  }
  >
@@ -978,11 +985,12 @@ export function InterviewsNotesModule(ctx: WorkflowContext) {
 }
 
 export function EvidenceAnalysisModule(ctx: WorkflowContext) {
- const { investigation, dataStore } = ctx;
+ const { investigation, dataStore, primaryReport } = ctx;
  const progress = getModuleProgress(investigation)['evidence-analysis'];
  const review = getCompletenessReview(investigation, ctx.owner);
  const [rationale, setRationale] = useState(investigation.findingsRationale ?? '');
  const [policyNotes, setPolicyNotes] = useState(investigation.policyAnalysisNotes ?? '');
+ const autoLinkedRef = useRef(false);
 
  useInvestigationDraftRegistration(
  investigation.id,
@@ -1001,7 +1009,65 @@ export function EvidenceAnalysisModule(ctx: WorkflowContext) {
  }, [dataStore, investigation.id, policyNotes, rationale])
  );
 
- const policies = dataStore.policies.filter((p) => p.status === 'PUBLISHED').slice(0, 6);
+ const publishedPolicies = useMemo(
+ () => dataStore.policies.filter((p) => p.status === 'PUBLISHED'),
+ [dataStore.policies]
+ );
+
+ const suggestions = useMemo(
+ () => suggestPoliciesForInvestigation(investigation, publishedPolicies, primaryReport),
+ [investigation, publishedPolicies, primaryReport]
+ );
+
+ const linkedIds = investigation.linkedPolicyIds ?? [];
+
+ useEffect(() => {
+ if (autoLinkedRef.current) return;
+ if (!suggestions.length) return;
+ const nextIds = autoLinkPolicyIds(suggestions, linkedIds);
+ const shouldFillNotes = !investigation.policyAnalysisNotes?.trim();
+ const idsChanged = nextIds.length !== linkedIds.length || nextIds.some((id) => !linkedIds.includes(id));
+ if (!idsChanged && !shouldFillNotes) {
+ autoLinkedRef.current = true;
+ return;
+ }
+ autoLinkedRef.current = true;
+ const notes = shouldFillNotes
+ ? buildSuggestedPolicyAnalysisNotes(suggestions, investigation.category ?? primaryReport?.category)
+ : undefined;
+ dataStore.updateInvestigationAnalysis(investigation.id, {
+ linkedPolicyIds: nextIds,
+ ...(notes ? { policyAnalysisNotes: notes } : {}),
+ });
+ if (notes) setPolicyNotes(notes);
+ }, [
+ dataStore,
+ investigation.category,
+ investigation.id,
+ investigation.policyAnalysisNotes,
+ linkedIds,
+ primaryReport?.category,
+ suggestions,
+ ]);
+
+ const policies = publishedPolicies;
+
+ const togglePolicyLink = (policyId: string) => {
+ const ids = investigation.linkedPolicyIds ?? [];
+ const next = ids.includes(policyId) ? ids.filter((x) => x !== policyId) : [...ids, policyId];
+ dataStore.updateInvestigationAnalysis(investigation.id, { linkedPolicyIds: next });
+ };
+
+ const applyAllSuggestions = () => {
+ const nextIds = autoLinkPolicyIds(suggestions, investigation.linkedPolicyIds ?? []);
+ const notes = buildSuggestedPolicyAnalysisNotes(suggestions, investigation.category ?? primaryReport?.category);
+ dataStore.updateInvestigationAnalysis(investigation.id, {
+ linkedPolicyIds: nextIds,
+ policyAnalysisNotes: notes,
+ });
+ setPolicyNotes(notes);
+ toast.success(`Linked ${nextIds.length} suggested polic${nextIds.length === 1 ? 'y' : 'ies'}.`);
+ };
 
  return (
  <div id="inv-section-analysis">
@@ -1045,31 +1111,102 @@ export function EvidenceAnalysisModule(ctx: WorkflowContext) {
  />
  </InvestigationSubModule>
 
- <InvestigationSubModule title="Policy analysis" description="Link relevant policies and document how evidence maps to policy language.">
+ <InvestigationSubModule
+ title="Policy analysis"
+ description="Relevant published policies are suggested from the allegation class and case language. High-confidence matches are auto-linked for your review."
+ badge={linkedIds.length ? `${linkedIds.length} linked` : undefined}
+ >
+ <div className="flex flex-wrap items-center gap-2 mb-3">
+ <Button type="button" size="sm" variant="outline" onClick={applyAllSuggestions} disabled={!suggestions.length}>
+ Apply suggested links
+ </Button>
+ <p className="text-xs text-[var(--color-text-muted)]">
+ {suggestions.length
+ ? `${suggestions.filter((s) => s.confidence === 'high').length} high · ${suggestions.filter((s) => s.confidence === 'medium').length} medium confidence`
+ : 'No published policies matched yet'}
+ </p>
+ </div>
+
+ {suggestions.length > 0 ? (
+ <ul className="space-y-2 mb-4">
+ {suggestions.map((s) => {
+ const linked = linkedIds.includes(s.policyId);
+ return (
+ <li
+ key={s.policyId}
+ className={`border p-3 text-sm ${linked ? 'border-[var(--color-primary-900)] bg-blue-50/60' : 'border-[var(--color-border-200)] bg-white'}`}
+ >
+ <div className="flex flex-wrap items-start justify-between gap-2">
+ <div className="min-w-0 flex-1">
+ <p className="font-medium text-[var(--mismo-text)]">{s.title}</p>
+ <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+ {s.confidence === 'high' ? 'High' : s.confidence === 'medium' ? 'Medium' : 'Low'} confidence
+ {s.memoCategory ? ` · ${s.memoCategory}` : ''} · {s.policyType}
+ </p>
+ <ul className="mt-1 text-xs text-[var(--mismo-text-secondary)] list-disc list-inside space-y-0.5">
+ {s.reasons.map((r) => (
+ <li key={r}>{r}</li>
+ ))}
+ </ul>
+ {s.excerpt && (
+ <p className="mt-2 text-xs italic text-[var(--color-text-secondary)] border-l-2 border-[var(--color-border-200)] pl-2">
+ {s.excerpt}
+ </p>
+ )}
+ </div>
+ <Button type="button" size="sm" variant={linked ? 'default' : 'outline'} onClick={() => togglePolicyLink(s.policyId)}>
+ {linked ? 'Linked' : 'Link'}
+ </Button>
+ </div>
+ </li>
+ );
+ })}
+ </ul>
+ ) : (
+ <p className="text-sm text-[var(--color-text-secondary)] mb-3">
+ Publish handbook memos in Policy Manager to enable automatic suggestions for this allegation type.
+ </p>
+ )}
+
+ <p className="text-xs font-medium text-[var(--color-text-muted)] mb-2">All published policies</p>
  <div className="flex flex-wrap gap-2 mb-3">
  {policies.map((p) => (
  <button
  key={p.id}
  type="button"
- className={`text-xs px-2 py-1 border ${investigation.linkedPolicyIds?.includes(p.id) ? 'border-[var(--color-primary-900)] bg-blue-50' : 'border-[var(--color-border-200)]'}`}
- onClick={() => {
- const ids = investigation.linkedPolicyIds ?? [];
- const next = ids.includes(p.id) ? ids.filter((x) => x !== p.id) : [...ids, p.id];
- dataStore.updateInvestigationAnalysis(investigation.id, { linkedPolicyIds: next });
- }}
+ className={`text-xs px-2 py-1 border ${linkedIds.includes(p.id) ? 'border-[var(--color-primary-900)] bg-blue-50 font-medium' : 'border-[var(--color-border-200)]'}`}
+ onClick={() => togglePolicyLink(p.id)}
  >
  {p.title}
  </button>
  ))}
+ {policies.length === 0 && (
+ <span className="text-xs text-[var(--color-text-muted)]">No published policies in this org yet.</span>
+ )}
  </div>
  <Textarea
- rows={4}
+ rows={5}
  placeholder="Example: Evidence may support violation of Anti-Harassment Policy Section 4.2…"
  value={policyNotes}
  onChange={(e) => setPolicyNotes(e.target.value)}
  onBlur={() => dataStore.updateInvestigationAnalysis(investigation.id, { policyAnalysisNotes: policyNotes })}
  />
- <AIGuidancePanel items={['Compare allegation facts to linked policy excerpts.', 'Highlight applicable sections automatically.', 'Flag conduct concerns without policy violations.']} />
+ <AIGuidancePanel
+ title="Suggested analysis focus"
+ items={
+ suggestions.length
+ ? [
+ ...suggestions.slice(0, 3).map((s) => `Review ${s.title}: ${s.reasons[0] ?? 'possible policy fit'}`),
+ 'Flag conduct concerns that may not rise to a policy violation.',
+ 'Confirm linked excerpts against the evidence timeline before outcome.',
+ ]
+ : [
+ 'Compare allegation facts to linked policy excerpts.',
+ 'Highlight applicable sections automatically.',
+ 'Flag conduct concerns without policy violations.',
+ ]
+ }
+ />
  </InvestigationSubModule>
 
  <InvestigationSubModule title="Findings rationale" description="Explain why your conclusion was reached - supporting evidence, credibility assessment, and policy application.">

@@ -894,6 +894,10 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                                   className="text-[var(--mismo-blue)] hover:underline"
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    if (linkedPromptResponse.answer === 'HAS_ISSUE') {
+                                      onNavigate('report-detail', { id: report.id });
+                                      return;
+                                    }
                                     onNavigate('prompt-response-detail', { id: linkedPromptResponse.id, type: linkedPromptResponse.answer });
                                   }}
                                 >
@@ -1023,6 +1027,10 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                     const openRow = () => {
                       if (row.answer === 'UNANSWERED') {
                         if (row.userId) openEmployeeRegister(row.userId);
+                        return;
+                      }
+                      if (row.answer === 'HAS_ISSUE' && linkedCase) {
+                        onNavigate('report-detail', { id: linkedCase.id });
                         return;
                       }
                       onNavigate('prompt-response-detail', { id: row.id, type: row.answer });

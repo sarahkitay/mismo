@@ -43,8 +43,8 @@ export function EmployeeInvestigationResponse({ dataStore, requestId, onNavigate
         <p className="text-[var(--mismo-text-secondary)] mt-2">
           This request may have expired or is not assigned to your account.
         </p>
-        <button type="button" onClick={() => onNavigate('home')} className="text-[var(--mismo-blue)] mt-4 hover:underline">
-          Back to dashboard
+        <button type="button" onClick={() => onNavigate('back', { fallback: 'home' })} className="text-[var(--mismo-blue)] mt-4 hover:underline">
+          Back
         </button>
       </div>
     );
@@ -54,8 +54,8 @@ export function EmployeeInvestigationResponse({ dataStore, requestId, onNavigate
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
-      <button type="button" onClick={() => onNavigate('home')} className="text-sm text-[var(--mismo-blue)] hover:underline">
-        ← Back to dashboard
+      <button type="button" onClick={() => onNavigate('back', { fallback: 'home' })} className="text-sm text-[var(--mismo-blue)] hover:underline">
+        ← Back
       </button>
 
       <div>

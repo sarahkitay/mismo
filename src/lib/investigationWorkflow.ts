@@ -376,6 +376,33 @@ export function getInvestigationPersons(inv: Investigation, owner?: User): Inves
   return persons;
 }
 
+/** Reporting employee / complainant for register display (persons → linked report → check-in). */
+export function getInvestigationReportingEmployeeId(
+  inv: Investigation,
+  options?: {
+    primaryReport?: Pick<Report, 'createdByUserId' | 'isAnonymous'> | null;
+    sourceResponseUserId?: string | null;
+  }
+): string | undefined {
+  const persons = getInvestigationPersons(inv);
+  const reportingParty = persons.find((p) => p.role === 'REPORTING_PARTY' && p.userId)?.userId;
+  if (reportingParty) return reportingParty;
+  if (options?.primaryReport?.createdByUserId && !options.primaryReport.isAnonymous) {
+    return options.primaryReport.createdByUserId;
+  }
+  if (options?.sourceResponseUserId) return options.sourceResponseUserId;
+  return inv.subjectUserIds?.[0];
+}
+
+/** User IDs marked reported-against (persons preferred, then legacy subjectUserIds). */
+export function getInvestigationReportedAgainstUserIds(inv: Investigation): string[] {
+  const fromPersons = getInvestigationPersons(inv)
+    .filter((p) => p.role === 'REPORTED_AGAINST' && p.userId)
+    .map((p) => p.userId!);
+  if (fromPersons.length) return Array.from(new Set(fromPersons));
+  return inv.subjectUserIds ?? [];
+}
+
 export function buildStageHistoryEntry(
   stage: InvestigationStage,
   actorUserId: string,

@@ -17,6 +17,7 @@ import {
  SelectTrigger,
  SelectValue,
 } from '@/components/ui/select';
+import { EmployeeSearchSelect, employeesToSearchOptions } from '@/components/admin/EmployeeSearchSelect';
 import { Icons } from '@/lib/icons';
 import { formatDate, getCategoryLabel, getStatusColor } from '@/lib/utils';
 import {
@@ -314,14 +315,16 @@ export function InvestigationWorkspace({
  <div className="flex flex-wrap items-end gap-2">
  <div className="space-y-1">
  <p className="text-xs text-[var(--color-text-muted)]">Employee</p>
- <Select value={personToAdd} onValueChange={setPersonToAdd}>
- <SelectTrigger className="w-[220px]"><SelectValue placeholder="Select one employee" /></SelectTrigger>
- <SelectContent>
- {users.filter((u) => u.role === 'EMPLOYEE' && !persons.some((p) => p.userId === u.id)).map((emp) => (
- <SelectItem key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</SelectItem>
- ))}
- </SelectContent>
- </Select>
+ <EmployeeSearchSelect
+ key={`person-picker-${persons.length}`}
+ value={personToAdd}
+ onChange={setPersonToAdd}
+ placeholder="Type a name to search…"
+ emptyMessage="No matching employees"
+ options={employeesToSearchOptions(
+ users.filter((u) => u.role === 'EMPLOYEE' && !persons.some((p) => p.userId === u.id))
+ )}
+ />
  </div>
  <div className="space-y-1">
  <p className="text-xs text-[var(--color-text-muted)]">Role in this case</p>
@@ -378,7 +381,11 @@ export function InvestigationWorkspace({
  <button
  type="button"
  className="text-[var(--mismo-blue)] hover:underline text-xs"
- onClick={() => guardedNavigate('prompt-response-detail', { id: sourceResponse.id, type: sourceResponse.answer })}
+ onClick={() =>
+ sourceResponse.answer === 'HAS_ISSUE'
+ ? guardedNavigate('report-detail', { id: r.id, fromInvestigation: investigation.id })
+ : guardedNavigate('prompt-response-detail', { id: sourceResponse.id, type: sourceResponse.answer })
+ }
  >
  {sourceResponse.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}
  </button>

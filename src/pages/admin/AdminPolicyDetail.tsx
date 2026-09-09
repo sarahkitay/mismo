@@ -247,8 +247,8 @@ export function AdminPolicyDetail({ dataStore, policyId, onNavigate }: AdminPoli
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <Button variant="ghost" className="px-0" onClick={() => onNavigate('policies')}>
-        Back to company memos
+      <Button variant="ghost" className="px-0" onClick={() => onNavigate('back', { fallback: 'policies' })}>
+        Back
       </Button>
 
       <Card className="mismo-card border border-[var(--color-border-200)]">

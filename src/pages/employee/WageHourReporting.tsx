@@ -74,9 +74,9 @@ export function WageHourReporting({ dataStore, onNavigate }: WageHourReportingPr
   if (step === 'no_ack') {
     return (
       <div className="space-y-6 max-w-2xl">
-        <Button variant="ghost" className="px-0" onClick={() => onNavigate('home')}>
+        <Button variant="ghost" className="px-0" onClick={() => onNavigate('back', { fallback: 'home' })}>
           <Icons.arrowLeft className="h-4 w-4 mr-2" />
-          Back to Home
+          Back
         </Button>
         <Card className="mismo-card border border-[var(--color-border-200)]">
           <CardContent className="p-4 sm:p-6 space-y-3">
@@ -98,9 +98,9 @@ export function WageHourReporting({ dataStore, onNavigate }: WageHourReportingPr
 
   return (
     <div className="space-y-6 max-w-3xl pb-6">
-      <Button variant="ghost" className="px-0" onClick={() => onNavigate('home')}>
+      <Button variant="ghost" className="px-0" onClick={() => onNavigate('back', { fallback: 'home' })}>
         <Icons.arrowLeft className="h-4 w-4 mr-2" />
-        Back to Home
+        Back
       </Button>
 
       <Card className="mismo-card border-2 border-emerald-700/30 shadow-[var(--shadow-2)]">

@@ -81,11 +81,11 @@ export function NewReport({ dataStore, onNavigate, initialParams }: NewReportPro
       <div className="form-header">
         <button
           type="button"
-          onClick={() => onNavigate('home')}
+          onClick={() => onNavigate('back', { fallback: 'home' })}
           className="flex items-center gap-2 text-sm text-[var(--mismo-text-secondary)] hover:text-[var(--mismo-text)] mb-4"
         >
           <Icons.arrowLeft className="h-4 w-4" />
-          Back to Home
+          Back
         </button>
         <h1 className="text-2xl font-bold text-[var(--mismo-text)]">Report workplace concern</h1>
         <PageMoreInfo>

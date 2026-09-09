@@ -421,9 +421,17 @@ export function useInvestigationActions(deps: InvestigationActionDeps) {
  }
  ) => {
  const now = new Date();
- setInvestigations((prev) =>
- prev.map((inv) => (inv.id === investigationId ? { ...inv, ...patch, lastUpdateAt: now, updatedAt: now } : inv))
+ setInvestigations((prev) => {
+ const next = prev.map((inv) =>
+ inv.id === investigationId ? { ...inv, ...patch, lastUpdateAt: now, updatedAt: now } : inv
  );
+ const updated = next.find((i) => i.id === investigationId);
+ if (updated) {
+ saveInvestigationWorkspace(updated);
+ void persistInvestigation(updated);
+ }
+ return next;
+ });
  },
  []
  );

@@ -13,7 +13,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
-import { getEffectiveStage, getInvestigationDisplayId, INVESTIGATION_STAGE_LABELS } from '@/lib/investigationWorkflow';
+import {
+  getEffectiveStage,
+  getInvestigationDisplayId,
+  getInvestigationReportingEmployeeId,
+  getInvestigationReportedAgainstUserIds,
+  getAllInvestigationEvidence,
+  INVESTIGATION_STAGE_LABELS,
+} from '@/lib/investigationWorkflow';
 import { computeOpenInvestigationWorkload } from '@/lib/investigationWorkload';
 import { formatCaseReference } from '@/lib/caseTypes';
 import { downloadCsv } from '@/lib/exportCsv';
@@ -160,11 +167,25 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
                 'Findings',
               ];
               const rows = filteredInvestigations.map((inv) => {
-                const subject = inv.subjectUserIds?.[0] ? users.find((u) => u.id === inv.subjectUserIds![0]) : null;
+                const primaryReport = inv.linkedReportIds[0]
+                  ? reports.find((r) => r.id === inv.linkedReportIds[0])
+                  : undefined;
+                const sourceResponse = inv.linkedPromptResponseId
+                  ? responses.find((r) => r.id === inv.linkedPromptResponseId)
+                  : primaryReport?.sourcePromptResponseId
+                    ? responses.find((r) => r.id === primaryReport.sourcePromptResponseId)
+                    : undefined;
+                const employeeId = getInvestigationReportingEmployeeId(inv, {
+                  primaryReport,
+                  sourceResponseUserId: sourceResponse?.userId,
+                });
+                const subject = employeeId ? users.find((u) => u.id === employeeId) : null;
                 const investigator = users.find((u) => u.id === inv.ownerId);
                 const noteCount = inv.notes?.length ?? 0;
                 const docCount =
-                  (inv.notes ?? []).reduce((sum, n) => sum + (n.attachments?.length ?? 0), 0) + (inv.outcomeAttachment ? 1 : 0);
+                  getAllInvestigationEvidence(inv).length +
+                  (inv.notes ?? []).reduce((sum, n) => sum + (n.attachments?.length ?? 0), 0) +
+                  (inv.outcomeAttachment ? 1 : 0);
                 return [
                   inv.referenceNumber ?? inv.id,
                   subject ? `${subject.firstName} ${subject.lastName}` : '-',
@@ -338,11 +359,9 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
               <tbody>
                 {filteredInvestigations.map((investigation) => {
                   const owner = users.find((u) => u.id === investigation.ownerId);
-                  const subject = investigation.subjectUserIds?.[0]
-                    ? users.find((u) => u.id === investigation.subjectUserIds![0])
-                    : null;
                   const noteCount = investigation.notes?.length ?? 0;
                   const docCount =
+                    getAllInvestigationEvidence(investigation).length +
                     (investigation.notes ?? []).reduce((sum, n) => sum + (n.attachments?.length ?? 0), 0) +
                     (investigation.outcomeAttachment ? 1 : 0);
                   const stage = getEffectiveStage(investigation);
@@ -354,6 +373,12 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
                     : primaryReport?.sourcePromptResponseId
                       ? responses.find((r) => r.id === primaryReport.sourcePromptResponseId)
                       : undefined;
+                  const employeeId = getInvestigationReportingEmployeeId(investigation, {
+                    primaryReport,
+                    sourceResponseUserId: sourceResponse?.userId,
+                  });
+                  const employee = employeeId ? users.find((u) => u.id === employeeId) : null;
+                  const reportedAgainstIds = getInvestigationReportedAgainstUserIds(investigation);
                   return (
                     <tr
                       key={investigation.id}
@@ -364,16 +389,16 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
                         {getInvestigationDisplayId(investigation)}
                       </td>
                       <td className="px-3 py-2">
-                        {subject ? (
+                        {employee ? (
                           <button
                             type="button"
                             className="text-[var(--mismo-blue)] hover:underline"
                             onClick={(e) => {
                               e.stopPropagation();
-                              onNavigate('employee-detail', { id: subject.id });
+                              onNavigate('employee-detail', { id: employee.id });
                             }}
                           >
-                            {subject.firstName} {subject.lastName}
+                            {employee.firstName} {employee.lastName}
                           </button>
                         ) : (
                           '-'
@@ -406,7 +431,11 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
                           <button
                             type="button"
                             className="text-[var(--mismo-blue)] hover:underline text-xs"
-                            onClick={() => onNavigate('prompt-response-detail', { id: sourceResponse.id, type: sourceResponse.answer })}
+                            onClick={() =>
+                              sourceResponse.answer === 'HAS_ISSUE' && primaryReport
+                                ? onNavigate('report-detail', { id: primaryReport.id, fromInvestigation: investigation.id })
+                                : onNavigate('prompt-response-detail', { id: sourceResponse.id, type: sourceResponse.answer })
+                            }
                           >
                             {sourceResponse.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}
                           </button>
@@ -415,8 +444,8 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
                         )}
                       </td>
                       <td className="px-3 py-2 max-w-[120px]">
-                        {investigation.subjectUserIds?.length
-                          ? investigation.subjectUserIds.map((id, idx) => {
+                        {reportedAgainstIds.length
+                          ? reportedAgainstIds.map((id, idx) => {
                               const u = users.find((x) => x.id === id);
                               return u ? (
                                 <span key={id}>
@@ -433,7 +462,7 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
                                   </button>
                                 </span>
                               ) : (
-                                id
+                                <span key={id}>{id}</span>
                               );
                             })
                           : '-'}

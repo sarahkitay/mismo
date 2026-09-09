@@ -149,9 +149,9 @@ export function AdminClientDetail({ dataStore, clientId, onNavigate }: AdminClie
   if (!client || !draft) {
     return (
       <div className="space-y-4">
-        <Button variant="outline" onClick={() => onNavigate('clients')}>
+        <Button variant="outline" onClick={() => onNavigate('back', { fallback: 'clients' })}>
           <Icons.arrowLeft className="h-4 w-4 mr-2" />
-          Back to Clients
+          Back
         </Button>
         <p className="text-[var(--mismo-text-secondary)]">Client company not found.</p>
       </div>
@@ -197,9 +197,9 @@ export function AdminClientDetail({ dataStore, clientId, onNavigate }: AdminClie
     <div className="space-y-6 max-w-4xl">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 print:hidden">
         <div>
-          <Button variant="ghost" className="px-0 mb-1" onClick={() => onNavigate('clients')}>
+          <Button variant="ghost" className="px-0 mb-1" onClick={() => onNavigate('back', { fallback: 'clients' })}>
             <Icons.arrowLeft className="h-4 w-4 mr-2" />
-            Clients
+            Back
           </Button>
           <h1 className="text-2xl font-bold text-[var(--mismo-text)] truncate">{draft.companyName || 'Client'}</h1>
           <p className="text-sm text-[var(--mismo-text-secondary)] mt-1">

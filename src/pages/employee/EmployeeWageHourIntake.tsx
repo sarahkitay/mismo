@@ -76,7 +76,7 @@ export function EmployeeWageHourIntake({ dataStore, reportId, onNavigate }: Empl
  return (
  <div className="text-center py-12">
  <p className="text-[var(--mismo-text-secondary)]">This wage &amp; hour report was not found.</p>
- <Button variant="link" className="mt-2" onClick={() => onNavigate('reports')}>Back to My Reports</Button>
+ <Button variant="link" className="mt-2" onClick={() => onNavigate('back', { fallback: 'reports' })}>Back</Button>
  </div>
  );
  }
@@ -167,9 +167,9 @@ export function EmployeeWageHourIntake({ dataStore, reportId, onNavigate }: Empl
 
  return (
  <div className="space-y-6 max-w-3xl pb-10">
- <Button variant="ghost" className="px-0" onClick={() => onNavigate('wage-hour-report')}>
+ <Button variant="ghost" className="px-0" onClick={() => onNavigate('back', { fallback: 'wage-hour-report' })}>
  <Icons.arrowLeft className="h-4 w-4 mr-2" />
- Back to screening
+ Back
  </Button>
 
  <div>

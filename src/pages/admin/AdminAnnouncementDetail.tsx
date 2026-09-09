@@ -52,7 +52,7 @@ export function AdminAnnouncementDetail({ dataStore, announcementId, onNavigate 
 
   return (
     <div className="space-y-4">
-      <Button variant="ghost" onClick={() => onNavigate('announcements')}>Back to Announcements</Button>
+      <Button variant="ghost" onClick={() => onNavigate('back', { fallback: 'announcements' })}>Back</Button>
       <Card className="mismo-card">
         <CardContent className="p-5 space-y-3">
           <h1 className="text-xl font-semibold">{isNew ? 'Create Announcement' : 'Announcement Detail'}</h1>

@@ -288,9 +288,9 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  return (
  <div className="space-y-6">
  <div className="flex flex-wrap items-center gap-2">
- <Button variant="ghost" onClick={() => onNavigate('users')}>
+ <Button variant="ghost" onClick={() => onNavigate('back', { fallback: 'users' })}>
  <Icons.arrowLeft className="h-4 w-4 mr-2" />
- Back to Employees
+ Back
  </Button>
  <div className="ml-auto flex flex-wrap items-center gap-2">
  <Button variant="default" onClick={handleViewAsEmployee}>
@@ -732,6 +732,10 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  onNavigate('prompt-response-detail', { id: r.id });
  return;
  }
+ if (r.answer === 'HAS_ISSUE' && linkedCase) {
+ onNavigate('report-detail', { id: linkedCase.id });
+ return;
+ }
  onNavigate('prompt-response-detail', { id: r.id, type: r.answer });
  };
  return (
@@ -888,7 +892,13 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  <button
  type="button"
  className="text-[var(--mismo-blue)] hover:underline"
- onClick={() => onNavigate('prompt-response-detail', { id: sourceResponse.id, type: sourceResponse.answer })}
+ onClick={() => {
+ if (sourceResponse.answer === 'HAS_ISSUE') {
+ onNavigate('report-detail', { id: report.id });
+ return;
+ }
+ onNavigate('prompt-response-detail', { id: sourceResponse.id, type: sourceResponse.answer });
+ }}
  >
  {sourceResponse.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}
  </button>

@@ -54,6 +54,21 @@ function isStaffRole(role: DataStore['currentRole']) {
  return role === 'HR' || role === 'MANAGER' || role === 'ADMIN' || role === 'SUPER_ADMIN';
 }
 
+function defaultHomePage(role: DataStore['currentRole']) {
+ if (role === 'EMPLOYEE') return 'home';
+ if (role === 'CLIENT') return 'client-dashboard';
+ if (role === 'SUPER_ADMIN') return 'clients';
+ return 'dashboard';
+}
+
+/** Same entity/page (tab or filter changes) should not create a new history entry. */
+function navigationRouteKey(page: string, params: Record<string, string>) {
+ if (page.includes('/')) return page;
+ return `${page}::${params.id ?? ''}`;
+}
+
+type SpaHistoryState = { mismoSpa?: boolean; depth?: number };
+
 export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  const { currentRole, switchRole, session, previewUserId, setPreviewUserId } = dataStore;
 
@@ -68,6 +83,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
 
  const [sidebarOpen, setSidebarOpen] = useState(false);
  const skipRoleNavOnMount = useRef(true);
+ const spaNavDepthRef = useRef(0);
  const [pageParams, setPageParams] = useState<Record<string, string>>(() => {
  const parsed = parseAppLocation(
  typeof window !== 'undefined' ? window.location.pathname : '/admin/dashboard',
@@ -78,6 +94,14 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  });
 
  useEffect(() => {
+ const existing = window.history.state as SpaHistoryState | null;
+ if (!existing?.mismoSpa) {
+ window.history.replaceState({ mismoSpa: true, depth: 0 } satisfies SpaHistoryState, '', window.location.href);
+ }
+ spaNavDepthRef.current = typeof existing?.depth === 'number' ? existing.depth : 0;
+ }, []);
+
+ useEffect(() => {
  const sessionRole = session?.role;
  if (!sessionRole) return;
 
@@ -85,7 +109,8 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
 
  // Stale URL from a previous session (e.g. /employee/* after logging in as HR/admin)
  if (isStaffRole(sessionRole) && pathname.startsWith('/employee')) {
- window.history.replaceState({}, '', '/admin/dashboard');
+ spaNavDepthRef.current = 0;
+ window.history.replaceState({ mismoSpa: true, depth: 0 } satisfies SpaHistoryState, '', '/admin/dashboard');
  switchRole(sessionRole);
  setActivePage('dashboard');
  setPageParams({});
@@ -93,7 +118,8 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  }
 
  if (sessionRole === 'EMPLOYEE' && !pathname.startsWith('/employee')) {
- window.history.replaceState({}, '', '/employee/dashboard');
+ spaNavDepthRef.current = 0;
+ window.history.replaceState({ mismoSpa: true, depth: 0 } satisfies SpaHistoryState, '', '/employee/dashboard');
  switchRole(sessionRole);
  setActivePage('home');
  setPageParams({});
@@ -101,7 +127,8 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  }
 
  if (sessionRole === 'CLIENT' && pathname !== '/admin/client-dashboard' && !pathname.startsWith('/admin/client-dashboard/')) {
- window.history.replaceState({}, '', '/admin/client-dashboard');
+ spaNavDepthRef.current = 0;
+ window.history.replaceState({ mismoSpa: true, depth: 0 } satisfies SpaHistoryState, '', '/admin/client-dashboard');
  switchRole(sessionRole);
  setActivePage('client-dashboard');
  setPageParams({});
@@ -109,15 +136,15 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  }
 
  if (isStaffRole(sessionRole) && pathname === '/admin/all-reports') {
- window.history.replaceState({}, '', `/admin/employee-prompt-responses${window.location.search}`);
+ window.history.replaceState({ mismoSpa: true, depth: 0 } satisfies SpaHistoryState, '', `/admin/employee-prompt-responses${window.location.search}`);
  } else if (isStaffRole(sessionRole) && pathname === '/admin/case-register') {
  const sp = new URLSearchParams(window.location.search);
  if (!sp.has('view')) sp.set('view', 'register');
  if (!sp.has('register')) sp.set('register', '1');
  if (!sp.has('channel')) sp.set('channel', 'register');
- window.history.replaceState({}, '', `/admin/employee-prompt-responses?${sp.toString()}`);
+ window.history.replaceState({ mismoSpa: true, depth: 0 } satisfies SpaHistoryState, '', `/admin/employee-prompt-responses?${sp.toString()}`);
  } else if (isStaffRole(sessionRole) && pathname === '/admin/campaigns') {
- window.history.replaceState({}, '', `/admin/prompts${window.location.search}`);
+ window.history.replaceState({ mismoSpa: true, depth: 0 } satisfies SpaHistoryState, '', `/admin/prompts${window.location.search}`);
  }
 
  const parsed = parseAppLocation(window.location.pathname, window.location.search, sessionRole as AppRole);
@@ -145,47 +172,90 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  } else if (currentRole === 'HR' || currentRole === 'MANAGER' || currentRole === 'ADMIN') {
  nextPage = 'dashboard';
  }
+ spaNavDepthRef.current = 0;
  setActivePage(nextPage);
  setPageParams({});
  const nextPath = buildAppUrl(nextPage, currentRole as AppRole, {});
  if (window.location.pathname.split('?')[0] !== nextPath.split('?')[0]) {
- window.history.replaceState({}, '', nextPath);
+ window.history.replaceState({ mismoSpa: true, depth: 0 } satisfies SpaHistoryState, '', nextPath);
  }
  }, [currentRole]);
 
  const handleNavigate = (page: string, params?: Record<string, string>) => {
- const routeParams = params ?? {};
+ let targetPage = page;
+ let routeParams = { ...(params ?? {}) };
+ const replaceHistory = routeParams.replace === '1';
+ delete routeParams.replace;
+
+ if (targetPage === 'back') {
+ if (spaNavDepthRef.current > 0) {
+ window.history.back();
+ return;
+ }
+ const fallback = routeParams.fallback ?? defaultHomePage(currentRole);
+ delete routeParams.fallback;
+ targetPage = fallback;
+ }
+
  const normalized = isStaffRole(currentRole)
- ? normalizeHrNavigation(page, routeParams)
- : { page, params: routeParams };
+ ? normalizeHrNavigation(targetPage, routeParams)
+ : { page: targetPage, params: routeParams };
+
+ const sameRoute =
+ navigationRouteKey(normalized.page, normalized.params) === navigationRouteKey(activePage, pageParams);
+
  setActivePage(normalized.page);
  setPageParams(normalized.params);
  setSidebarOpen(false);
+
  if (params?.previewEmployee === 'true') {
- window.history.pushState({}, '', '/employee/dashboard');
+ spaNavDepthRef.current += 1;
+ window.history.pushState(
+ { mismoSpa: true, depth: spaNavDepthRef.current } satisfies SpaHistoryState,
+ '',
+ '/employee/dashboard'
+ );
  } else {
  const nextPath = buildAppUrl(normalized.page, currentRole as AppRole, normalized.params);
- if (window.location.pathname + window.location.search !== nextPath) {
- window.history.pushState({}, '', nextPath);
+ const currentPath = window.location.pathname + window.location.search;
+ if (currentPath !== nextPath) {
+ if (sameRoute || replaceHistory) {
+ window.history.replaceState(
+ { mismoSpa: true, depth: spaNavDepthRef.current } satisfies SpaHistoryState,
+ '',
+ nextPath
+ );
+ } else {
+ spaNavDepthRef.current += 1;
+ window.history.pushState(
+ { mismoSpa: true, depth: spaNavDepthRef.current } satisfies SpaHistoryState,
+ '',
+ nextPath
+ );
+ }
  }
  }
  window.scrollTo(0, 0);
  };
 
  useEffect(() => {
- const onPop = () => {
+ const onPop = (event: PopStateEvent) => {
  const sessionRole = session?.role;
  const pathname = window.location.pathname.split('?')[0];
+ const state = (event.state ?? window.history.state) as SpaHistoryState | null;
+ spaNavDepthRef.current = typeof state?.depth === 'number' ? state.depth : Math.max(0, spaNavDepthRef.current - 1);
 
  if (sessionRole && isStaffRole(sessionRole) && pathname.startsWith('/employee')) {
- window.history.replaceState({}, '', '/admin/dashboard');
+ spaNavDepthRef.current = 0;
+ window.history.replaceState({ mismoSpa: true, depth: 0 } satisfies SpaHistoryState, '', '/admin/dashboard');
  switchRole(sessionRole);
  setActivePage('dashboard');
  setPageParams({});
  return;
  }
  if (sessionRole === 'EMPLOYEE' && !pathname.startsWith('/employee')) {
- window.history.replaceState({}, '', '/employee/dashboard');
+ spaNavDepthRef.current = 0;
+ window.history.replaceState({ mismoSpa: true, depth: 0 } satisfies SpaHistoryState, '', '/employee/dashboard');
  switchRole(sessionRole);
  setActivePage('home');
  setPageParams({});
@@ -405,7 +475,7 @@ export function AuthenticatedApp({ dataStore }: AuthenticatedAppProps) {
  </Button>
  </div>
  )}
- <TopNav dataStore={dataStore} onMenuClick={() => setSidebarOpen(true)} onNavigate={handleNavigate} />
+ <TopNav dataStore={dataStore} onMenuClick={() => setSidebarOpen(true)} onNavigate={handleNavigate} activePage={activePage} />
 
  <Sidebar
  dataStore={dataStore}

@@ -99,8 +99,8 @@ export function EmployeeIncidentIntake({ dataStore, reportId, onNavigate }: Empl
     return (
       <div className="text-center py-12">
         <p className="text-[var(--mismo-text-secondary)]">This incident report was not found on your account.</p>
-        <Button variant="link" className="mt-2" onClick={() => onNavigate('reports')}>
-          Back to My Reports
+        <Button variant="link" className="mt-2" onClick={() => onNavigate('back', { fallback: 'reports' })}>
+          Back
         </Button>
       </div>
     );
@@ -109,9 +109,9 @@ export function EmployeeIncidentIntake({ dataStore, reportId, onNavigate }: Empl
   if (isIncidentIntakeComplete(report)) {
     return (
       <div className="space-y-4 max-w-xl">
-        <Button variant="ghost" className="px-0" onClick={() => onNavigate(`report-detail/${report.id}`)}>
+        <Button variant="ghost" className="px-0" onClick={() => onNavigate('back', { fallback: `report-detail/${report.id}` })}>
           <Icons.arrowLeft className="h-4 w-4 mr-2" />
-          Back to report
+          Back
         </Button>
         <Card className="mismo-card">
           <CardContent className="p-6">
@@ -151,9 +151,9 @@ export function EmployeeIncidentIntake({ dataStore, reportId, onNavigate }: Empl
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <Button variant="ghost" className="px-0" onClick={() => requestLeave(() => onNavigate('reports'))}>
+      <Button variant="ghost" className="px-0" onClick={() => requestLeave(() => onNavigate('back', { fallback: 'reports' }))}>
         <Icons.arrowLeft className="h-4 w-4 mr-2" />
-        Back to My Reports
+        Back
       </Button>
 
       <div>
