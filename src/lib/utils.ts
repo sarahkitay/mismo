@@ -50,12 +50,13 @@ export function formatRelativeTime(date: Date | string): string {
 }
 
 // Format date
-export function formatDate(date: Date): string {
+export function formatDate(date: Date | string): string {
+ const d = coerceDate(date);
  return new Intl.DateTimeFormat('en-US', {
  month: 'short',
  day: 'numeric',
- year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
- }).format(date);
+ year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
+ }).format(d);
 }
 
 // Format date with time

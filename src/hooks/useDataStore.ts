@@ -1002,22 +1002,28 @@ export function useDataStore() {
 
  const markPromptResponseReviewed = useCallback(
  (responseId: string) => {
- const existing = responses.find((r) => r.id === responseId);
- if (!existing) return;
-
- // First opener/reviewer wins so every admin sees the same person and time.
- if (existing.reviewedAt && existing.needsReview === false) return;
-
  const now = new Date();
- const updated: PromptResponse = {
+ let toPersist: PromptResponse | undefined;
+
+ setResponses((prev) => {
+ const existing = prev.find((r) => r.id === responseId);
+ if (!existing) return prev;
+ // Already opened/reviewed for everyone — leave first opener intact.
+ if (existing.reviewedAt && existing.needsReview === false) return prev;
+
+ toPersist = {
  ...existing,
  reviewedAt: existing.reviewedAt ?? now,
  reviewedByUserId: existing.reviewedByUserId ?? currentUser.id,
  needsReview: false,
  updatedAt: now,
  };
- setResponses((prev) => prev.map((r) => (r.id === responseId ? updated : r)));
- void persistPromptResponse(updated);
+ return prev.map((r) => (r.id === responseId ? toPersist! : r));
+ });
+
+ if (!toPersist) return;
+
+ void persistPromptResponse(toPersist);
 
  const newActivity: ActivityEvent = {
  id: `activity-${Date.now()}`,
@@ -1029,7 +1035,7 @@ export function useDataStore() {
  };
  setActivities((prev) => [newActivity, ...prev]);
  },
- [currentUser.id, effectiveOrgId, responses]
+ [currentUser.id, effectiveOrgId]
  );
 
   const sendMemoReminderToUnacknowledged = useCallback(

@@ -77,7 +77,6 @@ export function useReportCaseActions(deps: ReportCaseDeps) {
  const refNum = allocateCaseReferenceNumber(reports, effectiveOrgId, 'WORKPLACE_INVESTIGATION');
  const defaultAdmin = users.find((u) => u.role === 'HR' || u.role === 'ADMIN');
  const severity = prompt?.severityOnHasIssue ?? 'HIGH';
- const screeningNote = response.notes?.trim();
  const activityId = `activity-${Date.now()}`;
  const ledger: Report['handlingLedger'] = [
  {
@@ -88,15 +87,7 @@ export function useReportCaseActions(deps: ReportCaseDeps) {
  createdBy: userId,
  },
  ];
- if (screeningNote?.startsWith('Financial follow-up:')) {
- ledger.push({
- id: `ledger-${Date.now()}-fin`,
- type: 'NOTE',
- text: screeningNote,
- createdAt: now,
- createdBy: userId,
- });
- }
+ // Pay-screening lines stay on wage & hour paths — not on workplace incident case files.
  const newReport: Report = {
  id: `report-${response.id}`,
  orgId: effectiveOrgId,

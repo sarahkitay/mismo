@@ -505,6 +505,22 @@ export async function persistPromptResponse(
     }
 
     const row = responseRow(response);
+
+    // Prefer update when the row already exists (e.g. marking Yes as opened/reviewed).
+    const existingById = await existingRowId(supabase, 'prompt_responses', response.id);
+    if (existingById) {
+      const { id: _id, org_id: _org, prompt_delivery_id: _pd, ...patch } = row;
+      const { error: updErr } = await supabase
+        .from('prompt_responses')
+        .update(patch)
+        .eq('id', existingById);
+      if (updErr) {
+        notify('response', updErr);
+        return { ok: false, responseId: existingById };
+      }
+      return { ok: true, responseId: existingById };
+    }
+
     const { error: insertErr } = await supabase.from('prompt_responses').insert(row);
     if (!insertErr) return { ok: true, responseId: response.id };
 

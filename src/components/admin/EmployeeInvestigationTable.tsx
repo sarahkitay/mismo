@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { formatDate, formatRelativeTime } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
 import { getInvestigationDisplayId } from '@/lib/investigationWorkflow';
 import type { Investigation, User } from '@/types';
 
@@ -50,7 +50,7 @@ export function EmployeeInvestigationTable({
                   {getInvestigationDisplayId(inv)}
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">{formatDate(inv.openedAt)}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{formatRelativeTime(inv.updatedAt)}</td>
+                <td className="px-3 py-2 whitespace-nowrap">{formatDate(inv.updatedAt)}</td>
                 <td className="px-3 py-2">
                   {investigator ? `${investigator.firstName} ${investigator.lastName}` : 'Unassigned'}
                 </td>

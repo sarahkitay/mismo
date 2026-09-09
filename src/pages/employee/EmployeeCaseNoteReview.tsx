@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 interface EmployeeCaseNoteReviewProps {
   dataStore: DataStore;
   ackId: string;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, params?: Record<string, string>) => void;
 }
 
 export function EmployeeCaseNoteReview({ dataStore, ackId, onNavigate }: EmployeeCaseNoteReviewProps) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findReportForPromptResponse } from '@/lib/recordLinks';
+import { findReportForPromptResponse, linkedReportForPromptRow } from '@/lib/recordLinks';
 import type { Report } from '@/types';
 
 function report(partial: Partial<Report> & Pick<Report, 'id'>): Report {
@@ -38,5 +38,42 @@ describe('findReportForPromptResponse', () => {
   it('matches deterministic report ids from the Yes flow', () => {
     const reports = [report({ id: 'report-response-3', reportSourceType: 'EMPLOYEE_PROMPT_RESPONSE' })];
     expect(findReportForPromptResponse('response-3', reports)?.id).toBe('report-response-3');
+  });
+});
+
+describe('linkedReportForPromptRow', () => {
+  it('does not attach another employee Yes case to a bare No', () => {
+    const reports = [
+      report({
+        id: 'case-yes',
+        sourcePromptResponseId: 'response-yes',
+        reportSourceType: 'EMPLOYEE_PROMPT_RESPONSE',
+        createdByUserId: 'emp-1',
+        status: 'NEW',
+      }),
+    ];
+    expect(
+      linkedReportForPromptRow(
+        { id: 'response-no', answer: 'NO_ISSUE', userId: 'emp-1', deliveryId: 'delivery-no' },
+        reports
+      )
+    ).toBeUndefined();
+  });
+
+  it('links a No that opened a wage & hour case from that response', () => {
+    const reports = [
+      report({
+        id: 'wh-1',
+        caseType: 'WAGE_HOUR',
+        sourcePromptResponseId: 'response-no',
+        reportSourceType: 'EMPLOYEE_PROMPT_RESPONSE',
+      }),
+    ];
+    expect(
+      linkedReportForPromptRow(
+        { id: 'response-no', answer: 'NO_ISSUE', userId: 'emp-1', deliveryId: 'delivery-no' },
+        reports
+      )?.id
+    ).toBe('wh-1');
   });
 });

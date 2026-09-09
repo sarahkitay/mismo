@@ -20,7 +20,7 @@ import { PageMoreInfo } from '@/components/PageMoreInfo';
 
 interface NewReportProps {
   dataStore: DataStore;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, params?: Record<string, string>) => void;
   initialParams?: Record<string, string>;
 }
 

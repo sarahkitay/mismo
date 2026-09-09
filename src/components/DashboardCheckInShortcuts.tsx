@@ -106,9 +106,13 @@ export function DashboardCheckInShortcuts({ dataStore, onNavigate, portal }: Das
   const submitIncidentFinancial = async (hasPayConcern: boolean) => {
     const deliveryId = incidentDeliveryId;
     if (!deliveryId || !incidentFinancialAnswer) return;
-    const note = hasPayConcern
-      ? 'Financial follow-up: employee indicated a pay, compensation, or benefits-related concern.'
-      : 'Financial follow-up: no pay, compensation, or benefits-related concern indicated.';
+    // Workplace Yes cases stay about the incident — omit pay-screening notes.
+    const note =
+      incidentFinancialAnswer === 'HAS_ISSUE'
+        ? undefined
+        : hasPayConcern
+          ? 'Financial follow-up: employee indicated a pay, compensation, or benefits-related concern.'
+          : 'Financial follow-up: no pay, compensation, or benefits-related concern indicated.';
 
     if (incidentFinancialAnswer === 'HAS_ISSUE') {
       try {

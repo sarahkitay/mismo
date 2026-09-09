@@ -22,7 +22,7 @@ import { toast } from 'sonner';
 import {
  activityNavTarget,
  findInvestigationForReport,
- findReportForPromptResponse,
+ linkedReportForPromptRow,
 } from '@/lib/recordLinks';
 import { formatCaseReference } from '@/lib/caseTypes';
 import { getInvestigationDisplayId } from '@/lib/investigationWorkflow';
@@ -724,7 +724,13 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  <tbody>
  {employeePromptRows.map((r) => {
  const needsReview = r.needsReview;
- const linkedCase = r.answer === 'UNANSWERED' ? undefined : findReportForPromptResponse(r.id, dataStore.reports);
+ const linkedCase =
+ r.answer === 'UNANSWERED'
+ ? undefined
+ : linkedReportForPromptRow(
+ { id: r.id, answer: r.answer, userId: employee.id, deliveryId: r.deliveryId, promptId: undefined },
+ dataStore.reports
+ );
  const linkedInv = linkedCase
  ? findInvestigationForReport(linkedCase, dataStore.investigations)
  : dataStore.investigations.find((i) => i.linkedPromptResponseId === r.id);
@@ -733,7 +739,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  onNavigate('prompt-response-detail', { id: r.id });
  return;
  }
- if (r.answer === 'HAS_ISSUE' && linkedCase) {
+ if (linkedCase) {
  onNavigate('report-detail', { id: linkedCase.id });
  return;
  }
@@ -893,13 +899,7 @@ export function AdminEmployeeDetail({ dataStore, employeeId, onNavigate, initial
  <button
  type="button"
  className="text-[var(--mismo-blue)] hover:underline"
- onClick={() => {
- if (sourceResponse.answer === 'HAS_ISSUE') {
- onNavigate('report-detail', { id: report.id });
- return;
- }
- onNavigate('prompt-response-detail', { id: sourceResponse.id, type: sourceResponse.answer });
- }}
+ onClick={() => onNavigate('report-detail', { id: report.id })}
  >
  {sourceResponse.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}
  </button>

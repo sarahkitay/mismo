@@ -32,6 +32,7 @@ import { buildHrSignOff, getSlaLabel } from '@/lib/reportDetailHelpers';
 import { buildCaseNoteReviewEmailBody, caseNoteAckStatusLabel } from '@/lib/caseNoteAcknowledgement';
 import { CaseQuickNoteFab } from '@/components/admin/CaseQuickNoteFab';
 import { markHrNavSeen } from '@/lib/hrNavAttention';
+import { incidentFacingCheckInNotes, isFinancialFollowUpNote } from '@/lib/checkInResponseDisplay';
 
 interface AdminReportDetailProps {
  dataStore: DataStore;
@@ -63,8 +64,11 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  const [manualOpen, setManualOpen] = useState(false);
 
  const orderedLedger = useMemo(
- () => [...(report?.handlingLedger ?? [])].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
- [report?.handlingLedger]
+ () =>
+ [...(report?.handlingLedger ?? [])]
+ .filter((entry) => report?.caseType === 'WAGE_HOUR' || !isFinancialFollowUpNote(entry.text))
+ .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+ [report?.handlingLedger, report?.caseType]
  );
 
  const reportCaseNoteAcks = useMemo(
@@ -114,11 +118,6 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  }
 
  const caseId = formatCaseReference(report);
- const needsPromptReview =
- Boolean(sourceResponse) &&
- sourceResponse!.answer === 'HAS_ISSUE' &&
- !sourceResponse!.reviewedAt &&
- sourceResponse!.needsReview !== false;
  const promptReviewer = sourceResponse?.reviewedByUserId
  ? dataStore.users.find((u) => u.id === sourceResponse.reviewedByUserId)
  : null;
@@ -541,8 +540,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  >
  {sourceResponse.answer === 'HAS_ISSUE' ? 'Yes' : 'No'}
  </Badge>
- {needsPromptReview && <Badge className="status-chip status-chip--warn">Needs HR review</Badge>}
- {!needsPromptReview && sourceResponse.reviewedAt && (
+ {sourceResponse.reviewedAt && (
  <Badge variant="outline" className="border-emerald-600/40 text-emerald-800">
  Opened
  </Badge>
@@ -554,19 +552,14 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  )}
  </div>
  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-[var(--color-text-secondary)]">
- <p>
- Prompt type: {sourcePrompt?.type ?? '—'}
- {sourcePrompt?.includeFinancialQuestion ? ' · includes pay screening' : ''}
- </p>
+ <p>Prompt type: {report.caseType === 'WAGE_HOUR' ? 'WAGE_HOUR' : (sourcePrompt?.type ?? '—')}</p>
  <p>Submitted: {sourceResponse.submittedAt.toLocaleString()}</p>
- {sourceResponse.reviewedAt ? (
+ {sourceResponse.reviewedAt && (
  <p className="sm:col-span-2 text-[var(--color-text-primary)]">
  <span className="font-medium">Opened by {openedByLabel ?? 'HR'}</span>
  {' · '}
  {sourceResponse.reviewedAt.toLocaleString()}
  </p>
- ) : (
- <p>Needs HR review: Yes</p>
  )}
  {reporter && !report.isAnonymous && (
  <p>
@@ -581,9 +574,15 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  </p>
  )}
  </div>
- {sourceResponse.notes && (
- <p className="text-sm border-l-2 border-[var(--color-border-200)] pl-3">{sourceResponse.notes}</p>
- )}
+ {(() => {
+ const checkInNotes =
+ report.caseType === 'WAGE_HOUR'
+ ? sourceResponse.notes?.trim() || undefined
+ : incidentFacingCheckInNotes(sourceResponse.notes);
+ return checkInNotes ? (
+ <p className="text-sm border-l-2 border-[var(--color-border-200)] pl-3">{checkInNotes}</p>
+ ) : null;
+ })()}
  {needsIntake && (
  <p className="text-xs text-[var(--color-text-secondary)] rounded-md border border-amber-200 bg-amber-50/80 p-3">
  This Yes response still needs the employee&apos;s secure incident intake form. Use Contact employee to send
@@ -605,17 +604,6 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  Log outreach
  </Button>
  </>
- )}
- {needsPromptReview && (
- <Button
- className="bg-[var(--color-primary-900)] text-white"
- onClick={() => {
- dataStore.markPromptResponseReviewed(sourceResponse.id);
- toast.success('Marked as reviewed.');
- }}
- >
- Mark reviewed
- </Button>
  )}
  {sourcePrompt?.routeToPayroll && (
  <Button onClick={() => toast.success('Response sent to payroll team for handling.')}>
@@ -1093,6 +1081,7 @@ export function AdminReportDetail({ dataStore, reportId, onNavigate, fromInvesti
  </div>
  </CardContent>
  </Card>
+ </div>
 
  {sourceResponse && reporter && !report.isAnonymous && (
  <>

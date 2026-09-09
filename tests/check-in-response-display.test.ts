@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   checkInResponseDisplayLabel,
+  incidentFacingCheckInNotes,
   isWageHourOrientedResponse,
 } from '@/lib/checkInResponseDisplay';
 
@@ -53,5 +54,16 @@ describe('checkInResponseDisplayLabel', () => {
       notes: 'Financial follow-up: no pay, compensation, or benefits-related concern indicated.',
     });
     expect(display.title).toBe('Incident Query');
+  });
+
+  it('hides financial follow-up notes on workplace incident cases', () => {
+    expect(
+      incidentFacingCheckInNotes(
+        'Financial follow-up: no pay, compensation, or benefits-related concern indicated.'
+      )
+    ).toBeUndefined();
+    expect(incidentFacingCheckInNotes('Employee described unsafe conditions in the warehouse.')).toBe(
+      'Employee described unsafe conditions in the warehouse.'
+    );
   });
 });

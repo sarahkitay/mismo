@@ -15,7 +15,7 @@ import { PageMoreInfo } from '@/components/PageMoreInfo';
 interface EmployeeIncidentIntakeProps {
   dataStore: DataStore;
   reportId: string;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, params?: Record<string, string>) => void;
 }
 
 function draftKey(reportId: string) {

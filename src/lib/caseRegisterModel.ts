@@ -46,6 +46,8 @@ export function deriveBucket(
   filters: Record<string, string>,
   hubPage: 'prompt-responses' | 'case-register'
 ): CaseRegisterBucket {
+  // Shared Yes-review queue (incident + wage & hour) must not fall into the case register.
+  if (filters.needs_review === '1') return 'PROMPT_YES';
   if (filters.channel === 'register' || filters.channel === 'wage_hour') {
     if (filters.critical === '1') return 'NEW_CRITICAL';
     if (filters.needs_info === '1') return 'NEEDS_RESPONSE';

@@ -27,7 +27,7 @@ import { PageMoreInfo } from '@/components/PageMoreInfo';
 interface EmployeeWageHourIntakeProps {
  dataStore: DataStore;
  reportId: string;
- onNavigate: (page: string) => void;
+ onNavigate: (page: string, params?: Record<string, string>) => void;
 }
 
 const ISSUE_TYPES = Object.keys(WAGE_HOUR_ISSUE_LABELS) as WageHourIssueType[];

@@ -11,7 +11,7 @@ import {
   relatedNavForDelivery,
   userDisplayName,
 } from '@/lib/recordLinks';
-import { checkInResponseDisplayLabel } from '@/lib/checkInResponseDisplay';
+import { checkInResponseDisplayLabel, incidentFacingCheckInNotes } from '@/lib/checkInResponseDisplay';
 import { markHrNavSeen } from '@/lib/hrNavAttention';
 import { toast } from 'sonner';
 
@@ -22,8 +22,9 @@ interface AdminPromptResponseDetailProps {
 }
 
 /**
- * Yes (HAS_ISSUE) responses open the linked case directly.
- * This page remains for No responses and unanswered deliveries.
+ * Answered check-ins with a linked case go straight to the case page.
+ * Yes without a case creates one, then opens it.
+ * This page remains only for unanswered deliveries and bare No answers (no case).
  */
 export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }: AdminPromptResponseDetailProps) {
   const [openingCase, setOpeningCase] = useState(false);
@@ -36,9 +37,20 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
     }
   }, [dataStore.currentUser.id, response]);
 
-  // Yes responses → case page (create case if needed).
+  // Any answered check-in that already has a case → case page (no middle page).
   useEffect(() => {
-    if (!response || response.answer !== 'HAS_ISSUE') return;
+    if (!response) return;
+
+    const dest = destinationForPromptResponse(response, dataStore.reports);
+    if (dest.page === 'report-detail') {
+      if (response.answer === 'HAS_ISSUE') {
+        dataStore.markPromptResponseReviewed?.(response.id);
+      }
+      onNavigate(dest.page, { ...dest.params, replace: '1' });
+      return;
+    }
+
+    if (response.answer !== 'HAS_ISSUE') return;
 
     let cancelled = false;
 
@@ -93,7 +105,8 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
     );
   }
 
-  if (response?.answer === 'HAS_ISSUE') {
+  // Redirecting to case (or creating one for Yes).
+  if (response && (response.answer === 'HAS_ISSUE' || destinationForPromptResponse(response, dataStore.reports).page === 'report-detail')) {
     return (
       <div className="space-y-3 py-8 text-center">
         <p className="text-sm text-[var(--mismo-text-secondary)]">
@@ -136,9 +149,6 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
             {delivery.dueAt && (
               <p className="text-sm text-[var(--mismo-text-secondary)]">Due: {delivery.dueAt.toLocaleString()}</p>
             )}
-            <div className="rounded-md border border-[var(--color-border-200)] bg-[var(--color-surface-100)] p-3 text-sm text-[var(--color-text-secondary)]">
-              Assistant (preview): suggest a short reminder focused on the due date and confidentiality. Final copy is edited by HR before send.
-            </div>
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
@@ -171,10 +181,9 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
 
   if (!response) return null;
 
-  // No-issue response summary (Yes redirects above).
+  // Bare No with no linked case — short summary only (case workflow lives on the case page).
   const prompt = dataStore.prompts.find((p) => p.id === response.promptId);
   const user = dataStore.users.find((u) => u.id === response.userId);
-  const dest = destinationForPromptResponse(response, dataStore.reports);
   const linked = linkedReportForPromptRow(
     {
       id: response.id,
@@ -186,6 +195,7 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
     dataStore.reports
   );
   const display = checkInResponseDisplayLabel(prompt, response, linked);
+  const notes = incidentFacingCheckInNotes(response.notes);
 
   return (
     <div className="space-y-4">
@@ -220,19 +230,16 @@ export function AdminPromptResponseDetail({ dataStore, responseId, onNavigate }:
               {userDisplayName(user)}
             </button>
           </p>
-          {prompt && (
-            <p className="text-sm text-[var(--mismo-text-secondary)]">
-              Prompt type: {prompt.type}
-              {prompt.includeFinancialQuestion ? ' · includes pay screening' : ''}
-            </p>
-          )}
+          <p className="text-sm text-[var(--mismo-text-secondary)]">Prompt type: {display.type}</p>
           <p className="text-sm text-[var(--mismo-text-secondary)]">Submitted: {response.submittedAt.toLocaleString()}</p>
-          {response.notes && <p className="text-sm border-l-2 border-[var(--color-border-200)] pl-3 mt-2">{response.notes}</p>}
-          {dest.page === 'report-detail' && (
-            <Button className="mt-3" onClick={() => onNavigate(dest.page, dest.params)}>
-              Open linked case
-            </Button>
-          )}
+          {notes && <p className="text-sm border-l-2 border-[var(--color-border-200)] pl-3 mt-2">{notes}</p>}
+          <Button
+            className="mt-3"
+            variant="outline"
+            onClick={() => onNavigate('employee-detail', { id: response.userId, tab: 'prompts' })}
+          >
+            Open employee record
+          </Button>
         </CardContent>
       </Card>
     </div>

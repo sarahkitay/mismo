@@ -147,7 +147,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  label="Yes responses requiring attention"
  count={dc.yesResponsesNeedingReview}
  urgent
- onClick={() => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', needs_review: '1', view: 'prompts' })}
+ onClick={() => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', needs_review: '1', view: 'prompts', rangePreset: 'ALL' })}
  />
  <ActionLine
  label="Unfinished investigations"
@@ -288,7 +288,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  return;
  }
  if (row.kind === 'response') {
- if (row.answer === 'HAS_ISSUE' && linkedCase) {
+ if (linkedCase) {
  onNavigate('report-detail', { id: linkedCase.id });
  return;
  }
@@ -422,7 +422,7 @@ export function AdminDashboard({ dataStore, onNavigate }: AdminDashboardProps) {
  {
  label: 'Yes responses needing review',
  count: dc.yesResponsesNeedingReview,
- onClick: () => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', needs_review: '1', view: 'prompts' }),
+ onClick: () => onNavigate('prompt-responses', { answer: 'HAS_ISSUE', needs_review: '1', view: 'prompts', rangePreset: 'ALL' }),
  },
  {
  label: 'Reports awaiting clarification',

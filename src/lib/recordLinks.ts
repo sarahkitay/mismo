@@ -28,6 +28,16 @@ export function linkedReportForPromptRow(
   reports: Report[]
 ): Report | undefined {
   if (row.answer === 'UNANSWERED') return undefined;
+  // No answers only link when the case was opened from this response (e.g. wage & hour after No).
+  // Do not fall back to another open case for the same employee.
+  if (row.answer === 'NO_ISSUE') {
+    const candidateIds = [row.id, row.deliveryId].filter(Boolean) as string[];
+    for (const id of candidateIds) {
+      const bySource = reports.find((r) => r.sourcePromptResponseId === id);
+      if (bySource) return bySource;
+    }
+    return undefined;
+  }
   return findReportForPromptResponse(row.id, reports, {
     userId: row.userId,
     promptDeliveryId: row.deliveryId,
@@ -169,19 +179,24 @@ export function buildPromptResponseNav(
   reports?: Report[]
 ): RecordNavTarget | undefined {
   if (!response) return undefined;
-  if (response.answer === 'HAS_ISSUE' && reports) {
-    const linkedCase = findReportForPromptResponse(response.id, reports, {
-      userId: response.userId,
-      promptDeliveryId: response.promptDeliveryId,
-      promptId: response.promptId,
-    });
+  if (reports) {
+    const linkedCase = linkedReportForPromptRow(
+      {
+        id: response.id,
+        answer: response.answer,
+        userId: response.userId,
+        deliveryId: response.promptDeliveryId,
+        promptId: response.promptId,
+      },
+      reports
+    );
     if (linkedCase) {
       return {
         kind: 'case',
         page: 'report-detail',
         params: { id: linkedCase.id },
         label: promptTitle ?? 'Check-in response',
-        sublabel: `Yes · open case ${formatCaseReference(linkedCase)}`,
+        sublabel: `${response.answer === 'HAS_ISSUE' ? 'Yes' : 'No'} · open case ${formatCaseReference(linkedCase)}`,
       };
     }
   }
@@ -194,20 +209,23 @@ export function buildPromptResponseNav(
   };
 }
 
-/** Prefer the case page for Yes responses; keep detail for No / unanswered. */
+/** Prefer the case page whenever a check-in already opened a case; detail is only for unanswered / bare No. */
 export function destinationForPromptResponse(
   response: PromptResponse,
   reports: Report[]
 ): { page: string; params: Record<string, string> } {
-  if (response.answer === 'HAS_ISSUE') {
-    const linkedCase = findReportForPromptResponse(response.id, reports, {
+  const linkedCase = linkedReportForPromptRow(
+    {
+      id: response.id,
+      answer: response.answer,
       userId: response.userId,
-      promptDeliveryId: response.promptDeliveryId,
+      deliveryId: response.promptDeliveryId,
       promptId: response.promptId,
-    });
-    if (linkedCase) {
-      return { page: 'report-detail', params: { id: linkedCase.id } };
-    }
+    },
+    reports
+  );
+  if (linkedCase) {
+    return { page: 'report-detail', params: { id: linkedCase.id } };
   }
   return { page: 'prompt-response-detail', params: { id: response.id, type: response.answer } };
 }

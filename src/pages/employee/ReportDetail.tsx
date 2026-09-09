@@ -22,7 +22,7 @@ import {
 interface ReportDetailProps {
   dataStore: DataStore;
   reportId: string;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, params?: Record<string, string>) => void;
 }
 
 export function ReportDetail({ dataStore, reportId, onNavigate }: ReportDetailProps) {

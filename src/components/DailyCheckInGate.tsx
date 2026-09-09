@@ -135,10 +135,14 @@ export function DailyCheckInGate({ dataStore, onNavigate, portal }: DailyCheckIn
 
  const submitFinancialAndClose = async (hasPayConcern: boolean) => {
  if (!financialFollowUp) return;
- const note = hasPayConcern
+ const { deliveryId, answer, promptIdForReport } = financialFollowUp;
+ // Workplace incident Yes: keep the case about the incident — do not attach pay-screening notes.
+ const note =
+ answer === 'HAS_ISSUE' && isIncidentGate
+ ? undefined
+ : hasPayConcern
  ? 'Financial follow-up: employee indicated a pay, compensation, or benefits-related concern.'
  : 'Financial follow-up: no pay, compensation, or benefits-related concern indicated.';
- const { deliveryId, answer, promptIdForReport } = financialFollowUp;
  setFinancialFollowUp(null);
  setFinancialPayrollChoice(false);
  setIncidentStep('question');

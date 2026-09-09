@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { formatDate, formatRelativeTime } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
 import {
   getEffectiveStage,
   getInvestigationDisplayId,
@@ -230,7 +230,6 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
               onClick={() =>
                 onNavigate('prompt-responses', {
                   view: 'prompts',
-                  channel: 'incident',
                   answer: 'HAS_ISSUE',
                   needs_review: '1',
                   rangePreset: 'ALL',
@@ -405,7 +404,7 @@ export function AdminInvestigations({ dataStore, onNavigate, initialFilters }: A
                         )}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap">{formatDate(investigation.openedAt)}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{formatRelativeTime(investigation.updatedAt)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{formatDate(investigation.updatedAt)}</td>
                       <td className="px-3 py-2">{owner ? `${owner.firstName} ${owner.lastName}` : 'Unassigned'}</td>
                       <td className="px-3 py-2">
                         <Badge className={investigation.status === 'OPEN' ? 'status-chip status-chip--warn' : 'status-chip status-chip--success'}>

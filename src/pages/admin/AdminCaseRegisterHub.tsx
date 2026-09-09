@@ -48,7 +48,7 @@ import {
   exportEmployeePromptRegisterCsv,
 } from '@/lib/employeePromptRegister';
 import { getInvestigationDisplayId } from '@/lib/investigationWorkflow';
-import { promptResponseNeedsHrReview } from '@/lib/investigationWorkload';
+import { promptResponseNeedsHrReview, yesResponsesUnderReview } from '@/lib/investigationWorkload';
 import { markHrNavSeen } from '@/lib/hrNavAttention';
 import { checkInResponseDisplayLabel } from '@/lib/checkInResponseDisplay';
 
@@ -188,13 +188,8 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
   );
 
   const orgYesNeedingReviewCount = useMemo(
-    () =>
-      responses.filter(
-        (r) =>
-          incidentPromptIds.has(r.promptId) &&
-          promptResponseNeedsHrReview(r, reports, investigations)
-      ).length,
-    [responses, reports, investigations, incidentPromptIds]
+    () => yesResponsesUnderReview(responses, reports, investigations).length,
+    [responses, reports, investigations]
   );
 
   const incidentBucketCounts = useMemo(() => {
@@ -203,11 +198,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
         yes: responses.filter(
           (r) => r.answer === 'HAS_ISSUE' && incidentPromptIds.has(r.promptId)
         ).length,
-        yesNeedsReview: responses.filter(
-          (r) =>
-            incidentPromptIds.has(r.promptId) &&
-            promptResponseNeedsHrReview(r, reports, investigations)
-        ).length,
+        yesNeedsReview: orgYesNeedingReviewCount,
         no: responses.filter(
           (r) => r.answer === 'NO_ISSUE' && incidentPromptIds.has(r.promptId)
         ).length,
@@ -221,12 +212,9 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
     });
     return {
       yes: rows.filter((r) => r.answer === 'HAS_ISSUE').length,
-      yesNeedsReview: rows.filter((r) => {
-        if (r.answer !== 'HAS_ISSUE') return false;
-        const full = responses.find((resp) => resp.id === r.id);
-        if (!full) return r.needsReview;
-        return promptResponseNeedsHrReview(full, reports, investigations);
-      }).length,
+      yesNeedsReview: yesResponsesUnderReview(responses, reports, investigations).filter(
+        (r) => r.userId === employeeIdFilter
+      ).length,
       no: rows.filter((r) => r.answer === 'NO_ISSUE').length,
       unanswered: rows.filter((r) => r.answer === 'UNANSWERED').length,
     };
@@ -241,6 +229,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
     range,
     incidentPromptIds,
     orgUnansweredCount,
+    orgYesNeedingReviewCount,
   ]);
 
   const registerBucketCounts = useMemo(() => {
@@ -280,8 +269,55 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
 
   const promptRows = useMemo(() => {
     if (bucket === 'CASE_REGISTER' || bucket === 'NEW_CRITICAL' || bucket === 'NEEDS_RESPONSE') return [];
-    if (!employeeIdFilter && (promptChannel === 'memo' || promptChannel === 'register')) return [];
+    if (!employeeIdFilter && (promptChannel === 'memo' || promptChannel === 'register') && !needsReviewOnly) {
+      return [];
+    }
     const q = promptQuery.trim().toLowerCase();
+    /** Needs-review queue: most recent submission first. Other lists: last modified. */
+    const sortRows = <T extends { date: Date; modified: Date }>(rows: T[]) =>
+      [...rows].sort((a, b) =>
+        needsReviewOnly
+          ? b.date.getTime() - a.date.getTime()
+          : b.modified.getTime() - a.modified.getTime()
+      );
+
+    const toAnsweredRow = (r: (typeof responses)[number]) => {
+      const u = users.find((user) => user.id === r.userId);
+      const prompt = prompts.find((p) => p.id === r.promptId);
+      const stillNeeds = promptResponseNeedsHrReview(r, reports, investigations);
+      const linked = linkedReportForPromptRow(
+        { id: r.id, answer: r.answer, userId: r.userId, deliveryId: r.promptDeliveryId, promptId: r.promptId },
+        reports
+      );
+      const display = checkInResponseDisplayLabel(prompt, r, linked);
+      return {
+        id: r.id,
+        deliveryId: r.promptDeliveryId,
+        userId: r.userId,
+        promptTitle: display.title,
+        promptType: display.type,
+        promptId: r.promptId,
+        userName: u ? `${u.firstName} ${u.lastName}` : 'Employee',
+        answer: r.answer,
+        date: r.submittedAt,
+        modified: r.updatedAt ?? r.submittedAt,
+        needsReview: stillNeeds,
+      };
+    };
+
+    // Yes · needs review: Incident Query + Wage & Hour Query, all unreviewed, newest first.
+    if (needsReviewOnly) {
+      const reviewRows = sortRows(
+        yesResponsesUnderReview(responses, reports, investigations)
+          .filter((r) => {
+            if (employeeIdFilter && r.userId !== employeeIdFilter) return false;
+            return inDateRange(r.submittedAt, range);
+          })
+          .map(toAnsweredRow)
+          .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
+      );
+      return reviewRows;
+    }
 
     if (employeeIdFilter) {
       const ansFilter =
@@ -292,29 +328,24 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
             : bucket === 'PROMPT_UNANSWERED'
               ? ('UNANSWERED' as const)
               : null;
-      return buildEmployeePromptRegisterRows(employeeIdFilter, users, deliveries, responses, prompts, {
-        range,
-        answerFilter: ansFilter,
-        needsReviewOnly: false,
-        reports,
-      })
-        .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
-        .map((row) => {
-          if (row.answer !== 'HAS_ISSUE') return { ...row, needsReview: false };
-          const full = responses.find((resp) => resp.id === row.id);
-          const stillNeeds = full
-            ? promptResponseNeedsHrReview(full, reports, investigations)
-            : row.needsReview;
-          return { ...row, needsReview: stillNeeds };
+      return sortRows(
+        buildEmployeePromptRegisterRows(employeeIdFilter, users, deliveries, responses, prompts, {
+          range,
+          answerFilter: ansFilter,
+          needsReviewOnly: false,
+          reports,
         })
-        .filter((row) => {
-          if (!(needsReviewOnly && bucket === 'PROMPT_YES')) return true;
-          return row.needsReview;
-        });
+          .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
+          .map((row) => {
+            if (row.answer !== 'HAS_ISSUE') return { ...row, needsReview: false };
+            const full = responses.find((resp) => resp.id === row.id);
+            const stillNeeds = full
+              ? promptResponseNeedsHrReview(full, reports, investigations)
+              : row.needsReview;
+            return { ...row, needsReview: stillNeeds };
+          })
+      );
     }
-
-    const sortRows = <T extends { modified: Date }>(rows: T[]) =>
-      [...rows].sort((a, b) => b.modified.getTime() - a.modified.getTime());
 
     if (bucket === 'PROMPT_UNANSWERED') {
       return sortRows(
@@ -350,35 +381,9 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
     const ansFilter = bucket === 'PROMPT_YES' ? 'HAS_ISSUE' : bucket === 'PROMPT_NO' ? 'NO_ISSUE' : null;
     const answeredRows = sortRows(
       responses
-        .filter((r) => inDateRange(r.createdAt, range) && promptIdsForChannel.has(r.promptId))
+        .filter((r) => inDateRange(r.submittedAt, range) && promptIdsForChannel.has(r.promptId))
         .filter((r) => ansFilter === null || r.answer === ansFilter)
-        .filter((r) => {
-          if (!needsReviewOnly || bucket !== 'PROMPT_YES') return true;
-          return promptResponseNeedsHrReview(r, reports, investigations);
-        })
-        .map((r) => {
-          const u = users.find((user) => user.id === r.userId);
-          const prompt = prompts.find((p) => p.id === r.promptId);
-          const stillNeeds = promptResponseNeedsHrReview(r, reports, investigations);
-          const linked = linkedReportForPromptRow(
-            { id: r.id, answer: r.answer, userId: r.userId, deliveryId: r.promptDeliveryId, promptId: r.promptId },
-            reports
-          );
-          const display = checkInResponseDisplayLabel(prompt, r, linked);
-          return {
-            id: r.id,
-            deliveryId: r.promptDeliveryId,
-            userId: r.userId,
-            promptTitle: display.title,
-            promptType: display.type,
-            promptId: r.promptId,
-            userName: u ? `${u.firstName} ${u.lastName}` : 'Employee',
-            answer: r.answer,
-            date: r.submittedAt,
-            modified: r.updatedAt ?? r.submittedAt,
-            needsReview: stillNeeds,
-          };
-        })
+        .map(toAnsweredRow)
         .filter((row) => `${row.promptTitle} ${row.userName}`.toLowerCase().includes(q))
     );
     // Default "all" view: include unanswered employee check-ins so the list matches the nav badge.
@@ -505,12 +510,14 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
     });
 
   const showCaseTable =
-    promptChannel === 'register' ||
-    promptChannel === 'wage_hour' ||
-    bucket === 'CASE_REGISTER' ||
-    bucket === 'NEW_CRITICAL' ||
-    bucket === 'NEEDS_RESPONSE';
+    !needsReviewOnly &&
+    (promptChannel === 'register' ||
+      promptChannel === 'wage_hour' ||
+      bucket === 'CASE_REGISTER' ||
+      bucket === 'NEW_CRITICAL' ||
+      bucket === 'NEEDS_RESPONSE');
   const showPromptList =
+    needsReviewOnly ||
     Boolean(employeeIdFilter) ||
     (promptChannel !== 'register' &&
       promptChannel !== 'memo' &&
@@ -588,7 +595,9 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
           <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)] mb-2">
             {filterEmployee
               ? `Issue responses for ${filterEmployee.firstName} ${filterEmployee.lastName}`
-              : 'Issue responses (incident query)'}
+              : needsReviewOnly
+                ? 'Yes · needs review (Incident Query & Wage & Hour Query)'
+                : 'Issue responses (incident query)'}
           </p>
           <div className="flex flex-wrap gap-2">
             <BucketBtn
@@ -598,8 +607,15 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
               Yes ({incidentBucketCounts.yes})
             </BucketBtn>
             <BucketBtn
-              active={promptChannel === 'incident' && bucket === 'PROMPT_YES' && needsReviewOnly}
-              onClick={() => goPrompt({ channel: 'incident', answer: 'HAS_ISSUE', needs_review: '1', rangePreset: filters.rangePreset ?? 'ALL' })}
+              active={bucket === 'PROMPT_YES' && needsReviewOnly}
+              onClick={() =>
+                goPrompt({
+                  answer: 'HAS_ISSUE',
+                  needs_review: '1',
+                  rangePreset: 'ALL',
+                  channel: 'incident',
+                })
+              }
             >
               Yes · needs review ({yesNeedingReviewCount})
             </BucketBtn>
@@ -1102,18 +1118,37 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                         return;
                       }
                       if (row.answer === 'HAS_ISSUE') {
+                        // Opening removes it from Yes · needs review for everyone.
                         markHrNavSeen(currentUser.id, 'prompt_response', row.id);
                         markPromptResponseReviewed?.(row.id);
                         if (linkedInv) {
                           onNavigate('investigation-detail', { id: linkedInv.id, tab: 'page-1' });
                           return;
                         }
-                        if (linkedCase) {
-                          onNavigate('report-detail', { id: linkedCase.id });
-                          return;
-                        }
+                      }
+                      if (linkedCase) {
+                        onNavigate('report-detail', { id: linkedCase.id });
+                        return;
                       }
                       onNavigate('prompt-response-detail', { id: row.id, type: row.answer });
+                    };
+                    const openLinkedCase = (e: { stopPropagation: () => void }) => {
+                      e.stopPropagation();
+                      if (!linkedCase) return;
+                      if (row.answer === 'HAS_ISSUE') {
+                        markHrNavSeen(currentUser.id, 'prompt_response', row.id);
+                        markPromptResponseReviewed?.(row.id);
+                      }
+                      onNavigate('report-detail', { id: linkedCase.id });
+                    };
+                    const openLinkedInv = (e: { stopPropagation: () => void }) => {
+                      e.stopPropagation();
+                      if (!linkedInv) return;
+                      if (row.answer === 'HAS_ISSUE') {
+                        markHrNavSeen(currentUser.id, 'prompt_response', row.id);
+                        markPromptResponseReviewed?.(row.id);
+                      }
+                      onNavigate('investigation-detail', { id: linkedInv.id, tab: 'page-1' });
                     };
                     return (
                       <tr
@@ -1163,10 +1198,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                             <button
                               type="button"
                               className="text-[var(--mismo-blue)] hover:underline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onNavigate('report-detail', { id: linkedCase.id });
-                              }}
+                              onClick={openLinkedCase}
                             >
                               {formatCaseReference(linkedCase)}
                             </button>
@@ -1179,10 +1211,7 @@ export function AdminCaseRegisterHub({ dataStore, onNavigate, initialFilters, hu
                             <button
                               type="button"
                               className="text-[var(--mismo-blue)] hover:underline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onNavigate('investigation-detail', { id: linkedInv.id, tab: 'page-1' });
-                              }}
+                              onClick={openLinkedInv}
                             >
                               {getInvestigationDisplayId(linkedInv)}
                             </button>

@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 interface EmployeeInvestigationResponseProps {
   dataStore: DataStore;
   requestId: string;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, params?: Record<string, string>) => void;
 }
 
 export function EmployeeInvestigationResponse({ dataStore, requestId, onNavigate }: EmployeeInvestigationResponseProps) {

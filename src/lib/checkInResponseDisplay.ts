@@ -37,3 +37,16 @@ export function checkInResponseDisplayLabel(
     type: prompt?.type ?? 'GENERAL',
   };
 }
+
+/** True when notes are only the bundled Q2 pay/financial screening line. */
+export function isFinancialFollowUpNote(notes: string | null | undefined): boolean {
+  const n = (notes ?? '').trim().toLowerCase();
+  return n.startsWith('financial follow-up:');
+}
+
+/** Notes to show on a workplace incident case (omit pay-screening boilerplate). */
+export function incidentFacingCheckInNotes(notes: string | null | undefined): string | undefined {
+  const trimmed = (notes ?? '').trim();
+  if (!trimmed || isFinancialFollowUpNote(trimmed)) return undefined;
+  return trimmed;
+}
