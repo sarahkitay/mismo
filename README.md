@@ -2,7 +2,7 @@
 
 Multi-tenant HR and compliance sample: org-scoped daily check-ins, workplace and wage-hour reports, a case register, investigations, memos, and admin tools.
 
-Tenant isolation is Postgres row-level security. The Edge API requires a project JWT (`verify_jwt = true` on `mismo-api`) and re-binds that JWT to `public.users`, so a client-supplied `orgId` is ignored. This repository is a **sanitized public demo** — application code, SQL, and tests, not production customer data.
+Tenant isolation is Postgres row-level security. The Edge API requires a project JWT (`verify_jwt = true` on `mismo-api`) and re-binds that JWT to `public.users`, so a client-supplied `orgId` is ignored. This repository is a **sanitized public demo**. It contains application code, SQL, and tests, not production customer data.
 
 **Live:** [mismo-theta.vercel.app](https://mismo-theta.vercel.app) (marketing) · [mismo-app.vercel.app](https://mismo-app.vercel.app) (sign-in)
 
