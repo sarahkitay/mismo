@@ -1,8 +1,17 @@
 # Mismo
 
-Inspectable HR/compliance product surface: daily check-ins, workplace and wage-hour reports, case register, investigations, memos, and org-scoped admin tools.
+Multi-tenant HR and compliance sample: org-scoped daily check-ins, workplace and wage-hour reports, a case register, investigations, memos, and admin tools.
 
-This repository is **sanitized**. It contains application code, Postgres RLS, and Edge Function handlers — not production customer data.
+Tenant isolation is Postgres row-level security. The Edge API requires a project JWT (`verify_jwt = true` on `mismo-api`) and re-binds that JWT to `public.users`, so a client-supplied `orgId` is ignored. This repository is a **sanitized public demo** — application code, SQL, and tests, not production customer data.
+
+**Live:** [mismo-theta.vercel.app](https://mismo-theta.vercel.app) (marketing) · [mismo-app.vercel.app](https://mismo-app.vercel.app) (sign-in)
+
+Screenshots from the public demo on 24 Sep 2026. Signed-in views are the demo HR user in organization Mismo. That day's incident check-in gates the case register until it is answered; the investigations list stays reachable.
+
+| | |
+| --- | --- |
+| ![Mismo marketing homepage with the heading Proactively resolve workplace issues.](docs/screenshots/marketing-home.png) | ![Mismo sign-in screen, Proactive Risk Infrastructure, with email and password fields.](docs/screenshots/sign-in.png) |
+| ![HR daily check-in for organization Mismo: Incident Query, question 1 of 2, dated 09.24.2026.](docs/screenshots/daily-check-in.png) | ![HR investigations list in the Mismo demo org, case CAS-2026-0001, status OPEN.](docs/screenshots/investigations.png) |
 
 ## What the public code demonstrates
 
